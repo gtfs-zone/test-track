@@ -1,0 +1,7 @@
+# Changes here will be overwritten by Copier; do not edit manually.
+_commit: 51c342d
+_src_path: bare-chassis
+description: A static frontend for visualizing GTFS realtime feeds
+project_name: Test Track
+project_slug: test-track
+project_type: static_site
