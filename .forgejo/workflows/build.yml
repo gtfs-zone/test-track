@@ -21,18 +21,12 @@ jobs:
           submodules: true
           github-server-url: https://git.kcfam.us
 
-      - name: Install latest Zola
-        run: |
-          curl -sL https://github.com/getzola/zola/releases/download/v0.22.1/zola-v0.22.1-x86_64-unknown-linux-musl.tar.gz \
-            | tar xz -C /usr/local/bin
-
       - name: Build
-        run: zola build
+        run: npm ci && npm run build
 
       - name: Deploy
         run: |
           echo "Copying build to /sites/test-track"
           mkdir -p /sites/test-track
           rm -rf /sites/test-track/*
-          cp -vr public/. /sites/test-track/
-
+          cp -vr dist/. /sites/test-track/
