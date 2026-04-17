@@ -90,14 +90,14 @@ Build the full page layout with DaisyUI components. No JS logic yet — just the
 Load and display the static GTFS feed on the map.
 
 ### Tasks
-- [ ] `src/gtfs-static.ts` — `GTFSStatic` class:
+- [x] `src/gtfs-static.ts` — `GTFSStatic` class:
   - `loadFromFile(file: File)` and `loadFromUrl(url: string)` → both call internal `parse(zip: JSZip)`
   - Parses `stops.txt` → `Map<string, Stop>` (id, name, lat, lon)
   - Parses `routes.txt` → `Map<string, Route>` (id, short_name, long_name, color, text_color, type)
   - Parses `shapes.txt` → `Map<string, [lon,lat][]>` (shape_id → coordinate array)
   - Parses `trips.txt` → `Map<string, Trip>` (trip_id → route_id, shape_id, headsign)
   - Parses `stop_times.txt` → `Map<string, string[]>` (stop_id → trip_ids that serve it)
-- [ ] `src/map-controller.ts` — `MapController` class:
+- [x] `src/map-controller.ts` — `MapController` class:
   - `initialize(container: string)` — init MapLibre with a good default style (e.g. MapTiler or OpenFreeMap)
   - `loadStaticFeed(feed: GTFSStatic)` — add sources/layers for shapes (lines) and stops (circles)
   - Route lines colored by `route_color`; stops as small circles, larger on hover
