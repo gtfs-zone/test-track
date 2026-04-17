@@ -117,13 +117,13 @@ Load and display the static GTFS feed on the map.
 Fetch and render live data, wire up the stop tap sheet and alerts modal.
 
 ### Tasks
-- [ ] `src/gtfs-rt.ts` — `GTFSRealtime` class:
+- [x] `src/gtfs-rt.ts` — `GTFSRealtime` class:
   - `constructor(vehicleUrl: string, tripUpdatesUrl: string, alertsUrl: string)`
   - `start(intervalMs = 15000)` / `stop()` — poll all three endpoints
   - Uses `gtfs-realtime-bindings` to decode protobuf responses
   - Emits events: `'vehicles'`, `'tripUpdates'`, `'alerts'` with typed payloads
   - Handles CORS — endpoints must be same-origin or have CORS headers; note this in gotchas
-- [ ] `src/index.ts` — wire everything together:
+- [x] `src/index.ts` — wire everything together:
   - Feed config "Load" button → parse static GTFS + start RT polling
   - On `'vehicles'` event → `mapController.showVehicles()`
   - On `'alerts'` event → update alerts modal list + badge count on navbar button
@@ -131,8 +131,8 @@ Fetch and render live data, wire up the stop tap sheet and alerts modal.
     - Stop name + stop ID
     - List of upcoming trips with delay info (from trip updates)
     - List of alerts affecting that stop
-  - Theme toggle wired up (copy ThemeController logic from coloring-book `src/modules/theme-controller.ts` or inline the 5-line version)
-- [ ] Alerts modal: render each alert as a `<div class="alert">` card with header, description, cause/effect badges, affected routes/stops
+  - Theme toggle wired up (5-line inline version persisting to localStorage)
+- [x] Alerts modal: render each alert as a `<div class="alert">` card with header, description, cause/effect badges, affected routes/stops
 
 ### Gotchas
 - `gtfs-realtime-bindings` ships ESM; import as `import { transit_realtime } from 'gtfs-realtime-bindings'`
@@ -140,3 +140,6 @@ Fetch and render live data, wire up the stop tap sheet and alerts modal.
 - CORS: the cafe-car API at `rt.gtfs.zone` must allow the `viz.rt.gtfs.zone` origin, or the user can enter a CORS proxy URL. Call this out in the UI with a note.
 - vehicle bearing: use `entity.vehicle.position.bearing` to rotate a directional arrow marker
 - The stop-to-trip lookup: iterate `tripUpdates` and match `stop_time_update.stop_sequence` against the static `stop_times.txt` or match by `trip.trip_id` against `stop_times` for that stop
+- `ITripDescriptor` does not have a `tripHeadsign` field; headsign comes only from `GTFSStatic.trips`
+- protobufjs's `@protobufjs/inquire` triggers a Vite eval warning — benign, no action needed
+- `GTFSRealtime` extends `EventTarget`; use `CustomEvent<T>` for typed payloads
