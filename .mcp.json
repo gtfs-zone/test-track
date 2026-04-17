@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "forgejo": {
+      "command": "forgejo-mcp",
+      "args": [
+        "--transport", "stdio",
+        "--url", "https://git.kcfam.us"
+      ],
+      "env": {
+        "FORGEJO_ACCESS_TOKEN": "${FORGEJO_ACCESS_TOKEN}",
+        "FORGEJO_USER_AGENT": "forgejo-mcp/1.0.0"
+      }
+    }
+  }
+}
