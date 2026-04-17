@@ -30,3 +30,4 @@ jobs:
           mkdir -p /sites/test-track
           rm -rf /sites/test-track/*
           cp -vr dist/. /sites/test-track/
+
