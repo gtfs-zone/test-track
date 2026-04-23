@@ -1,0 +1,38 @@
+{
+  "name": "viz.rt.gtfs.zone",
+  "version": "0.0.0-development",
+  "description": "Static frontend for visualizing GTFS realtime feeds",
+  "main": "src/index.html",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "start": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "gtfs",
+    "transit",
+    "realtime",
+    "map"
+  ],
+  "author": "gtfs.zone contributors",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jszip": "^3.4.0",
+    "@types/node": "^24.12.2",
+    "@types/papaparse": "^5.3.16",
+    "autoprefixer": "^10.4.21",
+    "tailwindcss": "^4.1.13",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.7"
+  },
+  "dependencies": {
+    "@tailwindcss/postcss": "^4.1.13",
+    "daisyui": "^5.1.13",
+    "gtfs-realtime-bindings": "^1.1.1",
+    "jszip": "^3.10.1",
+    "maplibre-gl": "^5.7.2",
+    "papaparse": "^5.5.3"
+  }
+}
