@@ -104,6 +104,19 @@
 
               <div class="divider my-1"></div>
 
+              <!-- CORS Proxy -->
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" id="cors-proxy-checkbox" class="checkbox checkbox-sm" checked />
+                <span class="label-text text-sm">Use CORS proxy</span>
+                <a
+                  href="https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="tooltip tooltip-bottom btn btn-ghost btn-xs btn-circle opacity-50"
+                  data-tip="Most public GTFS feeds block browser requests via CORS. The proxy (cors.gtfs.zone) forwards the request server-side so the feed loads."
+                >?</a>
+              </label>
+
               <!-- RT Feeds Section -->
               <div class="space-y-2">
                 <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">Realtime Feeds</h3>
@@ -132,9 +145,6 @@
                   class="input input-sm w-full"
                 />
 
-                <p class="text-xs opacity-40">
-                  Note: RT endpoints must allow <code>viz.rt.gtfs.zone</code> via CORS.
-                </p>
               </div>
 
               <button id="load-btn" class="btn btn-primary btn-sm w-full">
