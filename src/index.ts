@@ -41,6 +41,12 @@ loadBtn.addEventListener('click', async () => {
   }
 });
 
+function maybeProxy(url: string): string {
+  const useCors = (document.getElementById('cors-proxy-checkbox') as HTMLInputElement).checked;
+  if (!useCors || !url || url.startsWith('https://cors.gtfs.zone/')) return url;
+  return 'https://cors.gtfs.zone/' + url;
+}
+
 async function loadFeeds(): Promise<void> {
   const staticUrl = (document.getElementById('static-gtfs-url') as HTMLInputElement).value.trim();
   const file = fileInput.files?.[0];
@@ -50,16 +56,16 @@ async function loadFeeds(): Promise<void> {
     if (file) {
       await feed.loadFromFile(file);
     } else {
-      await feed.loadFromUrl(staticUrl);
+      await feed.loadFromUrl(maybeProxy(staticUrl));
     }
     staticFeed = feed;
     mapCtrl.clearStaticFeed();
     mapCtrl.loadStaticFeed(feed);
   }
 
-  const vehiclesUrl = (document.getElementById('rt-vehicles-url') as HTMLInputElement).value.trim();
-  const tripUpdatesUrl = (document.getElementById('rt-trip-updates-url') as HTMLInputElement).value.trim();
-  const alertsUrl = (document.getElementById('rt-alerts-url') as HTMLInputElement).value.trim();
+  const vehiclesUrl = maybeProxy((document.getElementById('rt-vehicles-url') as HTMLInputElement).value.trim());
+  const tripUpdatesUrl = maybeProxy((document.getElementById('rt-trip-updates-url') as HTMLInputElement).value.trim());
+  const alertsUrl = maybeProxy((document.getElementById('rt-alerts-url') as HTMLInputElement).value.trim());
 
   if (vehiclesUrl || tripUpdatesUrl || alertsUrl) {
     rtPoller?.stop();
