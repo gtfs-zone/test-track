@@ -1,0 +1,13 @@
+[tool.commitizen]
+name = "cz_conventional_commits"
+version = "0.1.0"
+version_files = [
+    "package.json:version"
+]
+update_changelog_on_bump = true
+major_version_zero = true
+tag_format = "v$version"
+bump_message = "chore(release): bump version $current_version → $new_version"
+pre_bump_hooks = [
+    "bash -c 'branch=$(git branch --show-current); [ \"$branch\" = \"main\" ] || { echo \"Error: cz bump must be run on main (currently on \\\"$branch\\\")\"; exit 1; }'",
+]
