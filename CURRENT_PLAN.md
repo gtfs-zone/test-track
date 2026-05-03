@@ -40,5 +40,5 @@ Copy the modal utilities from coloring-book and create an adapted about modal.
 
 ### Phase 3 — Add the About button to the navbar and wire it up
 
-- [ ] Add an info icon button in `src/index.html` navbar-end (before the theme toggle), `id="about-btn"`, `title="About"`
-- [ ] In `src/index.ts`, import `showAboutModal` and add a click listener on `#about-btn` that calls `showAboutModal(__APP_VERSION__)`
+- [x] Add an info icon button in `src/index.html` navbar-end (before the theme toggle), `id="about-btn"`, `title="About"`
+- [x] In `src/index.ts`, import `showAboutModal` and add a click listener on `#about-btn` that calls `showAboutModal(__APP_VERSION__)`
