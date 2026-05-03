@@ -14,6 +14,7 @@ let latestAlerts: ServiceAlert[] = [];
 let rtPoller: GTFSRealtime | null = null;
 
 // ─── About button ─────────────────────────────────────────────────────────────
+document.getElementById('app-version')!.textContent = __APP_VERSION__;
 document.getElementById('about-btn')!
   .addEventListener('click', () => showAboutModal(__APP_VERSION__));
 
