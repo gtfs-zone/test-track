@@ -3,6 +3,7 @@ import { MapController } from './map-controller';
 import type { VehiclePosition } from './map-controller';
 import { GTFSRealtime } from './gtfs-rt';
 import type { TripUpdate, ServiceAlert } from './gtfs-rt';
+import { showAboutModal } from './modules/about-modal';
 
 const mapCtrl = new MapController();
 mapCtrl.initialize('map');
@@ -11,6 +12,11 @@ let staticFeed: GTFSStatic | null = null;
 let latestTripUpdates: TripUpdate[] = [];
 let latestAlerts: ServiceAlert[] = [];
 let rtPoller: GTFSRealtime | null = null;
+
+// ─── About button ─────────────────────────────────────────────────────────────
+document.getElementById('app-version')!.textContent = __APP_VERSION__;
+document.getElementById('about-btn')!
+  .addEventListener('click', () => showAboutModal(__APP_VERSION__));
 
 // ─── Theme toggle ─────────────────────────────────────────────────────────────
 const themeInput = document.querySelector<HTMLInputElement>('.theme-controller')!;
