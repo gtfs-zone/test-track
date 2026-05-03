@@ -29,8 +29,8 @@ Edit `vite.config.js` to inject the app version at build time and add a TypeScri
 
 Copy the modal utilities from coloring-book and create an adapted about modal.
 
-- [ ] Create `src/modules/modal-utils.ts` — copy verbatim from `~/Documents/coloring-book/src/modules/modal-utils.ts`
-- [ ] Create `src/modules/about-modal.ts` — adapted from coloring-book:
+- [x] Create `src/modules/modal-utils.ts` — copy verbatim from `~/Documents/coloring-book/src/modules/modal-utils.ts`
+- [x] Create `src/modules/about-modal.ts` — adapted from coloring-book:
   - Remove the keyboard shortcuts section and the `shortcuts` parameter entirely
   - Update the description text to describe viz.rt.gtfs.zone
   - Update source/changelog links to the test-track repo (`https://git.kcfam.us/gtfs.zone/test-track`)
