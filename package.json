@@ -8,7 +8,8 @@
     "dev": "vite",
     "start": "vite",
     "build": "vite build",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "atlas": "tsx scripts/generate-atlas-data.ts"
   },
   "keywords": [
     "gtfs",
@@ -24,6 +25,7 @@
     "@types/papaparse": "^5.3.16",
     "autoprefixer": "^10.4.21",
     "tailwindcss": "^4.1.13",
+    "tsx": "^4.22.3",
     "typescript": "^5.9.3",
     "vite": "^7.1.7"
   },
