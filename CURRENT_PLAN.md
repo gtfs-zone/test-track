@@ -79,8 +79,8 @@ Also update `package.json`:
 
 Do **not** run the script (takes minutes and hits GitHub API) — leave that to the user. Just note in the phase prose how to run it (`npm run atlas`).
 
-- [ ] Create `scripts/generate-atlas-data.ts`
-- [ ] Update `package.json` scripts + deps
+- [x] Create `scripts/generate-atlas-data.ts`
+- [x] Update `package.json` scripts + deps
 
 **Gotchas:**
 - DMFR files may not have `urls` at all — always optional-chain
