@@ -154,7 +154,7 @@ The modal contains:
 
 `showManualLoadModal()` returns `FeedConfig | null`. On Load, it validates that at least one field is filled; if nothing is filled, keep the modal open (return `true` from `onClick`).
 
-- [ ] Create `src/modules/manual-load-modal.ts`
+- [x] Create `src/modules/manual-load-modal.ts`
 
 **Gotchas:**
 - The file input is inside the modal's body HTML string; after `onMount`, get the hidden `<input type="file">` and wire up the upload button click listener
