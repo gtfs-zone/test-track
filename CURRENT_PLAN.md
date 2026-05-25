@@ -133,7 +133,7 @@ export async function showExamplesModal(): Promise<FeedConfig | null> { ... }
 
 The modal (via `showModal()`) lists `EXAMPLES` as clickable rows. Clicking a row resolves with its `FeedConfig`. If `EXAMPLES` is empty, show a "No examples configured yet" placeholder. Cancel returns `null`.
 
-- [ ] Create `src/modules/examples.ts`
+- [x] Create `src/modules/examples.ts`
 
 **Gotchas:**
 - Keep the `EXAMPLES` array at the top of the file, clearly labelled, so it's trivially easy to add entries later
