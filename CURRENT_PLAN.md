@@ -103,8 +103,8 @@ Key differences from coloring-book:
 
 If `@leeoniya/ufuzzy` is not yet in test-track's `package.json`, add it.
 
-- [ ] Create `src/modules/atlas-search.ts`
-- [ ] Add `@leeoniya/ufuzzy` to `package.json` if missing
+- [x] Create `src/modules/atlas-search.ts`
+- [x] Add `@leeoniya/ufuzzy` to `package.json` if missing
 
 **Gotchas:**
 - The `cachedHaystack` still needs to be built from the extended feed objects; the field mapping changes but the logic is the same

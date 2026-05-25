@@ -30,6 +30,7 @@
     "vite": "^7.1.7"
   },
   "dependencies": {
+    "@leeoniya/ufuzzy": "^1.0.14",
     "@tailwindcss/postcss": "^4.1.13",
     "daisyui": "^5.1.13",
     "gtfs-realtime-bindings": "^1.1.1",
