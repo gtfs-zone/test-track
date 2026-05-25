@@ -1,3 +1,11 @@
+export function renderTrashIcon(sizeClass = 'h-4 w-4'): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" class="${sizeClass}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>`;
+}
+
+export function renderUploadIcon(sizeClass = 'h-4 w-4'): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" class="${sizeClass}" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>`;
+}
+
 export interface ModalAction {
   label: string;
   className?: string;
@@ -24,12 +32,13 @@ export async function showModal(options: {
   onMount?: (close: () => void) => void;
   enterAction?: number;
   escapeAction?: number;
+  boxClassName?: string;
 }): Promise<void> {
   return new Promise((resolve) => {
     const modal = document.createElement('div');
     modal.className = 'modal modal-open';
     modal.innerHTML = `
-      <div class="modal-box relative max-h-[80vh] flex flex-col">
+      <div class="modal-box relative max-h-[80vh] flex flex-col ${options.boxClassName ?? ''}">
         ${options.escapeAction !== undefined ? '<button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" data-dismiss>✕</button>' : ''}
         <h3 class="font-bold text-lg">${options.title}</h3>
         <div class="flex-1 overflow-y-auto py-4">${options.body}</div>
@@ -90,6 +99,11 @@ export async function showModal(options: {
           'click',
           () => void triggerAction(options.escapeAction!)
         );
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          void triggerAction(options.escapeAction!);
+        }
+      });
     }
 
     modal
