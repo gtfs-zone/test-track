@@ -191,8 +191,8 @@ Remove the old inline inputs, divider, CORS checkbox, and static file input enti
 - After a successful load, update the status line with a feed label (atlas feed name, "Custom feed", or example name)
 - Add a `#refresh-rt-btn` click handler that re-polls RT feeds using the last `FeedConfig`
 
-- [ ] Update `src/index.html` — replace card body
-- [ ] Update `src/index.ts` — refactor loadFeeds + wire dropdown
+- [x] Update `src/index.html` — replace card body
+- [x] Update `src/index.ts` — refactor loadFeeds + wire dropdown
 
 **Gotchas:**
 - DaisyUI dropdowns close on click-outside automatically; no JS needed

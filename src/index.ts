@@ -4,6 +4,10 @@ import type { VehiclePosition } from './map-controller';
 import { GTFSRealtime } from './gtfs-rt';
 import type { TripUpdate, ServiceAlert } from './gtfs-rt';
 import { showAboutModal } from './modules/about-modal';
+import type { FeedConfig } from './modules/atlas-search';
+import { showAtlasSearchModal } from './modules/atlas-search';
+import { showExamplesModal } from './modules/examples';
+import { showManualLoadModal } from './modules/manual-load-modal';
 
 const mapCtrl = new MapController();
 mapCtrl.initialize('map');
@@ -12,6 +16,7 @@ let staticFeed: GTFSStatic | null = null;
 let latestTripUpdates: TripUpdate[] = [];
 let latestAlerts: ServiceAlert[] = [];
 let rtPoller: GTFSRealtime | null = null;
+let lastConfig: FeedConfig | null = null;
 
 // ─── About button ─────────────────────────────────────────────────────────────
 document.getElementById('app-version')!.textContent = __APP_VERSION__;
@@ -25,69 +30,91 @@ themeInput.addEventListener('change', () =>
   localStorage.setItem('theme', themeInput.checked ? 'light' : 'dark')
 );
 
-// ─── File upload ──────────────────────────────────────────────────────────────
-const fileInput = document.getElementById('static-gtfs-file') as HTMLInputElement;
-document.getElementById('static-gtfs-upload-btn')!
-  .addEventListener('click', () => fileInput.click());
-
-// ─── Load button ──────────────────────────────────────────────────────────────
-const loadBtn = document.getElementById('load-btn') as HTMLButtonElement;
-loadBtn.addEventListener('click', async () => {
-  loadBtn.classList.add('loading');
-  loadBtn.disabled = true;
+// ─── Load dropdown ────────────────────────────────────────────────────────────
+async function handleLoadResult(config: FeedConfig | null, label: string): Promise<void> {
+  if (!config) return;
+  // Close dropdown by blurring the tabindex element
+  (document.activeElement as HTMLElement | null)?.blur();
   try {
-    await loadFeeds();
+    await loadFeeds(config);
+    document.getElementById('feed-status')!.textContent = label;
+    document.getElementById('refresh-rt-btn')!.classList.remove('hidden');
     (document.getElementById('feed-config') as HTMLDetailsElement).open = false;
   } catch (err) {
     console.error('Load failed:', err);
     alert(`Failed to load feeds: ${err instanceof Error ? err.message : String(err)}`);
-  } finally {
-    loadBtn.classList.remove('loading');
-    loadBtn.disabled = false;
+  }
+}
+
+document.getElementById('load-examples-btn')!.addEventListener('click', async () => {
+  const config = await showExamplesModal();
+  await handleLoadResult(config, config ? 'Example feed' : '');
+});
+
+document.getElementById('load-atlas-btn')!.addEventListener('click', async () => {
+  const config = await showAtlasSearchModal();
+  await handleLoadResult(config, 'Atlas feed');
+});
+
+document.getElementById('load-manual-btn')!.addEventListener('click', async () => {
+  const config = await showManualLoadModal();
+  await handleLoadResult(config, 'Custom feed');
+});
+
+// ─── Refresh RT button ────────────────────────────────────────────────────────
+document.getElementById('refresh-rt-btn')!.addEventListener('click', async () => {
+  if (!lastConfig) return;
+  try {
+    await startRtPoller(lastConfig);
+  } catch (err) {
+    console.error('RT refresh failed:', err);
+    alert(`Failed to refresh RT feeds: ${err instanceof Error ? err.message : String(err)}`);
   }
 });
 
-function maybeProxy(url: string): string {
-  const useCors = (document.getElementById('cors-proxy-checkbox') as HTMLInputElement).checked;
+function maybeProxy(url: string, useCors: boolean): string {
   if (!useCors || !url || url.startsWith('https://cors.gtfs.zone/')) return url;
   return 'https://cors.gtfs.zone/' + url;
 }
 
-async function loadFeeds(): Promise<void> {
-  const staticUrl = (document.getElementById('static-gtfs-url') as HTMLInputElement).value.trim();
-  const file = fileInput.files?.[0];
+function startRtPoller(config: FeedConfig): void {
+  const vehiclesUrl = maybeProxy(config.vehiclesUrl ?? '', config.useCors);
+  const tripUpdatesUrl = maybeProxy(config.tripUpdatesUrl ?? '', config.useCors);
+  const alertsUrl = maybeProxy(config.alertsUrl ?? '', config.useCors);
 
-  if (file || staticUrl) {
+  if (!vehiclesUrl && !tripUpdatesUrl && !alertsUrl) return;
+
+  rtPoller?.stop();
+  rtPoller = new GTFSRealtime(vehiclesUrl, tripUpdatesUrl, alertsUrl);
+  rtPoller.addEventListener('vehicles', e => {
+    mapCtrl.showVehicles((e as CustomEvent<VehiclePosition[]>).detail);
+  });
+  rtPoller.addEventListener('tripUpdates', e => {
+    latestTripUpdates = (e as CustomEvent<TripUpdate[]>).detail;
+  });
+  rtPoller.addEventListener('alerts', e => {
+    latestAlerts = (e as CustomEvent<ServiceAlert[]>).detail;
+    renderAlertsModal(latestAlerts);
+  });
+  rtPoller.start();
+}
+
+async function loadFeeds(config: FeedConfig): Promise<void> {
+  lastConfig = config;
+
+  if (config.staticFile || config.staticUrl) {
     const feed = new GTFSStatic();
-    if (file) {
-      await feed.loadFromFile(file);
+    if (config.staticFile) {
+      await feed.loadFromFile(config.staticFile);
     } else {
-      await feed.loadFromUrl(maybeProxy(staticUrl));
+      await feed.loadFromUrl(maybeProxy(config.staticUrl!, config.useCors));
     }
     staticFeed = feed;
     mapCtrl.clearStaticFeed();
     mapCtrl.loadStaticFeed(feed);
   }
 
-  const vehiclesUrl = maybeProxy((document.getElementById('rt-vehicles-url') as HTMLInputElement).value.trim());
-  const tripUpdatesUrl = maybeProxy((document.getElementById('rt-trip-updates-url') as HTMLInputElement).value.trim());
-  const alertsUrl = maybeProxy((document.getElementById('rt-alerts-url') as HTMLInputElement).value.trim());
-
-  if (vehiclesUrl || tripUpdatesUrl || alertsUrl) {
-    rtPoller?.stop();
-    rtPoller = new GTFSRealtime(vehiclesUrl, tripUpdatesUrl, alertsUrl);
-    rtPoller.addEventListener('vehicles', e => {
-      mapCtrl.showVehicles((e as CustomEvent<VehiclePosition[]>).detail);
-    });
-    rtPoller.addEventListener('tripUpdates', e => {
-      latestTripUpdates = (e as CustomEvent<TripUpdate[]>).detail;
-    });
-    rtPoller.addEventListener('alerts', e => {
-      latestAlerts = (e as CustomEvent<ServiceAlert[]>).detail;
-      renderAlertsModal(latestAlerts);
-    });
-    rtPoller.start();
-  }
+  startRtPoller(config);
 }
 
 // ─── Stop sheet ───────────────────────────────────────────────────────────────

@@ -74,6 +74,7 @@ export async function showManualLoadModal(): Promise<FeedConfig | null> {
             alertsUrl: alertsUrl || undefined,
             useCors,
           };
+          return;
         },
       },
       {
