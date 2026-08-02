@@ -18,6 +18,20 @@ export type ServiceAlert = transit_realtime.IAlert;
 export interface AlertRecord {
   id: string;
   alert: ServiceAlert;
+  /** Plain-object form of the same alert, for the alert page's raw dump. */
+  raw: unknown;
+}
+
+/**
+ * protobuf 64-bit fields decode to `Long` objects, not numbers, and every
+ * timestamp in GTFS-RT is one of them. `Number(long)` goes through the Long's
+ * own `toString`, so this works whether or not protobufjs installed Long
+ * support.
+ */
+export function toSeconds(value: unknown): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 /** Verbatim FeedHeader fields, for the status page's raw dump. */
@@ -209,8 +223,24 @@ export class GTFSRealtime extends EventTarget {
           lat: v.position.latitude,
           lon: v.position.longitude,
           bearing: v.position.bearing ?? undefined,
+          speed: v.position.speed ?? undefined,
           tripId: v.trip?.tripId ?? undefined,
           routeId: v.trip?.routeId ?? undefined,
+          directionId:
+            v.trip?.directionId === null || v.trip?.directionId === undefined
+              ? undefined
+              : String(v.trip.directionId),
+          startDate: v.trip?.startDate ?? undefined,
+          startTime: v.trip?.startTime ?? undefined,
+          currentStopSequence: v.currentStopSequence ?? undefined,
+          stopId: v.stopId ?? undefined,
+          currentStatus: v.currentStatus ?? undefined,
+          occupancyStatus: v.occupancyStatus ?? undefined,
+          timestamp: toSeconds(v.timestamp),
+          raw: transit_realtime.VehiclePosition.toObject(
+            v as transit_realtime.VehiclePosition,
+            { longs: Number, enums: String, defaults: false },
+          ),
         });
       }
       this.dispatchEvent(new CustomEvent<VehiclePosition[]>('vehicles', { detail: positions }));
@@ -219,7 +249,19 @@ export class GTFSRealtime extends EventTarget {
       this.dispatchEvent(new CustomEvent<TripUpdate[]>('tripUpdates', { detail: updates }));
     } else {
       const alerts = feed.entity.flatMap(e =>
-        e.alert ? [{ id: e.id, alert: e.alert }] : [],
+        e.alert
+          ? [
+              {
+                id: e.id,
+                alert: e.alert,
+                raw: transit_realtime.Alert.toObject(e.alert as transit_realtime.Alert, {
+                  longs: Number,
+                  enums: String,
+                  defaults: false,
+                }),
+              },
+            ]
+          : [],
       );
       this.dispatchEvent(new CustomEvent<AlertRecord[]>('alerts', { detail: alerts }));
     }

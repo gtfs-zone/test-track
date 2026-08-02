@@ -15,8 +15,28 @@ export interface VehiclePosition {
   lat: number;
   lon: number;
   bearing?: number;
+  /** Metres per second, as the spec defines it. */
+  speed?: number;
   tripId?: string;
   routeId?: string;
+  directionId?: string;
+  startDate?: string;
+  startTime?: string;
+  /**
+   * The GTFS `stop_sequence` value of the stop the vehicle is working on — not
+   * an index into the trip's stop list. Absent in many feeds, which is why the
+   * route strip has an "unplaced vehicles" section.
+   */
+  currentStopSequence?: number;
+  /** `stop_id` of the same stop, when the feed reports it. */
+  stopId?: string;
+  /** VehicleStopStatus: 0 INCOMING_AT, 1 STOPPED_AT, 2 IN_TRANSIT_TO. */
+  currentStatus?: number;
+  occupancyStatus?: number;
+  /** Seconds since epoch, per the spec. Stale values are worth surfacing. */
+  timestamp?: number;
+  /** The decoded entity, kept verbatim for the vehicle page's raw dump. */
+  raw: unknown;
 }
 
 interface MapView {

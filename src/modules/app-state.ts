@@ -120,6 +120,16 @@ export class AppState {
     this.hooks.onFocusChange(this.focus);
   }
 
+  /**
+   * The hash a link to `state` should carry. Object pages render real `<a>`
+   * elements so middle-click and copy-link-address behave, even though the
+   * click itself is intercepted and handled in place.
+   */
+  hrefFor(state: PageState): string {
+    const hash = this.pages.buildHash(state);
+    return hash ? `#${hash}` : '#';
+  }
+
   /** The full shareable URL for the current session. */
   shareableUrl(): string {
     const hash = this.pages.buildHash(this.focus);

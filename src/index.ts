@@ -1,7 +1,7 @@
 import { MapController } from './map-controller';
 import type { VehiclePosition } from './map-controller';
 import type { GTFSStatic } from './gtfs-static';
-import type { AlertRecord, ServiceAlert } from './gtfs-rt';
+import type { AlertRecord } from './gtfs-rt';
 import { showAboutModal } from './modules/about-modal';
 import { showAtlasSearchModal } from './modules/atlas-search';
 import { showExamplesModal } from './modules/examples';
@@ -15,7 +15,9 @@ import { describeSelection } from './modules/feed-selection';
 import { FeedSession } from './modules/feed-session';
 import { StatusPage } from './modules/status-page';
 import { AppState } from './modules/app-state';
-import { renderPlaceholderPage } from './modules/panel-placeholder';
+import { PanelRenderer } from './modules/panel-renderer';
+import { ALERT_LEVEL_LABELS, alertLevel, isActiveNow, preferredText } from './modules/alerts';
+import type { PageState } from './types/page-state';
 
 // ─── Shell ────────────────────────────────────────────────────────────────────
 const appContainer = document.querySelector<HTMLElement>('.app-container')!;
@@ -49,23 +51,31 @@ session.addEventListener('vehicles', e => {
 // Trip updates are collected by the state store in a later plan; the panel
 // has no consumer for them yet.
 session.addEventListener('alerts', e => {
-  renderAlertsModal((e as CustomEvent<AlertRecord[]>).detail.map(r => r.alert));
+  renderAlertsModal((e as CustomEvent<AlertRecord[]>).detail);
 });
 
 // ─── Focus state ──────────────────────────────────────────────────────────────
 const panelContent = document.getElementById('panel-content')!;
 const statusPage = new StatusPage(panelContent, session);
+const panelRenderer = new PanelRenderer(panelContent, session, {
+  navigate: state => appState.setFocus(state),
+  href: state => appState.hrefFor(state),
+});
+panelRenderer.initialize();
 
 const appState = new AppState(session, {
   onFocusChange: state => {
     const atHome = state.type === 'home';
     // The status page is the panel's home content; anything else takes it over.
+    // Exactly one of the two owns `#panel-content` at a time, so neither can
+    // paint over the other on a poll.
     statusPage.setActive(atHome);
-    if (!atHome) {
-      panelContent.innerHTML = renderPlaceholderPage(session, state, appState.breadcrumbs);
-      bottomSheet.open('half');
-    } else {
+    if (atHome) {
+      panelRenderer.hide();
       bottomSheet.close();
+    } else {
+      panelRenderer.show(state, appState.breadcrumbs);
+      bottomSheet.open('half');
     }
     // After the sheet moves, so the camera knows how much of the map is covered.
     mapCtrl.focus(state);
@@ -125,54 +135,69 @@ document.getElementById('refresh-rt-btn')!.addEventListener('click', async () =>
 });
 
 // ─── Alerts modal ─────────────────────────────────────────────────────────────
-function renderAlertsModal(alerts: ServiceAlert[]): void {
-  const listEl = document.getElementById('alerts-list')!;
+const alertsList = document.getElementById('alerts-list')!;
+
+/**
+ * The modal is now an index into the alert pages rather than a place where the
+ * alert text is finally rendered — a row links to the page that shows every
+ * translation, active period, and informed entity.
+ *
+ * The navbar badge counts only alerts that are active *now*. A feed routinely
+ * carries alerts for next month's shutdown, and counting them as if they were
+ * happening makes the badge useless; the total is stated next to it instead.
+ */
+function renderAlertsModal(records: AlertRecord[]): void {
   const badge = document.getElementById('alerts-badge')!;
-  if (alerts.length === 0) {
-    listEl.innerHTML = '<p class="text-sm opacity-40 text-center py-8">No service alerts.</p>';
+  const active = records.filter(r => isActiveNow(r.alert));
+
+  if (records.length === 0) {
+    alertsList.innerHTML = '<p class="text-sm opacity-40 text-center py-8">No service alerts.</p>';
     badge.classList.add('hidden');
     badge.textContent = '';
-  } else {
-    listEl.innerHTML = alerts.map(renderAlertCard).join('');
-    badge.textContent = String(alerts.length);
-    badge.classList.remove('hidden');
+    return;
   }
+
+  // Active first — the rest are scheduled or expired and can wait.
+  const ordered = [...active, ...records.filter(r => !isActiveNow(r.alert))];
+  alertsList.innerHTML = `
+    <p class="text-xs opacity-60">${active.length} active of ${records.length} in the feed.</p>
+    ${ordered.map(renderAlertRow).join('')}`;
+
+  badge.textContent = String(active.length);
+  badge.classList.toggle('hidden', active.length === 0);
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-const CAUSE_LABELS: Record<number, string> = {
-  2: 'Other', 3: 'Technical Problem', 4: 'Strike', 5: 'Demonstration',
-  6: 'Accident', 7: 'Holiday', 8: 'Weather', 9: 'Maintenance',
-  10: 'Construction', 11: 'Police Activity', 12: 'Medical Emergency',
-};
-const EFFECT_LABELS: Record<number, string> = {
-  1: 'No Service', 2: 'Reduced Service', 3: 'Significant Delays', 4: 'Detour',
-  5: 'Additional Service', 6: 'Modified Service', 7: 'Other Effect',
-  9: 'Stop Moved', 10: 'No Effect', 11: 'Accessibility Issue',
-};
-
-type TranslatedString = NonNullable<ServiceAlert['headerText']>;
-
-function getTranslatedText(ts: TranslatedString | null | undefined): string {
-  if (!ts?.translation?.length) return '';
-  const en = ts.translation.find(t => t.language === 'en');
-  return String((en ?? ts.translation[0]).text ?? '');
-}
-
-function renderAlertCard(alert: ServiceAlert): string {
-  const header = getTranslatedText(alert.headerText);
-  const desc = getTranslatedText(alert.descriptionText);
-  const cause = CAUSE_LABELS[alert.cause as number] ?? '';
-  const effect = EFFECT_LABELS[alert.effect as number] ?? '';
-  return `<div class="card card-bordered bg-base-200 p-3 space-y-1">
-    ${header ? `<p class="font-semibold text-sm">${escHtml(header)}</p>` : ''}
-    ${desc ? `<p class="text-xs opacity-70">${escHtml(desc)}</p>` : ''}
-    <div class="flex flex-wrap gap-1 pt-1">
-      ${cause ? `<span class="badge badge-ghost badge-xs">${escHtml(cause)}</span>` : ''}
-      ${effect ? `<span class="badge badge-warning badge-xs">${escHtml(effect)}</span>` : ''}
+function renderAlertRow(record: AlertRecord): string {
+  const header = preferredText(record.alert.headerText) || `Alert ${record.id}`;
+  const desc = preferredText(record.alert.descriptionText);
+  const state: PageState = { type: 'alert', alert_id: record.id };
+  return `<a
+      href="${escHtml(appState.hrefFor(state))}"
+      data-alert-id="${escHtml(record.id)}"
+      class="block card card-bordered bg-base-200 p-3 space-y-1 hover:bg-base-300"
+    >
+    <div class="flex items-center gap-2">
+      ${
+        isActiveNow(record.alert)
+          ? '<span class="badge badge-warning badge-xs">active</span>'
+          : '<span class="badge badge-ghost badge-xs">not active</span>'
+      }
+      <span class="text-xs opacity-50">${escHtml(ALERT_LEVEL_LABELS[alertLevel(record)])}</span>
     </div>
-  </div>`;
+    <p class="font-semibold text-sm">${escHtml(header)}</p>
+    ${desc ? `<p class="text-xs opacity-70 line-clamp-3">${escHtml(desc)}</p>` : ''}
+  </a>`;
 }
+
+alertsList.addEventListener('click', e => {
+  const row = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-alert-id]');
+  if (!row) return;
+  const mouse = e as MouseEvent;
+  if (mouse.metaKey || mouse.ctrlKey || mouse.shiftKey || mouse.button !== 0) return;
+  e.preventDefault();
+  (document.getElementById('alerts-modal') as HTMLDialogElement).close();
+  appState.setFocus({ type: 'alert', alert_id: row.dataset.alertId! });
+});
 
 function escHtml(s: string): string {
   return s

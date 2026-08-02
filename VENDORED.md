@@ -31,3 +31,4 @@ in `../coloring-book` (skipped if that sibling repo isn't present).
 | `src/modules/layer-manager.ts` | `src/modules/layer-manager.ts` | f9c718c | modified | Fed from `GTFSStatic`; pathways/levels/editing dropped; route layers absorbed from `route-renderer.ts`; realtime vehicles added |
 | `src/types/page-state.ts` | `src/types/page-state.ts` | f9c718c | modified | Five variants only; `vehicle`/`alert` added, `direction_id` on route; sync `StateValidator` |
 | `src/modules/page-state-manager.ts` | `src/modules/page-state-manager.ts` | f9c718c | modified | Breadcrumbs synchronous and injected; feed URLs merged into the hash; singleton dropped |
+| `src/modules/scs.ts` | `src/modules/scs.ts` | f9c718c | verbatim | Shortest common supersequence. Only the two-sequence case is usable — `route-sequence.ts` folds pairwise and does its own alignment walk rather than calling the k-way solver |
