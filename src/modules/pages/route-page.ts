@@ -2,8 +2,13 @@
  * The route page: a vertical transit-map strip with live vehicles sitting in
  * the gaps between stops.
  *
- * The strip is a two-column CSS grid — rail, then content — rather than an SVG,
- * so stop names stay selectable and every stop and vehicle is a real link.
+ * The strip is a two-column CSS grid — rail, then content. Only the rail is an
+ * SVG, and only one per row: the lines have to branch and merge, which CSS
+ * cannot draw, but everything readable stays real HTML, so stop names are
+ * selectable and every stop and vehicle is a real link. Row heights are
+ * content-driven and unknown at render time, so each row's SVG stretches a
+ * fixed 100-unit viewBox over whatever height it gets. Circles would come out
+ * as ellipses under that scale, which is why the dots are HTML spans.
  */
 
 import type { AlertRecord } from '../../gtfs-rt';
@@ -11,6 +16,7 @@ import type { Route } from '../../gtfs-static';
 import type { VehiclePosition } from '../../map-controller';
 import type { PageState } from '../../types/page-state';
 import { alertsForRoute, alertsForRouteStop, feedWideAlerts } from '../alerts';
+import { routeGraph } from '../route-graph';
 import type { RtIndex } from '../rt-index';
 import type { Prediction } from '../rt-index';
 import type { RouteSequence, StopStats } from '../route-sequence';
@@ -36,6 +42,13 @@ import {
 import { renderAlertList } from './alert-page';
 
 const RAIL_WIDTH = 9;
+/** The gutter a single-lane route gets — the width the rail column always had. */
+const GUTTER_BASE = 40;
+/** Each extra lane costs this much width. */
+const LANE_WIDTH = 14;
+
+/** Where a row's dot goes, if it has one. */
+type RowDot = { kind: 'none' } | { kind: 'open' | 'solid'; lane: number };
 
 /**
  * A stop is called an endpoint when this share of the direction's trips begin
@@ -132,39 +145,80 @@ function placeVehicles(
 
 // ─── Strip rendering ──────────────────────────────────────────────────────────
 
-function railStyle(color: string, first: boolean, last: boolean): string {
-  const radius = 'border-radius:99px';
-  const top = first ? 'top:50%' : 'top:0';
-  const bottom = last ? 'bottom:50%' : 'bottom:0';
-  return `background:${color};width:${RAIL_WIDTH}px;${top};${bottom};${
-    first || last ? radius : ''
-  }`;
+/** Centre of lane `l`, in px from the left of the gutter. */
+function laneX(lane: number): number {
+  return GUTTER_BASE / 2 + lane * LANE_WIDTH;
+}
+
+function gutterWidth(laneCount: number): number {
+  return GUTTER_BASE + (laneCount - 1) * LANE_WIDTH;
 }
 
 /**
- * The rail cell. `route_color` is whatever the feed says, and `#FFFFFF` on a
- * light theme is a real and common hazard, so the rail and every dot carry a
- * neutral hairline outline that reads on both themes.
+ * One rail path, drawn twice.
+ *
+ * `route_color` is whatever the feed says, and `#FFFFFF` on a light theme is a
+ * real and common hazard, so a slightly wider neutral stroke goes underneath —
+ * the SVG equivalent of the `ring-1 ring-base-content/15` the rail carried when
+ * it was a `<span>`.
+ *
+ * The viewBox is 100 tall against a row whose height is content-driven and
+ * unknown here, so the vertical scale is arbitrary. `non-scaling-stroke` keeps
+ * the stroke 9px regardless; the curves stretch, which is the intended look.
  */
-function rail(color: string, first: boolean, last: boolean, dot: 'none' | 'open' | 'solid'): string {
+function railPath(d: string, color: string): string {
+  return `<path d="${d}" fill="none" stroke="currentColor" class="text-base-content/15" stroke-width="${
+    RAIL_WIDTH + 2
+  }" stroke-linecap="round" vector-effect="non-scaling-stroke"/><path d="${d}" fill="none" stroke="${color}" stroke-width="${RAIL_WIDTH}" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
+}
+
+/** Straight down the whole row, in one lane. */
+function verticalPath(lane: number): string {
+  return `M ${laneX(lane)},0 L ${laneX(lane)},100`;
+}
+
+/** From `lane` at the top of the row into `into` at the row's centre. */
+function mergePath(lane: number, into: number): string {
+  const x0 = laneX(lane);
+  const x1 = laneX(into);
+  return lane === into ? `M ${x1},0 L ${x1},50` : `M ${x0},0 C ${x0},20 ${x1},30 ${x1},50`;
+}
+
+/** From `from` at the row's centre out into `lane` at the bottom. */
+function branchPath(from: number, lane: number): string {
+  const x0 = laneX(from);
+  const x1 = laneX(lane);
+  return lane === from ? `M ${x0},50 L ${x0},100` : `M ${x0},50 C ${x0},80 ${x1},70 ${x1},100`;
+}
+
+/**
+ * The rail cell: an SVG of lines, plus the dot as real HTML on top.
+ *
+ * The dot cannot go in the SVG — the non-uniform vertical scale would render a
+ * circle as an ellipse of unpredictable eccentricity.
+ */
+function railCell(color: string, laneCount: number, paths: string[], dot: RowDot): string {
+  const width = gutterWidth(laneCount);
   const dotHtml =
-    dot === 'none'
+    dot.kind === 'none'
       ? ''
-      : `<span class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full ring-1 ring-base-content/25"
-           style="background:${dot === 'solid' ? color : 'var(--color-base-100, #fff)'};box-shadow:inset 0 0 0 3px ${color}"></span>`;
+      : `<span class="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full ring-1 ring-base-content/25"
+           style="left:${laneX(dot.lane)}px;background:${
+             dot.kind === 'solid' ? color : 'var(--color-base-100, #fff)'
+           };box-shadow:inset 0 0 0 3px ${color}"></span>`;
   return `
-    <div class="relative w-10 shrink-0" aria-hidden="true">
-      <span class="absolute left-1/2 -translate-x-1/2 ring-1 ring-base-content/15" style="${railStyle(
-        color,
-        first,
-        last,
-      )}"></span>
+    <div class="relative shrink-0" style="width:${width}px" aria-hidden="true">
+      <svg class="absolute inset-0 w-full h-full" viewBox="0 0 ${width} 100" preserveAspectRatio="none">${paths
+        .map(d => railPath(d, color))
+        .join('')}</svg>
       ${dotHtml}
     </div>`;
 }
 
-function stripRow(railHtml: string, content: string): string {
-  return `<div class="grid grid-cols-[2.5rem_1fr] gap-2 items-stretch">
+function stripRow(railHtml: string, content: string, laneCount: number): string {
+  return `<div class="grid gap-2 items-stretch" style="grid-template-columns:${gutterWidth(
+    laneCount,
+  )}px 1fr">
     ${railHtml}
     <div class="py-1 min-h-8 flex flex-col justify-center">${content}</div>
   </div>`;
@@ -259,16 +313,55 @@ function renderStrip(
     else bucket.set(p.position, [p]);
   }
 
+  const graph = routeGraph(sequence);
+
+  /**
+   * The lanes a vehicle chip's row has to carry, so a chip no longer breaks the
+   * rail. Above the first stop and below the last there is only that stop's own
+   * lane, and the chip row takes the terminal cap with it — which is what the
+   * old single-bar rail did too.
+   */
+  const gapLanes = (index: number, side: 'above' | 'below'): number[] => {
+    const row = graph.rows[index];
+    if (side === 'above') {
+      return row.merges.length === 0 ? [row.lane] : [...row.merges, ...row.through];
+    }
+    return row.exiting.length === 0 ? [row.lane] : row.exiting;
+  };
+
+  /**
+   * A stop row's lines. `leadIn`/`leadOut` extend the row's own lane to the row
+   * edge at a terminus that has a chip row beyond it, so the chip keeps the cap
+   * and the rail between the two stays joined.
+   */
+  const stopPaths = (index: number, leadIn: boolean, leadOut: boolean): string[] => {
+    const row = graph.rows[index];
+    const paths = [
+      ...row.through.map(verticalPath),
+      ...row.merges.map(lane => mergePath(lane, row.lane)),
+      ...row.branches.map(lane => branchPath(row.lane, lane)),
+    ];
+    if (leadIn && row.merges.length === 0) paths.push(mergePath(row.lane, row.lane));
+    if (leadOut && row.branches.length === 0) paths.push(branchPath(row.lane, row.lane));
+    return paths;
+  };
+
   // Rows are collected first so the terminal caps can be put on whichever rows
   // actually end up at the ends — a vehicle above the first stop pushes the cap
   // down onto its own row.
-  const rows: Array<{ dot: 'none' | 'open' | 'solid'; content: string }> = [];
+  const rows: Array<{ dot: RowDot; paths: string[]; content: string }> = [];
 
   const endpointThreshold = Math.max(1, sequence.totalTrips * ENDPOINT_SHARE);
 
   sequence.stops.forEach((stop, index) => {
-    for (const p of before.get(index) ?? []) {
-      rows.push({ dot: 'none', content: vehicleChip(ctx, p.vehicle) });
+    const chipsBefore = before.get(index) ?? [];
+    const chipsAt = at.get(index) ?? [];
+    for (const p of chipsBefore) {
+      rows.push({
+        dot: { kind: 'none' },
+        paths: gapLanes(index, 'above').map(verticalPath),
+        content: vehicleChip(ctx, p.vehicle),
+      });
     }
 
     const name = feed?.stops.get(stop.stop_id)?.name || stop.stop_id;
@@ -287,7 +380,8 @@ function renderStrip(
     const minority = share < MINORITY_SHARE;
 
     rows.push({
-      dot: endpoint ? 'solid' : 'open',
+      dot: { kind: endpoint ? 'solid' : 'open', lane: graph.rows[index].lane },
+      paths: stopPaths(index, chipsBefore.length > 0, chipsAt.length > 0),
       content: `<div class="flex items-center gap-2" title="${escHtml(
         `Served by ${stats.serves} of ${sequence.totalTrips} trips`,
       )}">
@@ -313,14 +407,22 @@ function renderStrip(
       </div>`,
     });
 
-    for (const p of at.get(index) ?? []) {
-      rows.push({ dot: 'none', content: vehicleChip(ctx, p.vehicle) });
+    for (const p of chipsAt) {
+      rows.push({
+        dot: { kind: 'none' },
+        paths: gapLanes(index, 'below').map(verticalPath),
+        content: vehicleChip(ctx, p.vehicle),
+      });
     }
   });
 
   return `<div class="-mx-1">${rows
-    .map((row, i) =>
-      stripRow(rail(route.color, i === 0, i === rows.length - 1, row.dot), row.content),
+    .map(row =>
+      stripRow(
+        railCell(route.color, graph.laneCount, row.paths, row.dot),
+        row.content,
+        graph.laneCount,
+      ),
     )
     .join('')}</div>`;
 }
