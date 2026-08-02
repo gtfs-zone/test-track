@@ -1,7 +1,0 @@
-# Changes here will be overwritten by Copier; do not edit manually.
-_commit: v0.1.0-1-g674b1a0
-_src_path: /home/maxtkc/Documents/bare-chassis
-description: A static frontend for visualizing GTFS realtime feeds
-project_name: Test Track
-project_slug: test-track
-project_type: static_site

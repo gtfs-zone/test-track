@@ -74,7 +74,7 @@ function renderCounts(session: FeedSession): string {
 }
 
 /** `data-since` / `data-until` are driven by the single shared ticker below. */
-function renderEndpoint(ep: EndpointStatus, nextPollAt: number | null): string {
+function renderEndpoint(ep: EndpointStatus, rawUrl: string, nextPollAt: number | null): string {
   const label = REALTIME_ENDPOINT_LABELS[ep.name];
 
   const fetched = ep.lastFetchedAt
@@ -127,10 +127,9 @@ function renderEndpoint(ep: EndpointStatus, nextPollAt: number | null): string {
           type="text"
           class="input input-bordered input-xs flex-1 font-mono"
           data-rt-url="${ep.name}"
-          value="${escHtml(ep.url)}"
+          value="${escHtml(rawUrl)}"
           placeholder="https://…"
         />
-        <button class="btn btn-xs" data-rt-apply="${ep.name}">Apply</button>
       </div>
 
       ${ep.header ? renderHeaderDump(ep) : ''}
@@ -195,10 +194,25 @@ function renderHeaderDump(ep: EndpointStatus): string {
 function renderEndpoints(session: FeedSession): string {
   const status = session.status;
   if (!status) return '';
+  const rt = session.selection?.realtime;
+  const rawUrls: Record<RealtimeEndpointName, string> = {
+    vehicles: rt?.vehiclesUrl ?? '',
+    tripUpdates: rt?.tripUpdatesUrl ?? '',
+    alerts: rt?.alertsUrl ?? '',
+  };
+  const corsToggle = rt
+    ? `<label class="flex items-center gap-2 text-xs cursor-pointer font-normal">
+         <input type="checkbox" id="status-rt-cors" class="checkbox checkbox-xs" ${rt.useCors ? 'checked' : ''} />
+         CORS proxy
+       </label>`
+    : '';
   return `
     <section class="space-y-2">
-      <h3 class="font-semibold text-sm">Realtime endpoints</h3>
-      ${REALTIME_ENDPOINTS.map(n => renderEndpoint(status.endpoints[n], status.nextPollAt)).join('')}
+      <div class="flex items-center gap-2">
+        <h3 class="font-semibold text-sm flex-1">Realtime endpoints</h3>
+        ${corsToggle}
+      </div>
+      ${REALTIME_ENDPOINTS.map(n => renderEndpoint(status.endpoints[n], rawUrls[n], status.nextPollAt)).join('')}
     </section>`;
 }
 
@@ -206,21 +220,29 @@ function renderStaticSection(session: FeedSession): string {
   const src = session.selection?.static;
   if (!src) return '';
 
+  // Mirror the realtime section: the CORS toggle rides in the section header,
+  // not down inside the editor. File sources aren't fetched, so no toggle.
+  const corsToggle =
+    src.kind === 'url'
+      ? `<label class="flex items-center gap-2 text-xs cursor-pointer font-normal">
+           <input type="checkbox" id="status-static-cors" class="checkbox checkbox-xs" ${src.useCors ? 'checked' : ''} />
+           CORS proxy
+         </label>`
+      : '';
+
   const editor =
     src.kind === 'file'
       ? `<p class="text-xs opacity-60">Loaded from uploaded file <span class="font-mono">${escHtml(src.label)}</span> — not reproducible from a link.</p>`
       : `<div class="flex gap-1">
            <input type="text" id="status-static-url" class="input input-bordered input-xs flex-1 font-mono" value="${escHtml(src.url)}" />
-           <button class="btn btn-xs" id="status-static-apply">Apply</button>
-         </div>
-         <label class="flex items-center gap-2 text-xs cursor-pointer">
-           <input type="checkbox" id="status-static-cors" class="checkbox checkbox-xs" ${src.useCors ? 'checked' : ''} />
-           CORS proxy
-         </label>`;
+         </div>`;
 
   return `
     <section class="space-y-2">
-      <h3 class="font-semibold text-sm">Static feed</h3>
+      <div class="flex items-center gap-2">
+        <h3 class="font-semibold text-sm flex-1">Static feed</h3>
+        ${corsToggle}
+      </div>
       <div class="rounded-lg border border-base-300 p-3 space-y-2">
         <div class="flex items-center gap-2">
           <p class="text-sm flex-1">${escHtml(src.label)}</p>
@@ -377,6 +399,44 @@ function renderStationIssues(session: FeedSession): string {
     </section>`;
 }
 
+/**
+ * CSV columns that arrived with leading/trailing whitespace and were trimmed at
+ * parse time (see `parseCSV` in gtfs-static.ts). The GTFS reference forbids the
+ * padding, and it is silently fatal: a padded static `stop_id` matches no clean
+ * realtime `stop_id`, so absorbing it without saying so would hide the defect.
+ *
+ * Rows are counted, not distinct values — "3544 rows" is a fact; "3544 stops"
+ * would invite the reader to wonder whether any were merged. A clean feed (which
+ * is nearly all of them) renders nothing, so this never becomes furniture.
+ */
+function renderPaddedColumns(session: FeedSession): string {
+  const padded = session.staticFeed?.paddedColumns;
+  if (!padded || padded.length === 0) return '';
+
+  return `
+    <section class="space-y-2">
+      <h3 class="font-semibold text-sm">Whitespace-padded columns</h3>
+      <div class="rounded-lg border border-warning/40 p-3 space-y-2">
+        ${padded
+          .map(
+            ({ file, column, rows }) => `
+          <div>
+            <div class="flex justify-between gap-2 text-xs">
+              <span><span class="font-mono">${escHtml(file)}</span> <span class="font-mono">${escHtml(column)}</span></span>
+              <span class="tabular-nums font-semibold">${rows}</span>
+            </div>
+            <p class="text-xs opacity-50">
+              ${rows} rows had leading or trailing whitespace. The GTFS reference forbids this;
+              test-track trimmed them. Untrimmed, no realtime
+              <span class="font-mono">${escHtml(column)}</span> would match this feed.
+            </p>
+          </div>`,
+          )
+          .join('')}
+      </div>
+    </section>`;
+}
+
 /** feed_info.txt and agency.txt, verbatim. */
 function renderRawTables(session: FeedSession): string {
   const feed = session.staticFeed;
@@ -454,6 +514,8 @@ export class StatusPage {
   private session: FeedSession;
   private tickerId: ReturnType<typeof setInterval> | null = null;
   private renderQueued = false;
+  /** Pending edit-apply timers, keyed so a later edit supersedes an earlier one. */
+  private editTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** False while an object page owns the panel; polls must not paint over it. */
   private active = true;
 
@@ -498,6 +560,25 @@ export class StatusPage {
   destroy(): void {
     if (this.tickerId !== null) clearInterval(this.tickerId);
     this.tickerId = null;
+    this.editTimers.forEach(t => clearTimeout(t));
+    this.editTimers.clear();
+  }
+
+  /**
+   * Defer an edit's apply by a beat so a URL change and its CORS checkbox can be
+   * set together as one action, rather than firing a fetch the instant the URL
+   * field blurs. A newer edit under the same key cancels the pending one.
+   */
+  private debounceEdit(key: string, fn: () => void): void {
+    const existing = this.editTimers.get(key);
+    if (existing) clearTimeout(existing);
+    this.editTimers.set(
+      key,
+      setTimeout(() => {
+        this.editTimers.delete(key);
+        fn();
+      }, 1000),
+    );
   }
 
   /** Coalesce the burst of statuschange events a single poll produces. */
@@ -538,6 +619,7 @@ export class StatusPage {
         ${renderFeedGaps(this.feedGaps?.() ?? null)}
         ${renderMapIssues(this.mapIssues?.() ?? null)}
         ${renderStationIssues(this.session)}
+        ${renderPaddedColumns(this.session)}
         ${renderStaticSection(this.session)}
         ${renderEndpoints(this.session)}
         ${renderShare(this.session)}
@@ -548,14 +630,28 @@ export class StatusPage {
   }
 
   private wire(): void {
-    this.host.querySelectorAll<HTMLButtonElement>('[data-rt-apply]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const name = btn.dataset.rtApply as RealtimeEndpointName;
-        const input = this.host.querySelector<HTMLInputElement>(`[data-rt-url="${name}"]`)!;
-        btn.disabled = true;
+    // URLs apply a beat after the field loses focus (the `change` event), so
+    // there is no Apply button to forget to press and you can still reach for
+    // the CORS checkbox before the fetch fires. Values are captured eagerly, so
+    // a re-render during the wait cannot lose an in-flight edit.
+    this.host.querySelectorAll<HTMLInputElement>('[data-rt-url]').forEach(input => {
+      input.addEventListener('change', () => {
+        const name = input.dataset.rtUrl as RealtimeEndpointName;
+        const value = input.value.trim();
+        this.debounceEdit(`rt-url:${name}`, () => {
+          void this.session.applyRealtimeUrl(name, value);
+        });
+      });
+    });
+
+    const rtCors = this.host.querySelector<HTMLInputElement>('#status-rt-cors');
+    rtCors?.addEventListener('change', () => {
+      const checked = rtCors.checked;
+      this.debounceEdit('rt-cors', () => {
         void this.session
-          .applyRealtimeUrl(name, input.value.trim())
-          .finally(() => { btn.disabled = false; });
+          .applyRealtimeCors(checked)
+          .then(() => notify.success('Realtime feed reloaded'))
+          .catch(err => notify.error(`Realtime reload failed: ${err instanceof Error ? err.message : String(err)}`));
       });
     });
 
@@ -568,18 +664,20 @@ export class StatusPage {
         .catch(() => notify.error('Could not copy to clipboard'));
     });
 
-    const staticApply = this.host.querySelector<HTMLButtonElement>('#status-static-apply');
-    staticApply?.addEventListener('click', () => {
-      const input = this.host.querySelector<HTMLInputElement>('#status-static-url')!;
-      const cors = this.host.querySelector<HTMLInputElement>('#status-static-cors')!;
-      const url = input.value.trim();
+    const reloadStatic = (): void => {
+      const input = this.host.querySelector<HTMLInputElement>('#status-static-url');
+      const cors = this.host.querySelector<HTMLInputElement>('#status-static-cors');
+      const url = input?.value.trim();
       if (!url) return;
-      staticApply.disabled = true;
-      this.session
-        .applyStaticUrl(url, cors.checked)
-        .then(() => notify.success('Static feed reloaded'))
-        .catch(err => notify.error(`Static reload failed: ${err instanceof Error ? err.message : String(err)}`))
-        .finally(() => { staticApply.disabled = false; });
-    });
+      const useCors = cors?.checked ?? true;
+      this.debounceEdit('static', () => {
+        void this.session
+          .applyStaticUrl(url, useCors)
+          .then(() => notify.success('Static feed reloaded'))
+          .catch(err => notify.error(`Static reload failed: ${err instanceof Error ? err.message : String(err)}`));
+      });
+    };
+    this.host.querySelector<HTMLInputElement>('#status-static-url')?.addEventListener('change', reloadStatic);
+    this.host.querySelector<HTMLInputElement>('#status-static-cors')?.addEventListener('change', reloadStatic);
   }
 }

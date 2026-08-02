@@ -8,8 +8,10 @@ import { feedProgressIndicator } from './feed-progress-indicator';
 import { notify } from './notification-system';
 import type { FeedSelection, RealtimeEndpointName, StaticSource } from './feed-selection';
 import {
+  REALTIME_ENDPOINTS,
   REALTIME_ENDPOINT_LABELS,
   isComplete,
+  maybeProxy,
   resolvedRealtimeUrls,
   resolvedStaticUrl,
 } from './feed-selection';
@@ -94,10 +96,11 @@ export class FeedSession extends EventTarget {
    */
   async applyRealtimeUrl(name: RealtimeEndpointName, url: string): Promise<void> {
     const poller = this.poller;
-    if (!poller || !this.selection?.realtime) return;
+    const rt = this.selection?.realtime;
+    if (!poller || !rt) return;
 
     const previous = poller.getStatus().endpoints[name].url;
-    poller.setEndpointUrl(name, url);
+    poller.setEndpointUrl(name, maybeProxy(url, rt.useCors));
     await poller.refreshEndpoint(name);
 
     const ep = poller.getStatus().endpoints[name];
@@ -109,10 +112,28 @@ export class FeedSession extends EventTarget {
     }
 
     // Store the un-proxied URL on the selection; the poller holds the resolved one.
-    const rt = this.selection.realtime;
     if (name === 'vehicles') rt.vehiclesUrl = url || undefined;
     else if (name === 'tripUpdates') rt.tripUpdatesUrl = url || undefined;
     else rt.alertsUrl = url || undefined;
+    this.emitChange();
+  }
+
+  /**
+   * Flip the CORS proxy for the whole realtime feed at once and re-fetch every
+   * endpoint with the new setting. RT CORS is a single boolean covering all
+   * three endpoints, so there is nothing per-endpoint to decide here.
+   */
+  async applyRealtimeCors(useCors: boolean): Promise<void> {
+    const poller = this.poller;
+    const rt = this.selection?.realtime;
+    if (!poller || !rt) return;
+
+    rt.useCors = useCors;
+    const urls = resolvedRealtimeUrls(rt);
+    for (const name of REALTIME_ENDPOINTS) {
+      poller.setEndpointUrl(name, urls[name]);
+    }
+    await Promise.all(REALTIME_ENDPOINTS.map(n => poller.refreshEndpoint(n)));
     this.emitChange();
   }
 

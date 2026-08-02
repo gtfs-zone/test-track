@@ -102,11 +102,50 @@ export interface StaticCounts {
   stopTimes: number;
 }
 
-function parseCSV(text: string): RawRow[] {
-  return Papa.parse<RawRow>(text, {
+/** A CSV column that carried leading/trailing whitespace, and how many rows had it. */
+export interface PaddedColumn {
+  file: string;
+  column: string;
+  rows: number;
+}
+
+/**
+ * Every value trimmed, and a note of which columns needed it.
+ *
+ * The GTFS reference forbids leading and trailing spaces in field values, but
+ * producers that right-align numeric columns are common — RIPTA stores stop_id
+ * as "      5" in stops.txt and "  29570" in stop_times.txt. The padding is
+ * self-consistent within the static feed, so static-internal joins work and the
+ * damage is invisible until a realtime id is looked up against it: the realtime
+ * feed sends "29570" and nothing matches.
+ *
+ * Trimming here — the one choke point every static file passes through — covers
+ * present and future id columns without each ingest site having to remember.
+ * Headers are trimmed too, so a padded header cannot produce a column name no
+ * ingest function recognises. Only leading/trailing whitespace is stripped:
+ * interior spaces ("Westerly Town Hall") and empty strings ('' is meaningful
+ * here) are preserved. `padded` counts rows, not distinct values.
+ */
+function parseCSV(text: string): { rows: RawRow[]; padded: Map<string, number> } {
+  const rows = Papa.parse<RawRow>(text, {
     header: true,
     skipEmptyLines: true,
+    transformHeader: h => h.trim(),
   }).data;
+
+  const padded = new Map<string, number>();
+  for (const row of rows) {
+    for (const key in row) {
+      const value = row[key];
+      if (typeof value !== 'string') continue;
+      const trimmed = value.trim();
+      if (trimmed !== value) {
+        row[key] = trimmed;
+        padded.set(key, (padded.get(key) ?? 0) + 1);
+      }
+    }
+  }
+  return { rows, padded };
 }
 
 const DAY_FIELDS = [
@@ -159,6 +198,14 @@ export class GTFSStatic {
    */
   stationIssues = { danglingParent: 0, nonStationParent: 0, cyclicStops: 0 };
 
+  /**
+   * CSV columns that arrived with leading/trailing whitespace and were trimmed
+   * at parse time. Surfaced on the status page rather than absorbed silently:
+   * without the trim, no realtime id would match a padded static column (see
+   * `parseCSV`).
+   */
+  paddedColumns: PaddedColumn[] = [];
+
   private stopTimeCount = 0;
 
   async loadFromFile(file: File, hooks: LoadHooks = {}): Promise<void> {
@@ -204,7 +251,13 @@ export class GTFSStatic {
     for (const name of PARSE_ORDER) {
       hooks.onParse?.(name, done, PARSE_ORDER.length);
       const file = zip.file(name);
-      if (file) handlers[name](parseCSV(await file.async('text')));
+      if (file) {
+        const { rows, padded } = parseCSV(await file.async('text'));
+        for (const [column, count] of padded) {
+          this.paddedColumns.push({ file: name, column, rows: count });
+        }
+        handlers[name](rows);
+      }
       done++;
       hooks.onParse?.(name, done, PARSE_ORDER.length);
     }
