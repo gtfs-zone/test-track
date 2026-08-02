@@ -302,9 +302,20 @@ export class MapController {
     if (state.type !== 'vehicle') this.following = null;
 
     switch (state.type) {
-      case 'home':
+      case 'home': {
         this.layers.setFocus(null);
+        // Unfocusing frames the whole feed again, mirroring how focusing a
+        // route frames that route.
+        const bounds = this.layers.stopsBounds();
+        if (bounds) {
+          this.map.fitBounds(bounds, {
+            padding: this.padding(),
+            duration: CONFIG.FOCUS_BOUNDS_DURATION,
+            essential: true,
+          });
+        }
         return;
+      }
 
       case 'alert':
         // Alerts have no geometry of their own; nothing to highlight or fly to.
