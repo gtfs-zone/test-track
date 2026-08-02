@@ -25,6 +25,9 @@ in `../coloring-book` (skipped if that sibling repo isn't present).
 | `src/modules/feed-progress-indicator.ts` | `src/modules/feed-progress-indicator.ts` | f9c718c | verbatim | Top loading bar; singleton touches `document.body` at import time |
 | `src/modules/theme-controller.ts` | `src/modules/theme-controller.ts` | f9c718c | verbatim | Replaces the inline theme toggle that never applied `data-theme` |
 | `src/modules/panel-resizer.ts` | `src/modules/panel-resizer.ts` | f9c718c | modified | Persists `--panel-width` to localStorage; adds `restorePanelWidth()` |
-| `src/modules/bottom-sheet.ts` | `src/modules/bottom-sheet.ts` | f9c718c | modified | Dock and TabManager stripped; re-activates across the 768px breakpoint |
+| `src/modules/bottom-sheet.ts` | `src/modules/bottom-sheet.ts` | f9c718c | modified | Dock and TabManager stripped; re-activates across the 768px breakpoint; `coveredHeight()`/`onSnapChange()` added for map padding |
+| `src/modules/basemap-styles.ts` | `src/modules/basemap-styles.ts` | f9c718c | verbatim | Six raster basemaps; all glyph-less, so no `symbol` text layer can render over them |
+| `src/modules/basemap-control.ts` | `src/modules/basemap-control.ts` | f9c718c | modified | Appearance is injected and persisted; projection/sky block deduped; one-shot stylesheet |
+| `src/modules/layer-manager.ts` | `src/modules/layer-manager.ts` | f9c718c | modified | Fed from `GTFSStatic`; pathways/levels/editing dropped; route layers absorbed from `route-renderer.ts`; realtime vehicles added |
 | `src/types/page-state.ts` | `src/types/page-state.ts` | f9c718c | modified | Five variants only; `vehicle`/`alert` added, `direction_id` on route; sync `StateValidator` |
 | `src/modules/page-state-manager.ts` | `src/modules/page-state-manager.ts` | f9c718c | modified | Breadcrumbs synchronous and injected; feed URLs merged into the hash; singleton dropped |

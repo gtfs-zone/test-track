@@ -9,7 +9,9 @@
    - Upstream early-returns when `innerWidth >= 768` and never re-checks, so rotating a
      tablet leaves the sheet inert. Here the drag handle is wired once up front and a
      `matchMedia('(max-width: 767px)')` listener toggles `active`, so the sheet comes
-     alive/goes inert across breakpoint crossings. */
+     alive/goes inert across breakpoint crossings.
+   - Added `coveredHeight()` and `onSnapChange()` so the map can keep the focused
+     feature clear of the sheet (`MapController.setBottomPadding`). */
 
 type Snap = 'closed' | 'half' | 'full';
 
@@ -21,6 +23,7 @@ export class BottomSheetController {
   private snap: Snap = 'closed';
   private panel: HTMLElement;
   private dismissCallbacks: Array<() => void> = [];
+  private snapCallbacks: Array<(covered: number) => void> = [];
   private active = false;
 
   constructor(panel: HTMLElement) {
@@ -41,6 +44,9 @@ export class BottomSheetController {
       this.panel.style.removeProperty('height');
       this.panel.style.removeProperty('overflow');
       this.panel.classList.remove('sheet-full', 'sheet-half');
+      for (const cb of this.snapCallbacks) {
+        cb(CLOSED_PX);
+      }
     }
   }
 
@@ -188,10 +194,31 @@ export class BottomSheetController {
         this.panel.style.transition = '';
       });
     }
+    const covered = this.coveredHeight();
+    for (const cb of this.snapCallbacks) {
+      cb(covered);
+    }
   }
 
   public onDismiss(cb: () => void): void {
     this.dismissCallbacks.push(cb);
+  }
+
+  /**
+   * Pixels of the map the sheet is currently covering — 0 on desktop, where the
+   * panel sits beside the map rather than over it.
+   */
+  public coveredHeight(): number {
+    if (!this.active || this.snap === 'closed') {
+      return CLOSED_PX;
+    }
+    const vph = window.visualViewport?.height ?? window.innerHeight;
+    return vph * (this.snap === 'half' ? HALF_VH : FULL_VH);
+  }
+
+  /** Fired on every snap change, including drag-driven ones. */
+  public onSnapChange(cb: (covered: number) => void): void {
+    this.snapCallbacks.push(cb);
   }
 
   public open(snap: 'half' | 'full' = 'half'): void {

@@ -31,12 +31,16 @@ new PanelResizer(appContainer, mapCtrl);
 
 const rightPanel = document.getElementById('right-panel')!;
 const bottomSheet = new BottomSheetController(rightPanel);
+// On mobile the sheet sits over the map, so the camera has to hold the focused
+// feature above it rather than centring it under the sheet.
+bottomSheet.onSnapChange(covered => mapCtrl.setBottomPadding(covered));
 
 // ─── Feed session ─────────────────────────────────────────────────────────────
 const session = new FeedSession();
 
 session.addEventListener('staticloaded', e => {
-  mapCtrl.clearStaticFeed();
+  // `loadStaticFeed` replaces the previous feed's data in place — no explicit
+  // clear, which would only cost an extra empty repaint.
   mapCtrl.loadStaticFeed((e as CustomEvent<GTFSStatic>).detail);
 });
 session.addEventListener('vehicles', e => {
@@ -63,15 +67,18 @@ const appState = new AppState(session, {
     } else {
       bottomSheet.close();
     }
+    // After the sheet moves, so the camera knows how much of the map is covered.
+    mapCtrl.focus(state);
   },
 });
 
 statusPage.setShareUrlProvider(() => appState.shareableUrl());
+statusPage.setMapIssuesProvider(() => mapCtrl.issues);
 statusPage.initialize();
 
-// Plan 04 owns the rest of the map's click surfaces; this is the one handler
-// that already existed, wired to the new focus path.
-mapCtrl.onStopClick(stopId => appState.setFocus({ type: 'stop', stop_id: stopId }));
+// Clicking a stop, route, or vehicle on the map focuses it in the panel; the
+// reverse direction runs through onFocusChange above.
+mapCtrl.onSelect = state => appState.setFocus(state);
 
 void appState.boot().then(loaded => {
   if (loaded) document.getElementById('refresh-rt-btn')!.classList.remove('hidden');

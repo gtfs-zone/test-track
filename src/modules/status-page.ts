@@ -1,5 +1,6 @@
 import type { EndpointStatus } from '../gtfs-rt';
 import type { FeedSession } from './feed-session';
+import type { MapDataIssues } from './layer-manager';
 import type { RealtimeEndpointName } from './feed-selection';
 import { REALTIME_ENDPOINTS, REALTIME_ENDPOINT_LABELS } from './feed-selection';
 import { isReproducible } from './feed-url';
@@ -188,6 +189,49 @@ function renderStaticSection(session: FeedSession): string {
     </section>`;
 }
 
+/**
+ * What the map could not draw. Surfacing these is the point of the tool: a stop
+ * with no id or a vehicle pointing at a route the static feed never declares is
+ * a feed bug, not a rendering one.
+ */
+function renderMapIssues(issues: MapDataIssues | null): string {
+  if (!issues) return '';
+  const rows: Array<[string, number, string]> = [
+    ['Stops dropped (no stop_id)', issues.stopsMissingId, 'Cannot be drawn or linked.'],
+    [
+      'Stops dropped (no coordinates)',
+      issues.stopsMissingCoords,
+      'stop_lat / stop_lon missing or unparseable.',
+    ],
+    [
+      'Vehicles with no matching route',
+      issues.vehiclesUnmatched,
+      'Drawn in the neutral color instead of a route color.',
+    ],
+  ];
+  if (rows.every(([, count]) => count === 0)) return '';
+
+  return `
+    <section class="space-y-2">
+      <h3 class="font-semibold text-sm">Map data issues</h3>
+      <div class="rounded-lg border border-warning/40 p-3 space-y-2">
+        ${rows
+          .filter(([, count]) => count > 0)
+          .map(
+            ([label, count, note]) => `
+          <div>
+            <div class="flex justify-between gap-2 text-xs">
+              <span>${escHtml(label)}</span>
+              <span class="tabular-nums font-semibold">${count}</span>
+            </div>
+            <p class="text-xs opacity-50">${escHtml(note)}</p>
+          </div>`,
+          )
+          .join('')}
+      </div>
+    </section>`;
+}
+
 /** feed_info.txt and agency.txt, verbatim. */
 function renderRawTables(session: FeedSession): string {
   const feed = session.staticFeed;
@@ -274,10 +318,16 @@ export class StatusPage {
   }
 
   private shareUrl: (() => string) | null = null;
+  private mapIssues: (() => MapDataIssues) | null = null;
 
   /** Supplied by AppState, which is the only thing that knows the full hash. */
   setShareUrlProvider(fn: () => string): void {
     this.shareUrl = fn;
+  }
+
+  /** Supplied by MapController — only the layer stack knows what it dropped. */
+  setMapIssuesProvider(fn: () => MapDataIssues): void {
+    this.mapIssues = fn;
   }
 
   /** Called by AppState when focus moves to or away from home. */
@@ -334,6 +384,7 @@ export class StatusPage {
     this.host.innerHTML = `
       <div class="space-y-4">
         ${renderCounts(this.session)}
+        ${renderMapIssues(this.mapIssues?.() ?? null)}
         ${renderStaticSection(this.session)}
         ${renderEndpoints(this.session)}
         ${renderShare(this.session)}

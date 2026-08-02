@@ -1,5 +1,11 @@
 import maplibregl from 'maplibre-gl';
+import { CONFIG } from './config';
 import type { GTFSStatic } from './gtfs-static';
+import type { PageState } from './types/page-state';
+import { BasemapControl, initialMapStyle } from './modules/basemap-control';
+import type { MapAppearance } from './modules/basemap-control';
+import { LayerManager } from './modules/layer-manager';
+import type { MapDataIssues } from './modules/layer-manager';
 
 export interface VehiclePosition {
   /** `vehicle.id` when the feed provides one, else the feed entity id. */
@@ -13,58 +19,135 @@ export interface VehiclePosition {
   routeId?: string;
 }
 
-const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
+interface MapView {
+  center: [number, number];
+  zoom: number;
+  bearing: number;
+  pitch: number;
+}
+
+const DEFAULT_VIEW: MapView = { center: [0, 30], zoom: 2, bearing: 0, pitch: 0 };
+
+/**
+ * Map view and appearance live in localStorage rather than the URL: they are
+ * per-device preferences, not part of what a shared link describes (Plan 03).
+ */
+function readStored<T>(key: string): Partial<T> | null {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as Partial<T>) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(key: string, value: unknown): void {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Private browsing / quota — appearance simply won't persist.
+  }
+}
+
+function restoreView(): MapView {
+  const stored = readStored<MapView>(CONFIG.MAP_VIEW_KEY);
+  if (
+    !stored ||
+    !Array.isArray(stored.center) ||
+    stored.center.length !== 2 ||
+    !stored.center.every(Number.isFinite) ||
+    typeof stored.zoom !== 'number'
+  ) {
+    return DEFAULT_VIEW;
+  }
+  return {
+    center: stored.center as [number, number],
+    zoom: stored.zoom,
+    bearing: stored.bearing ?? 0,
+    pitch: stored.pitch ?? 0,
+  };
+}
 
 export class MapController {
   private map!: maplibregl.Map;
-  private stopClickCallback: ((stopId: string) => void) | null = null;
+  private layers!: LayerManager;
+  private basemap!: BasemapControl;
   private resizeTimeout: ReturnType<typeof setTimeout> | null = null;
+  private viewSaveTimeout: ReturnType<typeof setTimeout> | null = null;
+  /** Height of the mobile bottom sheet, kept out of the camera's way. */
+  private bottomPadding = 0;
+
+  /** Called when the user clicks a stop, route, or vehicle on the map. */
+  onSelect: ((state: PageState) => void) | null = null;
 
   initialize(container: string): void {
+    const view = restoreView();
+    const appearance = readStored<MapAppearance>(CONFIG.MAP_APPEARANCE_KEY) ?? {};
+
     this.map = new maplibregl.Map({
       container,
-      style: STYLE_URL,
-      center: [0, 30],
-      zoom: 2,
+      style: initialMapStyle(appearance),
+      center: view.center,
+      zoom: view.zoom,
+      bearing: view.bearing,
+      pitch: view.pitch,
     });
-    this.map.addControl(new maplibregl.NavigationControl(), 'bottom-right');
-    this.map.once('load', () => this.onMapLoad());
+    // Bottom-left is the only free corner: `#map-controls` covers the top strip
+    // and the basemap FAB owns bottom-right.
+    this.map.addControl(new maplibregl.NavigationControl(), 'bottom-left');
+
+    this.layers = new LayerManager(this.map);
+    this.layers.onSelect = target => {
+      switch (target.kind) {
+        case 'stop':
+          this.onSelect?.({ type: 'stop', stop_id: target.id });
+          break;
+        case 'route':
+          this.onSelect?.({ type: 'route', route_id: target.id });
+          break;
+        case 'vehicle':
+          this.onSelect?.({ type: 'vehicle', vehicle_id: target.id });
+          break;
+      }
+    };
+
+    this.basemap = new BasemapControl(this.map, {
+      initial: appearance,
+      onRenderModeChange: mode => this.layers.setShapeMode(mode),
+      onAppearanceChange: next => writeStored(CONFIG.MAP_APPEARANCE_KEY, next),
+    });
+    this.layers.setShapeMode(this.basemap.getShapeMode());
+
+    this.map.once('load', () => {
+      this.layers.rebuild();
+      this.layers.attachInteraction();
+    });
+
+    // setStyle drops every source and layer we own, so each basemap or
+    // projection change has to re-add them. This is the single highest-risk
+    // path in the map: without it, switching basemaps blanks all GTFS data.
+    this.map.on('basemap:changed', () => this.layers.rebuild());
+
+    this.map.on('moveend', () => this.queueViewSave());
   }
 
-  private onMapLoad(): void {
-    this.addVehicleArrowImage();
-
-    this.map.on('click', 'stops-layer', e => {
-      const stopId = e.features?.[0]?.properties?.stop_id as string | undefined;
-      if (stopId) this.stopClickCallback?.(stopId);
-    });
-    this.map.on('mouseenter', 'stops-layer', () => {
-      this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mouseleave', 'stops-layer', () => {
-      this.map.getCanvas().style.cursor = '';
-    });
+  /** Feed problems the map found, for the status page. */
+  get issues(): MapDataIssues {
+    return this.layers.issues;
   }
 
-  private addVehicleArrowImage(): void {
-    const size = 32;
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d')!;
-    // Arrow pointing north (up), rotated per bearing at render time
-    ctx.fillStyle = '#4af';
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(size / 2, 2);
-    ctx.lineTo(size - 5, size - 5);
-    ctx.lineTo(size / 2, size - 9);
-    ctx.lineTo(5, size - 5);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    this.map.addImage('vehicle-arrow', ctx.getImageData(0, 0, size, size));
+  private queueViewSave(): void {
+    if (this.viewSaveTimeout) clearTimeout(this.viewSaveTimeout);
+    this.viewSaveTimeout = setTimeout(() => {
+      const center = this.map.getCenter();
+      writeStored(CONFIG.MAP_VIEW_KEY, {
+        center: [center.lng, center.lat],
+        zoom: this.map.getZoom(),
+        bearing: this.map.getBearing(),
+        pitch: this.map.getPitch(),
+      } satisfies MapView);
+      this.viewSaveTimeout = null;
+    }, CONFIG.MAP_VIEW_SAVE_DEBOUNCE);
   }
 
   private whenLoaded(fn: () => void): void {
@@ -76,128 +159,129 @@ export class MapController {
   }
 
   loadStaticFeed(feed: GTFSStatic): void {
-    this.whenLoaded(() => this.applyStaticFeed(feed));
-  }
-
-  private applyStaticFeed(feed: GTFSStatic): void {
-    this.clearStaticFeed();
-
-    // Build a shape_id → route color lookup from trips
-    const shapeColor = new Map<string, string>();
-    for (const trip of feed.trips.values()) {
-      if (!shapeColor.has(trip.shape_id)) {
-        const route = feed.routes.get(trip.route_id);
-        shapeColor.set(trip.shape_id, route?.color ?? '#0066ff');
-      }
-    }
-
-    const shapeFeatures = Array.from(feed.shapes.entries()).map(([shapeId, coords]) => ({
-      type: 'Feature' as const,
-      geometry: { type: 'LineString' as const, coordinates: coords },
-      properties: { shape_id: shapeId, color: shapeColor.get(shapeId) ?? '#0066ff' },
-    }));
-
-    const stopFeatures = Array.from(feed.stops.values()).map(stop => ({
-      type: 'Feature' as const,
-      geometry: { type: 'Point' as const, coordinates: [stop.lon, stop.lat] },
-      properties: { stop_id: stop.id, stop_name: stop.name },
-    }));
-
-    this.map.addSource('shapes', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: shapeFeatures },
+    this.whenLoaded(() => {
+      this.layers.setStaticFeed(feed);
+      this.fitFeedIfElsewhere();
     });
-    this.map.addSource('stops', {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: stopFeatures },
-    });
-
-    this.map.addLayer({
-      id: 'shapes-layer',
-      type: 'line',
-      source: 'shapes',
-      paint: {
-        'line-color': ['get', 'color'],
-        'line-width': 2,
-        'line-opacity': 0.8,
-      },
-    });
-
-    this.map.addLayer({
-      id: 'stops-layer',
-      type: 'circle',
-      source: 'stops',
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 3, 14, 7],
-        'circle-color': '#fff',
-        'circle-stroke-color': '#0066ff',
-        'circle-stroke-width': 2,
-      },
-    });
-
-    if (stopFeatures.length > 0) {
-      const lons = stopFeatures.map(f => f.geometry.coordinates[0]);
-      const lats = stopFeatures.map(f => f.geometry.coordinates[1]);
-      this.map.fitBounds(
-        [
-          [Math.min(...lons), Math.min(...lats)],
-          [Math.max(...lons), Math.max(...lats)],
-        ],
-        { padding: 40 }
-      );
-    }
-  }
-
-  onStopClick(callback: (stopId: string) => void): void {
-    this.stopClickCallback = callback;
-  }
-
-  showVehicles(positions: VehiclePosition[]): void {
-    const data = {
-      type: 'FeatureCollection' as const,
-      features: positions.map(v => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: [v.lon, v.lat] },
-        properties: {
-          id: v.id,
-          bearing: v.bearing ?? 0,
-          tripId: v.tripId ?? '',
-          routeId: v.routeId ?? '',
-        },
-      })),
-    };
-
-    const source = this.map.getSource('vehicles') as maplibregl.GeoJSONSource | undefined;
-    if (source) {
-      source.setData(data);
-    } else {
-      this.map.addSource('vehicles', { type: 'geojson', data });
-      this.map.addLayer({
-        id: 'vehicles-layer',
-        type: 'symbol',
-        source: 'vehicles',
-        layout: {
-          'icon-image': 'vehicle-arrow',
-          'icon-size': 0.8,
-          'icon-rotate': ['get', 'bearing'],
-          'icon-rotation-alignment': 'map',
-          'icon-allow-overlap': true,
-        },
-      });
-    }
-  }
-
-  clearVehicles(): void {
-    if (this.map.getLayer('vehicles-layer')) this.map.removeLayer('vehicles-layer');
-    if (this.map.getSource('vehicles')) this.map.removeSource('vehicles');
   }
 
   clearStaticFeed(): void {
-    if (this.map.getLayer('stops-layer')) this.map.removeLayer('stops-layer');
-    if (this.map.getLayer('shapes-layer')) this.map.removeLayer('shapes-layer');
-    if (this.map.getSource('stops')) this.map.removeSource('stops');
-    if (this.map.getSource('shapes')) this.map.removeSource('shapes');
+    this.whenLoaded(() => this.layers.setStaticFeed(null));
   }
+
+  showVehicles(positions: VehiclePosition[]): void {
+    this.whenLoaded(() => this.layers.setVehicles(positions));
+  }
+
+  clearVehicles(): void {
+    this.whenLoaded(() => this.layers.setVehicles([]));
+  }
+
+  /**
+   * Frame a newly loaded feed, unless the camera is already looking at it —
+   * reloading the same feed to compare a tweak shouldn't throw away the view.
+   */
+  private fitFeedIfElsewhere(): void {
+    const bounds = this.layers.stopsBounds();
+    if (!bounds) return;
+
+    const center = this.map.getCenter();
+    const inside =
+      center.lng >= bounds[0][0] &&
+      center.lng <= bounds[1][0] &&
+      center.lat >= bounds[0][1] &&
+      center.lat <= bounds[1][1];
+    if (inside && this.map.getZoom() >= 8) return;
+
+    this.map.fitBounds(bounds, { padding: this.padding() });
+  }
+
+  private padding(): maplibregl.PaddingOptions {
+    return { top: 40, left: 40, right: 40, bottom: 40 + this.bottomPadding };
+  }
+
+  /**
+   * Reserve space at the bottom of the map for the mobile bottom sheet, so a
+   * focused feature isn't hidden behind it.
+   */
+  setBottomPadding(px: number): void {
+    this.bottomPadding = px;
+  }
+
+  // ── Focus ──────────────────────────────────────────────────────────────────
+
+  /**
+   * Highlight the focused object and move the camera to it. Called for every
+   * focus change, including one restored from a link.
+   */
+  focus(state: PageState): void {
+    this.whenLoaded(() => this.applyFocus(state));
+  }
+
+  private applyFocus(state: PageState): void {
+    switch (state.type) {
+      case 'home':
+        this.layers.setFocus(null);
+        return;
+
+      case 'alert':
+        // Alerts have no geometry of their own; nothing to highlight or fly to.
+        this.layers.setFocus(null);
+        return;
+
+      case 'route': {
+        this.layers.setFocus({ kind: 'route', id: state.route_id });
+        const bounds = this.layers.routeBounds(state.route_id);
+        if (bounds) this.map.fitBounds(bounds, { padding: this.padding(), maxZoom: 15 });
+        return;
+      }
+
+      case 'stop': {
+        this.layers.setFocus({ kind: 'stop', id: state.stop_id });
+        this.easeToPoint(this.layers.stopPosition(state.stop_id));
+        return;
+      }
+
+      case 'vehicle': {
+        this.layers.setFocus({ kind: 'vehicle', id: state.vehicle_id });
+        this.easeToPoint(this.layers.vehiclePosition(state.vehicle_id));
+        return;
+      }
+    }
+  }
+
+  /**
+   * Ease to a point, but leave the camera alone when it is already on screen
+   * and close enough to see — yanking the map on every panel click is worse
+   * than not moving at all.
+   */
+  private easeToPoint(point: [number, number] | null): void {
+    if (!point) return;
+
+    const bounds = this.map.getBounds();
+    const visible =
+      point[0] >= bounds.getWest() &&
+      point[0] <= bounds.getEast() &&
+      point[1] >= bounds.getSouth() &&
+      point[1] <= bounds.getNorth();
+    // The bottom sheet covers the lower part of the canvas on mobile, so a
+    // point down there counts as hidden even though it is technically in view.
+    const screenY = this.map.project(point).y;
+    const behindSheet =
+      this.bottomPadding > 0 &&
+      screenY > this.map.getCanvas().clientHeight - this.bottomPadding;
+
+    if (visible && !behindSheet && this.map.getZoom() >= 12) return;
+
+    this.map.easeTo({
+      center: point,
+      zoom: Math.max(this.map.getZoom(), CONFIG.STOP_FOCUS_ZOOM),
+      padding: { top: 0, left: 0, right: 0, bottom: this.bottomPadding },
+      duration: 600,
+    });
+  }
+
+  // ── Sizing ─────────────────────────────────────────────────────────────────
 
   /** Immediate resize — called on every frame of a panel drag. */
   resizeNow(): void {
