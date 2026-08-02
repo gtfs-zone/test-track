@@ -137,7 +137,6 @@ export class PanelRenderer {
 
     const scroll = this.host.scrollTop;
     const ctx: RenderContext = { session: this.session, href: this.hooks.href };
-    if (!this.index) this.index = new RtIndex(this.session);
 
     this.host.innerHTML = `
       <div class="space-y-4">
@@ -153,8 +152,18 @@ export class PanelRenderer {
     this.host.scrollTop = resetScroll ? 0 : scroll;
   }
 
+  /**
+   * The realtime read-model for the current payloads, built on demand.
+   *
+   * Public because the status page reports feed-quality counters the index
+   * computes, and it renders while this panel is inactive.
+   */
+  get rtIndex(): RtIndex {
+    return (this.index ??= new RtIndex(this.session));
+  }
+
   private renderPage(ctx: RenderContext): string {
-    const index = this.index!;
+    const index = this.rtIndex;
     switch (this.state.type) {
       case 'home':
         return '';

@@ -89,6 +89,7 @@ const appState = new AppState(session, {
 
 statusPage.setShareUrlProvider(() => appState.shareableUrl());
 statusPage.setMapIssuesProvider(() => mapCtrl.issues);
+statusPage.setFeedGapsProvider(() => panelRenderer.rtIndex.gaps);
 statusPage.initialize();
 
 // Clicking a stop, route, or vehicle on the map focuses it in the panel; the

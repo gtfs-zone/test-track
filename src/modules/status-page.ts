@@ -1,6 +1,7 @@
 import type { EndpointStatus } from '../gtfs-rt';
 import type { FeedSession } from './feed-session';
 import type { MapDataIssues } from './layer-manager';
+import type { FeedGaps } from './rt-index';
 import type { RealtimeEndpointName } from './feed-selection';
 import { REALTIME_ENDPOINTS, REALTIME_ENDPOINT_LABELS } from './feed-selection';
 import { localClock } from './feed-time';
@@ -236,6 +237,43 @@ function renderStaticSection(session: FeedSession): string {
 }
 
 /**
+ * Report, don't absorb: `current_stop_sequence` is optional in GTFS-RT, and a
+ * producer that omits it has not said which stop each vehicle is working on.
+ * test-track fills the gap from the trip's own predictions rather than dropping
+ * the vehicle, which is an inference and so has to be declared — here for the
+ * feed as a whole, and with a "derived" mark on every vehicle it touched.
+ *
+ * A conformant feed renders nothing.
+ */
+function renderFeedGaps(gaps: FeedGaps | null): string {
+  if (!gaps || gaps.missingStopSequence === 0) return '';
+  const unplaced = gaps.missingStopSequence - gaps.stopSequenceDerived;
+
+  return `
+    <section class="space-y-2">
+      <h3 class="font-semibold text-sm">Feed data gaps</h3>
+      <div class="rounded-lg border border-warning/40 p-3 space-y-2">
+        <div class="flex justify-between gap-2 text-xs">
+          <span>Vehicles with no <span class="font-mono">current_stop_sequence</span></span>
+          <span class="tabular-nums font-semibold">${gaps.missingStopSequence}</span>
+        </div>
+        <p class="text-xs opacity-50">
+          GTFS-RT makes the field optional, so ${gaps.missingStopSequence} of ${gaps.vehicles}
+          vehicles do not say which stop they are working on. test-track derived a position for
+          ${gaps.stopSequenceDerived} of them from the soonest still-future
+          <span class="font-mono">stop_time_update</span> on the same trip; those are marked
+          "derived" wherever they appear.
+          ${
+            unplaced > 0
+              ? `The remaining ${unplaced} have no usable prediction and stay in the route strip's unplaced list.`
+              : ''
+          }
+        </p>
+      </div>
+    </section>`;
+}
+
+/**
  * What the map could not draw. Surfacing these is the point of the tool: a stop
  * with no id or a vehicle pointing at a route the static feed never declares is
  * a feed bug, not a rendering one.
@@ -414,6 +452,7 @@ export class StatusPage {
 
   private shareUrl: (() => string) | null = null;
   private mapIssues: (() => MapDataIssues) | null = null;
+  private feedGaps: (() => FeedGaps) | null = null;
 
   /** Supplied by AppState, which is the only thing that knows the full hash. */
   setShareUrlProvider(fn: () => string): void {
@@ -423,6 +462,11 @@ export class StatusPage {
   /** Supplied by MapController — only the layer stack knows what it dropped. */
   setMapIssuesProvider(fn: () => MapDataIssues): void {
     this.mapIssues = fn;
+  }
+
+  /** Supplied by PanelRenderer, which owns the realtime read-model. */
+  setFeedGapsProvider(fn: () => FeedGaps): void {
+    this.feedGaps = fn;
   }
 
   /** Called by AppState when focus moves to or away from home. */
@@ -479,6 +523,7 @@ export class StatusPage {
     this.host.innerHTML = `
       <div class="space-y-4">
         ${renderCounts(this.session)}
+        ${renderFeedGaps(this.feedGaps?.() ?? null)}
         ${renderMapIssues(this.mapIssues?.() ?? null)}
         ${renderStationIssues(this.session)}
         ${renderStaticSection(this.session)}
