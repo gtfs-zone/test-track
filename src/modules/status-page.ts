@@ -6,12 +6,36 @@ import type { RealtimeEndpointName } from './feed-selection';
 import { REALTIME_ENDPOINTS, REALTIME_ENDPOINT_LABELS } from './feed-selection';
 import { localClock } from './feed-time';
 import { isReproducible } from './feed-url';
+import { isLocalUrl, normalizeFeedUrl, resolveRealtimeUrl, validateFeedUrl } from './feed-url-resolve';
 import { notify } from './notification-system';
 
 /**
  * The right panel's "nothing focused" content: what is loaded, how much of it,
  * when each endpoint was last fetched, and an inline editor for every URL.
+ *
+ * The URL editors are draft-based. Nothing you type is ever sent anywhere, or
+ * overwritten by anything, until you press Apply: a poll landing mid-edit
+ * repaints the counts and timers around your text without touching it, and a
+ * rejected URL stays in the box with the reason underneath so it can be
+ * corrected instead of retyped. `StatusPage.drafts` is what makes that true —
+ * the panel is rebuilt wholesale on every status change, so the value in the
+ * markup has to come from the draft rather than from the session.
  */
+
+/** A URL editor's state for one render pass. */
+interface FieldView {
+  key: string;
+  value: string;
+  dirty: boolean;
+  busy: boolean;
+  error: string | null;
+  /** The CORS checkbox is on, but this URL is local so the proxy is bypassed. */
+  proxyBypassed: boolean;
+  placeholder: string;
+}
+
+/** Renders `FieldView`s; supplied by the StatusPage instance to the render tree. */
+type FieldRenderer = (key: string, committed: string, placeholder: string) => string;
 
 function escHtml(s: string): string {
   return s
@@ -44,6 +68,44 @@ function formatCountdown(target: number): string {
   return secs <= 0 ? 'now' : `${secs}s`;
 }
 
+/**
+ * One URL editor: the field, and — only once it differs from what is loaded —
+ * the controls to commit or discard the change. Apply/Revert stay hidden while
+ * the field is clean so the panel is not three rows of buttons at rest.
+ */
+function renderField(f: FieldView): string {
+  const controls = f.dirty
+    ? `
+      <div class="flex items-center gap-1">
+        <button class="btn btn-xs btn-primary" data-apply="${escHtml(f.key)}" ${f.busy ? 'disabled' : ''}>
+          ${f.busy ? '<span class="loading loading-spinner loading-xs"></span>' : 'Apply'}
+        </button>
+        <button class="btn btn-xs btn-ghost" data-revert="${escHtml(f.key)}" ${f.busy ? 'disabled' : ''}>Revert</button>
+        <span class="badge badge-warning badge-xs">edited</span>
+      </div>`
+    : '';
+
+  return `
+    <div class="space-y-1">
+      <input
+        type="text"
+        class="input input-bordered input-xs w-full font-mono${f.error ? ' input-error' : ''}"
+        data-field="${escHtml(f.key)}"
+        value="${escHtml(f.value)}"
+        placeholder="${escHtml(f.placeholder)}"
+        spellcheck="false"
+        autocomplete="off"
+      />
+      ${controls}
+      ${f.error ? `<p class="text-xs text-error break-words">✗ ${escHtml(f.error)}</p>` : ''}
+      ${
+        f.proxyBypassed
+          ? '<p class="text-xs opacity-50">local URL — CORS proxy not applied (it cannot reach this machine)</p>'
+          : ''
+      }
+    </div>`;
+}
+
 function statTile(label: string, value: number | string): string {
   return `
     <div class="rounded-lg bg-base-200 px-3 py-2">
@@ -74,7 +136,12 @@ function renderCounts(session: FeedSession): string {
 }
 
 /** `data-since` / `data-until` are driven by the single shared ticker below. */
-function renderEndpoint(ep: EndpointStatus, rawUrl: string, nextPollAt: number | null): string {
+function renderEndpoint(
+  ep: EndpointStatus,
+  rawUrl: string,
+  nextPollAt: number | null,
+  field: FieldRenderer,
+): string {
   const label = REALTIME_ENDPOINT_LABELS[ep.name];
 
   const fetched = ep.lastFetchedAt
@@ -122,15 +189,7 @@ function renderEndpoint(ep: EndpointStatus, rawUrl: string, nextPollAt: number |
           : ''
       }
 
-      <div class="flex gap-1">
-        <input
-          type="text"
-          class="input input-bordered input-xs flex-1 font-mono"
-          data-rt-url="${ep.name}"
-          value="${escHtml(rawUrl)}"
-          placeholder="https://…"
-        />
-      </div>
+      ${field(`rt:${ep.name}`, rawUrl, 'https://… or /feed/vehicle_positions.pb')}
 
       ${ep.header ? renderHeaderDump(ep) : ''}
       ${renderVehicleIdReport(ep)}
@@ -191,7 +250,7 @@ function renderHeaderDump(ep: EndpointStatus): string {
     </details>`;
 }
 
-function renderEndpoints(session: FeedSession): string {
+function renderEndpoints(session: FeedSession, field: FieldRenderer): string {
   const status = session.status;
   if (!status) return '';
   const rt = session.selection?.realtime;
@@ -212,11 +271,13 @@ function renderEndpoints(session: FeedSession): string {
         <h3 class="font-semibold text-sm flex-1">Realtime endpoints</h3>
         ${corsToggle}
       </div>
-      ${REALTIME_ENDPOINTS.map(n => renderEndpoint(status.endpoints[n], rawUrls[n], status.nextPollAt)).join('')}
+      ${REALTIME_ENDPOINTS.map(n =>
+        renderEndpoint(status.endpoints[n], rawUrls[n], status.nextPollAt, field),
+      ).join('')}
     </section>`;
 }
 
-function renderStaticSection(session: FeedSession): string {
+function renderStaticSection(session: FeedSession, field: FieldRenderer): string {
   const src = session.selection?.static;
   if (!src) return '';
 
@@ -233,9 +294,7 @@ function renderStaticSection(session: FeedSession): string {
   const editor =
     src.kind === 'file'
       ? `<p class="text-xs opacity-60">Loaded from uploaded file <span class="font-mono">${escHtml(src.label)}</span> — not reproducible from a link.</p>`
-      : `<div class="flex gap-1">
-           <input type="text" id="status-static-url" class="input input-bordered input-xs flex-1 font-mono" value="${escHtml(src.url)}" />
-         </div>`;
+      : field('static', src.url, 'https://…/gtfs.zip');
 
   return `
     <section class="space-y-2">
@@ -514,8 +573,17 @@ export class StatusPage {
   private session: FeedSession;
   private tickerId: ReturnType<typeof setInterval> | null = null;
   private renderQueued = false;
-  /** Pending edit-apply timers, keyed so a later edit supersedes an earlier one. */
-  private editTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /**
+   * Uncommitted URL text, keyed `rt:vehicles` / `rt:tripUpdates` / `rt:alerts` /
+   * `static`. A key is present only while the field is being edited; the entry
+   * is dropped once Apply succeeds or Revert is pressed. Everything that renders
+   * a URL reads here first, which is what makes a mid-edit repaint harmless.
+   */
+  private drafts = new Map<string, string>();
+  /** Why the last Apply for a field was rejected, shown under that field. */
+  private fieldErrors = new Map<string, string>();
+  /** Fields with an Apply in flight, so the button can show it. */
+  private applying = new Set<string>();
   /** False while an object page owns the panel; polls must not paint over it. */
   private active = true;
 
@@ -560,25 +628,9 @@ export class StatusPage {
   destroy(): void {
     if (this.tickerId !== null) clearInterval(this.tickerId);
     this.tickerId = null;
-    this.editTimers.forEach(t => clearTimeout(t));
-    this.editTimers.clear();
-  }
-
-  /**
-   * Defer an edit's apply by a beat so a URL change and its CORS checkbox can be
-   * set together as one action, rather than firing a fetch the instant the URL
-   * field blurs. A newer edit under the same key cancels the pending one.
-   */
-  private debounceEdit(key: string, fn: () => void): void {
-    const existing = this.editTimers.get(key);
-    if (existing) clearTimeout(existing);
-    this.editTimers.set(
-      key,
-      setTimeout(() => {
-        this.editTimers.delete(key);
-        fn();
-      }, 1000),
-    );
+    this.drafts.clear();
+    this.fieldErrors.clear();
+    this.applying.clear();
   }
 
   /** Coalesce the burst of statuschange events a single poll produces. */
@@ -601,17 +653,73 @@ export class StatusPage {
     });
   }
 
+  /** The committed value for a field — what the session actually loaded. */
+  private committed(key: string): string {
+    const sel = this.session.selection;
+    if (key === 'static') return sel?.static?.kind === 'url' ? sel.static.url : '';
+    const name = key.slice(3) as RealtimeEndpointName;
+    const rt = sel?.realtime;
+    if (name === 'vehicles') return rt?.vehiclesUrl ?? '';
+    if (name === 'tripUpdates') return rt?.tripUpdatesUrl ?? '';
+    return rt?.alertsUrl ?? '';
+  }
+
+  /** Whether the CORS proxy is switched on for whichever half this field belongs to. */
+  private corsFor(key: string): boolean {
+    const sel = this.session.selection;
+    if (key === 'static') return sel?.static?.kind === 'url' ? sel.static.useCors : false;
+    return sel?.realtime?.useCors ?? false;
+  }
+
+  /**
+   * Everything about a field's appearance that an `input` event can change.
+   * Compared before and after a keystroke so the panel is rebuilt when the
+   * controls need to appear or an error needs to clear, and left alone — caret
+   * and all — for ordinary typing.
+   */
+  private rowSignature(key: string): string {
+    const draft = this.drafts.get(key);
+    const dirty = draft !== undefined && draft !== this.committed(key);
+    return `${dirty}|${this.fieldErrors.get(key) ?? ''}`;
+  }
+
+  private buildField: FieldRenderer = (key, committed, placeholder) => {
+    const draft = this.drafts.get(key);
+    const value = draft ?? committed;
+    // A local URL ignores the proxy setting (see `maybeProxy`); say so, but only
+    // when the checkbox is actually on and therefore looks like it is doing
+    // something.
+    const resolved = key === 'static' ? value : resolveRealtimeUrl(value);
+    return renderField({
+      key,
+      value,
+      dirty: draft !== undefined && draft !== committed,
+      busy: this.applying.has(key),
+      error: this.fieldErrors.get(key) ?? null,
+      proxyBypassed: Boolean(value) && this.corsFor(key) && isLocalUrl(resolved),
+      placeholder,
+    });
+  };
+
   private render(): void {
     if (!this.active) return;
-
-    // Don't clobber a URL the user is mid-edit.
-    const active = document.activeElement as HTMLElement | null;
-    if (active && this.host.contains(active) && active.tagName === 'INPUT') return;
 
     if (!this.session.selection) {
       this.host.innerHTML = renderEmpty();
       return;
     }
+
+    // Drafts keep the *value* safe across the rebuild below; focus and caret are
+    // DOM state that only this can carry over.
+    const focused = document.activeElement as HTMLInputElement | null;
+    const restore =
+      focused && this.host.contains(focused) && focused.dataset.field
+        ? {
+            key: focused.dataset.field,
+            start: focused.selectionStart,
+            end: focused.selectionEnd,
+          }
+        : null;
 
     this.host.innerHTML = `
       <div class="space-y-4">
@@ -620,38 +728,139 @@ export class StatusPage {
         ${renderMapIssues(this.mapIssues?.() ?? null)}
         ${renderStationIssues(this.session)}
         ${renderPaddedColumns(this.session)}
-        ${renderStaticSection(this.session)}
-        ${renderEndpoints(this.session)}
+        ${renderStaticSection(this.session, this.buildField)}
+        ${renderEndpoints(this.session, this.buildField)}
         ${renderShare(this.session)}
         ${renderRawTables(this.session)}
       </div>`;
 
     this.wire();
+
+    if (restore) {
+      const el = this.host.querySelector<HTMLInputElement>(
+        `[data-field="${CSS.escape(restore.key)}"]`,
+      );
+      if (el) {
+        el.focus();
+        if (restore.start !== null) el.setSelectionRange(restore.start, restore.end);
+      }
+    }
+  }
+
+  /**
+   * Commit a field. Validation happens here rather than at fetch time so a typo
+   * is reported against the field immediately instead of coming back as an
+   * opaque network error.
+   *
+   * On failure the draft survives — that is the whole point — and holds the
+   * *normalized* text, so what the field shows is what was actually attempted.
+   */
+  private async applyField(key: string): Promise<void> {
+    const raw = this.drafts.get(key);
+    if (raw === undefined || this.applying.has(key)) return;
+
+    const url = normalizeFeedUrl(raw);
+    this.drafts.set(key, url);
+
+    // An empty realtime URL is meaningful — it switches that endpoint off. An
+    // empty static URL is not: there would be no feed left to render.
+    const invalid =
+      key === 'static' && !url ? 'A static feed URL is required.' : validateFeedUrl(url);
+    if (invalid) {
+      this.fieldErrors.set(key, invalid);
+      this.render();
+      return;
+    }
+
+    // Read the checkbox before the await: the panel is rebuilt underneath us.
+    const useCors = this.corsFor(key);
+
+    this.applying.add(key);
+    this.fieldErrors.delete(key);
+    this.render();
+
+    const result =
+      key === 'static'
+        ? await this.session.applyStaticUrl(url, useCors)
+        : await this.session.applyRealtimeUrl(key.slice(3) as RealtimeEndpointName, url);
+
+    this.applying.delete(key);
+    if (result.ok) {
+      this.drafts.delete(key);
+      this.fieldErrors.delete(key);
+      notify.success(
+        key === 'static' ? 'Static feed reloaded' : `${REALTIME_ENDPOINT_LABELS[key.slice(3) as RealtimeEndpointName]} updated`,
+      );
+    } else {
+      this.fieldErrors.set(key, result.error);
+    }
+    this.render();
+  }
+
+  private revertField(key: string): void {
+    this.drafts.delete(key);
+    this.fieldErrors.delete(key);
+    this.render();
   }
 
   private wire(): void {
-    // URLs apply a beat after the field loses focus (the `change` event), so
-    // there is no Apply button to forget to press and you can still reach for
-    // the CORS checkbox before the fetch fires. Values are captured eagerly, so
-    // a re-render during the wait cannot lose an in-flight edit.
-    this.host.querySelectorAll<HTMLInputElement>('[data-rt-url]').forEach(input => {
-      input.addEventListener('change', () => {
-        const name = input.dataset.rtUrl as RealtimeEndpointName;
-        const value = input.value.trim();
-        this.debounceEdit(`rt-url:${name}`, () => {
-          void this.session.applyRealtimeUrl(name, value);
-        });
+    // Typing only ever touches the draft. Nothing is fetched, and nothing in the
+    // session changes, until Apply (or Enter) — so a poll landing mid-edit is a
+    // non-event and a rejected URL stays on screen to be corrected.
+    this.host.querySelectorAll<HTMLInputElement>('[data-field]').forEach(input => {
+      const key = input.dataset.field!;
+
+      input.addEventListener('input', () => {
+        const before = this.rowSignature(key);
+        this.drafts.set(key, input.value);
+        this.fieldErrors.delete(key);
+        // Only rebuild when the controls or the error state actually change;
+        // every keystroke doing a full repaint would be wasteful even with the
+        // caret restore above.
+        if (this.rowSignature(key) !== before) this.render();
+      });
+
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          void this.applyField(key);
+        } else if (e.key === 'Escape') {
+          e.preventDefault();
+          this.revertField(key);
+        }
       });
     });
 
+    this.host.querySelectorAll<HTMLButtonElement>('[data-apply]').forEach(btn => {
+      btn.addEventListener('click', () => void this.applyField(btn.dataset.apply!));
+    });
+    this.host.querySelectorAll<HTMLButtonElement>('[data-revert]').forEach(btn => {
+      btn.addEventListener('click', () => this.revertField(btn.dataset.revert!));
+    });
+
+    // Checkboxes have no draft to keep — there is nothing to mistype, so they
+    // apply on the spot.
     const rtCors = this.host.querySelector<HTMLInputElement>('#status-rt-cors');
     rtCors?.addEventListener('change', () => {
-      const checked = rtCors.checked;
-      this.debounceEdit('rt-cors', () => {
-        void this.session
-          .applyRealtimeCors(checked)
-          .then(() => notify.success('Realtime feed reloaded'))
-          .catch(err => notify.error(`Realtime reload failed: ${err instanceof Error ? err.message : String(err)}`));
+      void this.session
+        .applyRealtimeCors(rtCors.checked)
+        .then(() => notify.success('Realtime feed reloaded'))
+        .catch(err =>
+          notify.error(`Realtime reload failed: ${err instanceof Error ? err.message : String(err)}`),
+        );
+    });
+
+    const staticCors = this.host.querySelector<HTMLInputElement>('#status-static-cors');
+    staticCors?.addEventListener('change', () => {
+      const url = this.committed('static');
+      if (!url) return;
+      void this.session.applyStaticUrl(url, staticCors.checked).then(result => {
+        if (result.ok) {
+          notify.success('Static feed reloaded');
+        } else {
+          this.fieldErrors.set('static', result.error);
+          this.render();
+        }
       });
     });
 
@@ -663,21 +872,5 @@ export class StatusPage {
         .then(() => notify.success('Link copied'))
         .catch(() => notify.error('Could not copy to clipboard'));
     });
-
-    const reloadStatic = (): void => {
-      const input = this.host.querySelector<HTMLInputElement>('#status-static-url');
-      const cors = this.host.querySelector<HTMLInputElement>('#status-static-cors');
-      const url = input?.value.trim();
-      if (!url) return;
-      const useCors = cors?.checked ?? true;
-      this.debounceEdit('static', () => {
-        void this.session
-          .applyStaticUrl(url, useCors)
-          .then(() => notify.success('Static feed reloaded'))
-          .catch(err => notify.error(`Static reload failed: ${err instanceof Error ? err.message : String(err)}`));
-      });
-    };
-    this.host.querySelector<HTMLInputElement>('#status-static-url')?.addEventListener('change', reloadStatic);
-    this.host.querySelector<HTMLInputElement>('#status-static-cors')?.addEventListener('change', reloadStatic);
   }
 }

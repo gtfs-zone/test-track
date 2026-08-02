@@ -5,16 +5,21 @@ import type { AlertRecord, FeedStatus, FetchStartDetail, TripUpdate } from '../g
 import type { VehiclePosition } from '../map-controller';
 import { adoptFeedTimezone } from './feed-time';
 import { feedProgressIndicator } from './feed-progress-indicator';
-import { notify } from './notification-system';
 import type { FeedSelection, RealtimeEndpointName, StaticSource } from './feed-selection';
 import {
   REALTIME_ENDPOINTS,
   REALTIME_ENDPOINT_LABELS,
   isComplete,
-  maybeProxy,
+  resolvedRealtimeUrl,
   resolvedRealtimeUrls,
   resolvedStaticUrl,
 } from './feed-selection';
+
+/**
+ * The outcome of an inline URL edit. Returned rather than toasted so the caller
+ * can put the reason next to the field that caused it.
+ */
+export type ApplyResult = { ok: true } | { ok: false; error: string };
 
 /**
  * The remembered poll interval, or the default. Anything not on the offered
@@ -78,13 +83,26 @@ export class FeedSession extends EventTarget {
     this.emitChange();
   }
 
-  /** Re-run the static load with a new URL, leaving the RT poller alone. */
-  async applyStaticUrl(url: string, useCors: boolean): Promise<void> {
-    if (!this.selection) return;
+  /**
+   * Re-run the static load with a new URL, leaving the RT poller alone.
+   *
+   * Reports rather than toasts, for the same reason as `applyRealtimeUrl`: the
+   * status page shows the failure against the field that caused it, next to the
+   * text the user typed.
+   */
+  async applyStaticUrl(url: string, useCors: boolean): Promise<ApplyResult> {
+    if (!this.selection) return { ok: false, error: 'No feed loaded.' };
     const next: StaticSource = { kind: 'url', url, useCors, label: this.selection.static?.label ?? 'Static feed' };
-    await this.loadStatic(next);
+    try {
+      // `loadStatic` leaves the previously parsed feed in place when it throws,
+      // so a failed edit costs nothing but the error message.
+      await this.loadStatic(next);
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
     this.selection.static = next;
     this.emitChange();
+    return { ok: true };
   }
 
   /**
@@ -93,29 +111,37 @@ export class FeedSession extends EventTarget {
    * The new URL is validated by that fetch before the poller keeps it, so a
    * typo cannot silently kill a working endpoint — on failure the endpoint is
    * restored to its previous URL.
+   *
+   * The failure is *returned*, not toasted, and deliberately does not touch the
+   * text field: the caller keeps showing what was typed with the reason beside
+   * it, so a bad URL can be corrected rather than having to be retyped from
+   * scratch.
    */
-  async applyRealtimeUrl(name: RealtimeEndpointName, url: string): Promise<void> {
+  async applyRealtimeUrl(name: RealtimeEndpointName, url: string): Promise<ApplyResult> {
     const poller = this.poller;
     const rt = this.selection?.realtime;
-    if (!poller || !rt) return;
+    if (!poller || !rt) return { ok: false, error: 'No realtime feed loaded.' };
 
     const previous = poller.getStatus().endpoints[name].url;
-    poller.setEndpointUrl(name, maybeProxy(url, rt.useCors));
+    poller.setEndpointUrl(name, resolvedRealtimeUrl(url, rt.useCors));
     await poller.refreshEndpoint(name);
 
     const ep = poller.getStatus().endpoints[name];
     if (url && ep.lastError) {
+      const error = ep.lastError;
       poller.setEndpointUrl(name, previous);
-      notify.error(`${REALTIME_ENDPOINT_LABELS[name]} not updated: ${ep.lastError}`);
       this.emitChange();
-      return;
+      return { ok: false, error };
     }
 
-    // Store the un-proxied URL on the selection; the poller holds the resolved one.
+    // Store the un-proxied, unresolved URL on the selection; the poller holds
+    // the resolved one. Keeping a path-only URL as a path is what lets a shared
+    // link work in both dev and the built site.
     if (name === 'vehicles') rt.vehiclesUrl = url || undefined;
     else if (name === 'tripUpdates') rt.tripUpdatesUrl = url || undefined;
     else rt.alertsUrl = url || undefined;
     this.emitChange();
+    return { ok: true };
   }
 
   /**

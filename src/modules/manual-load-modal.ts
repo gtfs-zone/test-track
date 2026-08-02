@@ -1,11 +1,37 @@
 import { renderUploadIcon, showModal } from './modal-utils';
 import type { FeedSelection } from './feed-selection';
 import { describeMissing, isComplete } from './feed-selection';
+import { normalizeFeedUrl, validateFeedUrl } from './feed-url-resolve';
+
+/** Every URL field, so validation can name the one that is wrong. */
+const URL_FIELDS: Array<[id: string, label: string]> = [
+  ['manual-static-url', 'Static GTFS'],
+  ['manual-vehicles-url', 'Vehicle Positions'],
+  ['manual-trip-updates-url', 'Trip Updates'],
+  ['manual-alerts-url', 'Service Alerts'],
+];
+
+/**
+ * The first URL problem in the form, or '' when there is none. Reported through
+ * the same hint line as the missing-feed message, so the Load button is never
+ * enabled on a URL that cannot be fetched.
+ */
+function describeBadUrl(): string {
+  for (const [id, label] of URL_FIELDS) {
+    const raw = (document.getElementById(id) as HTMLInputElement).value.trim();
+    if (!raw) continue;
+    const reason = validateFeedUrl(raw);
+    if (reason) return `${label}: ${reason}`;
+  }
+  return '';
+}
 
 /** Read the current form state as a selection. */
 function readForm(): FeedSelection {
+  // Normalized here rather than at load time, so what gets stored — and shared
+  // in a link — is the URL that was actually fetched.
   const val = (id: string) =>
-    (document.getElementById(id) as HTMLInputElement).value.trim();
+    normalizeFeedUrl((document.getElementById(id) as HTMLInputElement).value);
   const checked = (id: string) =>
     (document.getElementById(id) as HTMLInputElement).checked;
 
@@ -110,7 +136,7 @@ export async function showManualLoadModal(): Promise<FeedSelection | null> {
         className: 'btn-primary',
         onClick: () => {
           const sel = readForm();
-          if (!isComplete(sel)) return true;
+          if (describeBadUrl() || !isComplete(sel)) return true;
           result = sel;
           return;
         },
@@ -131,9 +157,9 @@ export async function showManualLoadModal(): Promise<FeedSelection | null> {
         .querySelector<HTMLButtonElement>('button[data-idx="0"]')!;
 
       const revalidate = () => {
-        const missing = describeMissing(readForm());
-        loadBtn.disabled = missing !== '';
-        hintEl.textContent = missing;
+        const problem = describeBadUrl() || describeMissing(readForm());
+        loadBtn.disabled = problem !== '';
+        hintEl.textContent = problem;
       };
 
       const showFile = (file: File | undefined) => {

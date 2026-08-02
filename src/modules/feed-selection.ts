@@ -11,6 +11,8 @@
  * needs.
  */
 
+import { isLocalUrl, resolveRealtimeUrl } from './feed-url-resolve';
+
 const CORS_PROXY = 'https://cors.gtfs.zone/';
 
 /** True when a URL is already routed through the CORS proxy. */
@@ -81,9 +83,19 @@ export const REALTIME_ENDPOINT_LABELS: Record<RealtimeEndpointName, string> = {
   alerts: 'Service Alerts',
 };
 
-/** Route a URL through the CORS proxy, unless it is already proxied. */
+/**
+ * Route a URL through the CORS proxy, unless it is already proxied — or unless
+ * it is local.
+ *
+ * cors.gtfs.zone runs on the public internet and cannot open a connection to the
+ * user's own machine, so `https://cors.gtfs.zone/http://localhost:8000/…` is not
+ * a choice the checkbox is entitled to make: it is a guaranteed failure. A local
+ * URL therefore ignores `useCors` entirely, and the status page says so rather
+ * than leaving the checkbox looking effective.
+ */
 export function maybeProxy(url: string, useCors: boolean): string {
   if (!useCors || !url || url.startsWith(CORS_PROXY)) return url;
+  if (isLocalUrl(url)) return url;
   return CORS_PROXY + url;
 }
 
@@ -110,20 +122,36 @@ export function describeMissing(sel: FeedSelection): string {
   return '';
 }
 
-/** The static URL to actually fetch, proxied if the source asks for it. */
+/**
+ * The static URL to actually fetch, proxied if the source asks for it.
+ *
+ * Note the asymmetry with the realtime side: `RT_BASE` resolution is realtime
+ * only. A path-only static URL stays same-origin, because there is no single
+ * server that static feeds come from.
+ */
 export function resolvedStaticUrl(src: StaticSource): string {
   return src.kind === 'url' ? maybeProxy(src.url, src.useCors) : '';
 }
 
-/** The three RT URLs to actually fetch, proxied per the source's setting. */
+/**
+ * The three RT URLs to actually fetch: path-only entries resolved against
+ * `RT_BASE` first, then proxied per the source's setting. Resolution has to come
+ * first — in the built site `/amtrak/…` is an rt.gtfs.zone URL, which does need
+ * the proxy.
+ */
 export function resolvedRealtimeUrls(
   rt: RealtimeSource,
 ): Record<RealtimeEndpointName, string> {
   return {
-    vehicles: maybeProxy(rt.vehiclesUrl ?? '', rt.useCors),
-    tripUpdates: maybeProxy(rt.tripUpdatesUrl ?? '', rt.useCors),
-    alerts: maybeProxy(rt.alertsUrl ?? '', rt.useCors),
+    vehicles: resolvedRealtimeUrl(rt.vehiclesUrl ?? '', rt.useCors),
+    tripUpdates: resolvedRealtimeUrl(rt.tripUpdatesUrl ?? '', rt.useCors),
+    alerts: resolvedRealtimeUrl(rt.alertsUrl ?? '', rt.useCors),
   };
+}
+
+/** One realtime URL, resolved and proxied — the single path from stored to fetched. */
+export function resolvedRealtimeUrl(url: string, useCors: boolean): string {
+  return maybeProxy(resolveRealtimeUrl(url), useCors);
 }
 
 /** A short description of the whole selection, for toasts and titles. */

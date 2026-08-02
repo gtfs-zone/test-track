@@ -89,10 +89,16 @@ export function paramsToSelection(hash: string): FeedSelection | null {
   return { static: staticSource, realtime };
 }
 
-/** A selection restored from a link has no name of its own; use its host. */
+/**
+ * A selection restored from a link has no name of its own; use its host.
+ *
+ * `host`, not `hostname`: the port is part of the identity here. Two local
+ * stacks on different ports are different feeds, and labelling both `localhost`
+ * reads as if the port had been dropped somewhere.
+ */
 function labelForUrl(url: string): string {
   try {
-    return new URL(url).hostname;
+    return new URL(url, location.href).host;
   } catch {
     return 'Linked feed';
   }

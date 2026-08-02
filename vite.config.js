@@ -29,20 +29,13 @@ export default defineConfig({
     }
   },
   server: {
+    // The local cafe-car is fetched directly rather than through a dev proxy
+    // (see RT_BASE in src/modules/feed-url-resolve.ts), so this origin has to be
+    // one music-student's CORS_ALLOWED_ORIGINS names. It allows 8080-8089, which
+    // covers the range vite falls through to when a port is taken.
     port: 8080,
     open: true,
-    host: true,
-    proxy: {
-      // The local music-student stack, reached same-origin so the dev examples
-      // work whatever port vite lands on. cafe-car's CORS allowlist names one
-      // fixed origin, and vite silently falls through to 8081+ when 8080 is
-      // taken by another project — a direct localhost:8000 fetch then dies on
-      // CORS. Proxying sidesteps the allowlist entirely.
-      '/rt-local': {
-        target: 'http://localhost:8000',
-        rewrite: p => p.replace(/^\/rt-local/, '')
-      }
-    }
+    host: true
   },
   css: {
     postcss: './postcss.config.js'
