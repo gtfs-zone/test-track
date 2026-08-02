@@ -1,4 +1,5 @@
 import { transit_realtime } from 'gtfs-realtime-bindings';
+import { CONFIG } from './config';
 import type { VehiclePosition } from './map-controller';
 import type { RealtimeEndpointName } from './modules/feed-selection';
 import { REALTIME_ENDPOINTS, describeHttpError, describeNetworkError } from './modules/feed-selection';
@@ -140,10 +141,14 @@ export class GTFSRealtime extends EventTarget {
   private status: FeedStatus;
   private timeoutId: ReturnType<typeof setTimeout> | null = null;
   private running = false;
+  // Kept alongside the timer so a changed interval can re-arm the pending sleep
+  // instead of waiting the old one out.
+  private pendingWake: (() => void) | null = null;
+  private lastPollAt: number | null = null;
 
   constructor(
     urls: Partial<Record<RealtimeEndpointName, string>>,
-    intervalMs = 15000,
+    intervalMs: number = CONFIG.RT_INTERVAL_DEFAULT_MS,
   ) {
     super();
     this.status = {
@@ -173,12 +178,26 @@ export class GTFSRealtime extends EventTarget {
       clearTimeout(this.timeoutId);
       this.timeoutId = null;
     }
+    this.pendingWake = null;
     this.status.nextPollAt = null;
     this.emitStatusChange();
   }
 
+  /**
+   * Change the poll interval, re-arming any sleep already in progress so the
+   * new rate takes effect now rather than after the old one elapses.
+   */
   setIntervalMs(intervalMs: number): void {
     this.status.intervalMs = intervalMs;
+
+    if (this.pendingWake !== null && this.lastPollAt !== null) {
+      const wake = this.pendingWake;
+      if (this.timeoutId !== null) clearTimeout(this.timeoutId);
+      const remaining = Math.max(0, this.lastPollAt + intervalMs - Date.now());
+      this.status.nextPollAt = Date.now() + remaining;
+      this.timeoutId = setTimeout(wake, remaining);
+    }
+
     this.emitStatusChange();
   }
 
@@ -201,11 +220,14 @@ export class GTFSRealtime extends EventTarget {
     while (this.running) {
       await Promise.allSettled(REALTIME_ENDPOINTS.map(n => this.fetchEndpoint(n)));
       if (!this.running) break;
-      this.status.nextPollAt = Date.now() + this.status.intervalMs;
+      this.lastPollAt = Date.now();
+      this.status.nextPollAt = this.lastPollAt + this.status.intervalMs;
       this.emitStatusChange();
       await new Promise<void>(resolve => {
+        this.pendingWake = resolve;
         this.timeoutId = setTimeout(resolve, this.status.intervalMs);
       });
+      this.pendingWake = null;
     }
   }
 

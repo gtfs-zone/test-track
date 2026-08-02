@@ -1,3 +1,4 @@
+import { CONFIG } from './config';
 import { MapController } from './map-controller';
 import type { VehiclePosition } from './map-controller';
 import type { GTFSStatic } from './gtfs-static';
@@ -97,8 +98,17 @@ mapCtrl.onSelect = state => appState.setFocus(state);
 // the panel, and closing the bottom sheet — all wired through onFocusChange.
 mapCtrl.onEmptySelect = () => appState.clearFocus();
 
+// The reload button and the refresh-rate picker only mean anything once there
+// is a feed to act on.
+const reloadBtn = document.getElementById('reload-feed-btn') as HTMLButtonElement;
+const intervalDropdown = document.getElementById('rt-interval-dropdown')!;
+function showFeedControls(): void {
+  reloadBtn.classList.remove('hidden');
+  intervalDropdown.classList.remove('hidden');
+}
+
 void appState.boot().then(loaded => {
-  if (loaded) document.getElementById('refresh-rt-btn')!.classList.remove('hidden');
+  if (loaded) showFeedControls();
 });
 
 // ─── About button ─────────────────────────────────────────────────────────────
@@ -115,7 +125,7 @@ async function handleLoadResult(selection: FeedSelection | null): Promise<void> 
   const label = describeSelection(selection);
   try {
     await session.load(selection);
-    document.getElementById('refresh-rt-btn')!.classList.remove('hidden');
+    showFeedControls();
     notify.success(`Loaded ${label}`);
   } catch (err) {
     console.error('Load failed:', err);
@@ -135,11 +145,46 @@ document.getElementById('load-manual-btn')!.addEventListener('click', async () =
   await handleLoadResult(await showManualLoadModal());
 });
 
-// ─── Refresh RT button ────────────────────────────────────────────────────────
-document.getElementById('refresh-rt-btn')!.addEventListener('click', async () => {
+// ─── Reload feed button ───────────────────────────────────────────────────────
+// A full reload — the static feed is re-downloaded and the poller replaced —
+// so it is disabled while one is in flight rather than stacking two loads.
+reloadBtn.addEventListener('click', async () => {
   (document.activeElement as HTMLElement | null)?.blur();
-  await session.refreshAll();
+  if (!session.selection) return;
+  const label = describeSelection(session.selection);
+  reloadBtn.disabled = true;
+  try {
+    await session.reload();
+    notify.success(`Reloaded ${label}`);
+  } catch (err) {
+    console.error('Reload failed:', err);
+    notify.error(`Failed to reload ${label}: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    reloadBtn.disabled = false;
+  }
 });
+
+// ─── Realtime refresh rate ────────────────────────────────────────────────────
+const intervalMenu = document.getElementById('rt-interval-menu')!;
+const intervalLabel = document.getElementById('rt-interval-label')!;
+
+function renderIntervalMenu(): void {
+  const current = session.pollIntervalMs;
+  intervalLabel.textContent = `${current / 1000}s`;
+  intervalMenu.innerHTML = CONFIG.RT_INTERVAL_OPTIONS_MS.map(
+    ms => `<li><a data-rt-interval="${ms}" class="${ms === current ? 'menu-active' : ''}">${ms / 1000}s</a></li>`,
+  ).join('');
+}
+
+intervalMenu.addEventListener('click', e => {
+  const item = (e.target as HTMLElement).closest<HTMLElement>('[data-rt-interval]');
+  if (!item) return;
+  (document.activeElement as HTMLElement | null)?.blur();
+  session.setPollIntervalMs(Number(item.dataset.rtInterval));
+  renderIntervalMenu();
+});
+
+renderIntervalMenu();
 
 // ─── Alerts modal ─────────────────────────────────────────────────────────────
 const alertsList = document.getElementById('alerts-list')!;

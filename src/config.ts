@@ -43,4 +43,10 @@ export const CONFIG = {
 
   // Debounce for persisting the map view on moveend.
   MAP_VIEW_SAVE_DEBOUNCE: 400,
+
+  // Realtime poll interval — a per-device preference like the map view above,
+  // deliberately not in the shared URL.
+  RT_INTERVAL_KEY: 'tt.rt.interval',
+  RT_INTERVAL_DEFAULT_MS: 15000,
+  RT_INTERVAL_OPTIONS_MS: [5000, 10000, 15000, 30000, 60000],
 } as const;

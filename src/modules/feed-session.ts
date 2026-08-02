@@ -1,3 +1,4 @@
+import { CONFIG } from '../config';
 import { GTFSStatic } from '../gtfs-static';
 import { GTFSRealtime } from '../gtfs-rt';
 import type { AlertRecord, FeedStatus, FetchStartDetail, TripUpdate } from '../gtfs-rt';
@@ -12,6 +13,23 @@ import {
   resolvedRealtimeUrls,
   resolvedStaticUrl,
 } from './feed-selection';
+
+/**
+ * The remembered poll interval, or the default. Anything not on the offered
+ * menu is discarded — the dropdown could never show it back to the user.
+ */
+function readStoredIntervalMs(): number {
+  let stored: string | null = null;
+  try {
+    stored = localStorage.getItem(CONFIG.RT_INTERVAL_KEY);
+  } catch {
+    // Storage unavailable; fall through to the default.
+  }
+  const parsed = Number(stored);
+  return (CONFIG.RT_INTERVAL_OPTIONS_MS as readonly number[]).includes(parsed)
+    ? parsed
+    : CONFIG.RT_INTERVAL_DEFAULT_MS;
+}
 
 export interface RealtimeCounts {
   vehicles: number;
@@ -40,6 +58,8 @@ export class FeedSession extends EventTarget {
   vehicles = new Map<string, VehiclePosition>();
   alerts = new Map<string, AlertRecord>();
   tripUpdates: TripUpdate[] = [];
+
+  private intervalMs = readStoredIntervalMs();
 
   get status(): FeedStatus | null {
     return this.poller?.getStatus() ?? null;
@@ -96,14 +116,26 @@ export class FeedSession extends EventTarget {
     this.emitChange();
   }
 
-  /** Force an immediate poll of every endpoint. */
-  async refreshAll(): Promise<void> {
-    const poller = this.poller;
-    if (!poller) return;
-    await Promise.allSettled(
-      (Object.keys(poller.getStatus().endpoints) as RealtimeEndpointName[])
-        .map(name => poller.refreshEndpoint(name)),
-    );
+  /** Re-run the current selection from scratch: static download plus a fresh poller. */
+  async reload(): Promise<void> {
+    if (!this.selection) return;
+    await this.load(this.selection);
+  }
+
+  /** The RT poll interval, remembered per-device across loads and sessions. */
+  get pollIntervalMs(): number {
+    return this.intervalMs;
+  }
+
+  setPollIntervalMs(intervalMs: number): void {
+    this.intervalMs = intervalMs;
+    try {
+      localStorage.setItem(CONFIG.RT_INTERVAL_KEY, String(intervalMs));
+    } catch {
+      // Private browsing or a full quota — the interval still applies this session.
+    }
+    this.poller?.setIntervalMs(intervalMs);
+    this.emitChange();
   }
 
   private async loadStatic(source: StaticSource): Promise<void> {
@@ -167,7 +199,7 @@ export class FeedSession extends EventTarget {
     this.alerts = new Map();
     this.tripUpdates = [];
 
-    const poller = new GTFSRealtime(resolvedRealtimeUrls(selection.realtime!));
+    const poller = new GTFSRealtime(resolvedRealtimeUrls(selection.realtime!), this.intervalMs);
     this.poller = poller;
 
     poller.addEventListener('fetchstart', e => {
