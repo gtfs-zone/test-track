@@ -5,9 +5,10 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const REPO = 'transitland/transitland-atlas';
-const BRANCH = 'master';
+const BRANCH = 'main';
 const CONCURRENCY = 8;
 const OUTPUT_PATH = path.join(__dirname, '..', 'public', 'atlas-feeds.json');
+const LOCAL_ATLAS_PATH = path.join(__dirname, '..', '..', 'transitland-atlas');
 
 interface DmfrUrls {
   static_current?: string;
@@ -132,8 +133,76 @@ async function processDmfrFile(rawUrl: string): Promise<AtlasFeed[]> {
   return feeds;
 }
 
-async function main() {
-  console.log('Fetching transitland-atlas file tree...');
+async function processDmfrFileLocal(filePath: string): Promise<AtlasFeed[]> {
+  let dmfr: DmfrFile;
+  try {
+    const raw = await fs.readFile(filePath, 'utf8');
+    dmfr = JSON.parse(raw) as DmfrFile;
+  } catch {
+    return [];
+  }
+
+  const operatorMap = new Map<string, DmfrOperator>();
+  for (const op of dmfr.operators ?? []) {
+    operatorMap.set(op.onestop_id, op);
+  }
+
+  const feeds: AtlasFeed[] = [];
+  for (const feed of dmfr.feeds ?? []) {
+    const urls = feed.urls ?? {};
+    const staticUrl = urls.static_current;
+    const vehiclesUrl = urls.realtime_vehicle_positions;
+    const tripUpdatesUrl = urls.realtime_trip_updates;
+    const alertsUrl = urls.realtime_alerts;
+
+    if (!staticUrl && !vehiclesUrl && !tripUpdatesUrl && !alertsUrl) continue;
+
+    const opId = feed.operators?.[0]?.onestop_id;
+    const op = opId ? operatorMap.get(opId) : undefined;
+    const operatorName = op?.name ?? op?.short_name ?? '';
+    const location = op ? deriveLocation(op) : '';
+
+    feeds.push({
+      id: feed.id,
+      name: op?.short_name ?? op?.name ?? feed.id,
+      operator_name: operatorName,
+      location,
+      ...(staticUrl ? { staticUrl } : {}),
+      ...(vehiclesUrl ? { vehiclesUrl } : {}),
+      ...(tripUpdatesUrl ? { tripUpdatesUrl } : {}),
+      ...(alertsUrl ? { alertsUrl } : {}),
+    });
+  }
+  return feeds;
+}
+
+async function mainLocal(atlasPath: string) {
+  const feedsDir = path.join(atlasPath, 'feeds');
+  const entries = await fs.readdir(feedsDir, { recursive: true });
+  const dmfrFiles = (entries as string[])
+    .filter(e => e.endsWith('.json'))
+    .map(e => path.join(feedsDir, e));
+
+  console.log(`Processing ${dmfrFiles.length} local DMFR files from ${atlasPath}...`);
+
+  let done = 0;
+  const chunks = await runConcurrently(dmfrFiles, CONCURRENCY, async (filePath) => {
+    const result = await processDmfrFileLocal(filePath);
+    done++;
+    if (done % 100 === 0) process.stdout.write(`  ${done}/${dmfrFiles.length}\r`);
+    return result;
+  });
+
+  const allFeeds = chunks.flat();
+  console.log(`\nFound ${allFeeds.length} feeds with URLs.`);
+
+  await fs.mkdir(path.dirname(OUTPUT_PATH), { recursive: true });
+  await fs.writeFile(OUTPUT_PATH, JSON.stringify(allFeeds, null, 2));
+  console.log(`Written to ${OUTPUT_PATH}`);
+}
+
+async function mainRemote() {
+  console.log('Fetching transitland-atlas file tree from GitHub...');
   const tree = await fetchJson<{ tree: GithubTreeItem[] }>(
     `https://api.github.com/repos/${REPO}/git/trees/${BRANCH}?recursive=1`,
   );
@@ -158,6 +227,15 @@ async function main() {
   await fs.mkdir(path.dirname(OUTPUT_PATH), { recursive: true });
   await fs.writeFile(OUTPUT_PATH, JSON.stringify(allFeeds, null, 2));
   console.log(`Written to ${OUTPUT_PATH}`);
+}
+
+async function main() {
+  try {
+    await fs.access(LOCAL_ATLAS_PATH);
+    await mainLocal(LOCAL_ATLAS_PATH);
+  } catch {
+    await mainRemote();
+  }
 }
 
 main().catch(err => { console.error(err); process.exit(1); });
