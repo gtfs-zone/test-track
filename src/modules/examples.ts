@@ -11,10 +11,13 @@ export interface ExampleFeed {
  * Curated, ready-to-load pairs. Every entry names both a static source and a
  * realtime source, so picking one satisfies the load requirement in one click.
  *
- * `useCors` is set per source from what the origin actually sends: the
- * Columbia County zip is served from GitHub with `access-control-allow-origin: *`
- * and needs no proxy; rt.gtfs.zone, cdn.mbta.com and content.amtrak.com send no
- * CORS headers, so they do.
+ * `useCors` is set per source from what the origin actually sends. Only
+ * `raw.githubusercontent.com` sends `access-control-allow-origin: *`, so a
+ * GitHub-hosted zip must point there directly and needs no proxy — a
+ * `github.com/**\/raw/**` URL is never directly fetchable (it 301/302s through
+ * hops that send no usable CORS header, which the browser aborts) and must be
+ * rewritten to `raw.githubusercontent.com` or proxied. rt.gtfs.zone,
+ * cdn.mbta.com and content.amtrak.com send no CORS headers, so they proxy.
  */
 export const EXAMPLES: ExampleFeed[] = [
   {
@@ -42,7 +45,7 @@ export const EXAMPLES: ExampleFeed[] = [
     selection: {
       static: {
         kind: 'url',
-        url: 'https://github.com/maxtkc/columbia-county-gtfs/raw/refs/heads/main/columbia_county_gtfs.zip',
+        url: 'https://raw.githubusercontent.com/columbia-county-ny-transit/gtfs-generator/refs/heads/main/columbia_county_gtfs.zip',
         useCors: false,
         label: 'Columbia County',
       },

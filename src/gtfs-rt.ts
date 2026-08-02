@@ -1,7 +1,7 @@
 import { transit_realtime } from 'gtfs-realtime-bindings';
 import type { VehiclePosition } from './map-controller';
 import type { RealtimeEndpointName } from './modules/feed-selection';
-import { REALTIME_ENDPOINTS } from './modules/feed-selection';
+import { REALTIME_ENDPOINTS, describeHttpError, describeNetworkError } from './modules/feed-selection';
 
 export type TripUpdate = transit_realtime.ITripUpdate;
 export type ServiceAlert = transit_realtime.IAlert;
@@ -321,9 +321,13 @@ async function decodeFeed(url: string): Promise<transit_realtime.FeedMessage> {
   try {
     res = await fetch(url);
   } catch (err) {
-    throw new Error(`Network error: ${err instanceof Error ? err.message : String(err)}`);
+    throw new Error(describeNetworkError(url, err));
   }
-  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`.trim());
+  if (!res.ok) {
+    // A proxy refusal explains itself in the body; read it before discarding.
+    const body = await res.text().catch(() => '');
+    throw new Error(describeHttpError(url, res.status, res.statusText, body));
+  }
 
   const buf = await res.arrayBuffer();
   try {

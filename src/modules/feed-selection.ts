@@ -13,6 +13,43 @@
 
 const CORS_PROXY = 'https://cors.gtfs.zone/';
 
+/** True when a URL is already routed through the CORS proxy. */
+export function isProxied(url: string): boolean {
+  return url.startsWith(CORS_PROXY);
+}
+
+/**
+ * A fetch that rejects with a `TypeError` is what the browser gives for *any*
+ * CORS refusal, and it carries no detail — "NetworkError when attempting to
+ * fetch resource" and nothing more. When the URL was not proxied, CORS is the
+ * likely cause, so say so rather than passing the bare message through
+ * (Plan 06 Phase 8).
+ */
+export function describeNetworkError(url: string, err: unknown): string {
+  const base = err instanceof Error ? err.message : String(err);
+  if (err instanceof TypeError && !isProxied(url)) {
+    return `${base} — this may be CORS; try enabling the proxy for this source.`;
+  }
+  return base;
+}
+
+/**
+ * A non-2xx from the proxy carries a plain-text explanation in its body — e.g.
+ * `The origin "…" was not whitelisted by the operator of this proxy.` — that is
+ * otherwise thrown away. Surface it instead of a bare status line.
+ */
+export function describeHttpError(
+  url: string,
+  status: number,
+  statusText: string,
+  body: string,
+): string {
+  const head = `HTTP ${status} ${statusText}`.trim();
+  const trimmed = body.trim();
+  if (isProxied(url) && trimmed) return `${head} — proxy said: ${trimmed.slice(0, 300)}`;
+  return head;
+}
+
 export type StaticSource =
   | { kind: 'url'; url: string; useCors: boolean; label: string }
   | { kind: 'file'; file: File; label: string };

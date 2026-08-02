@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import Papa from 'papaparse';
+import { describeHttpError, describeNetworkError } from './modules/feed-selection';
 
 /** Verbatim CSV rows, kept so object pages can dump every column. */
 export type RawRow = Record<string, string>;
@@ -439,8 +440,16 @@ async function downloadWithProgress(
   url: string,
   onProgress?: (loaded: number, total: number | null) => void,
 ): Promise<ArrayBuffer> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(`Failed to fetch GTFS: ${response.status}`);
+  let response: Response;
+  try {
+    response = await fetch(url);
+  } catch (err) {
+    throw new Error(describeNetworkError(url, err));
+  }
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(describeHttpError(url, response.status, response.statusText, body));
+  }
 
   const lengthHeader = response.headers.get('Content-Length');
   const total = lengthHeader ? Number(lengthHeader) : null;
