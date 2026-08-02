@@ -185,6 +185,8 @@ function build(sequence: RouteSequence): RouteGraph {
     if (merges.length === 0) lanes[lane] = null;
 
     const branches: number[] = [];
+    /** Lanes this row claimed for the first time, as opposed to converged on. */
+    const claimed = new Set<number>();
     for (const to of kept.get(i) ?? []) {
       const existing = lanes.indexOf(to);
       if (existing >= 0) {
@@ -201,16 +203,29 @@ function build(sequence: RouteSequence): RouteGraph {
       } else {
         target = reserve(to);
       }
+      claimed.add(target);
       if (!branches.includes(target)) branches.push(target);
     }
 
+    // A lane this row converged into is *also* carrying whatever reserved it
+    // from above, so it needs the pass-through vertical as well as the curve
+    // joining it. Without both, the through line breaks at the merge: on the
+    // Fall River / New Bedford line, the Fall River leg vanishes for exactly
+    // the one row where New Bedford's leg rejoins it.
     const through: number[] = [];
     for (let l = 0; l < lanes.length; l++) {
-      if (lanes[l] !== null && l !== lane && !branches.includes(l)) through.push(l);
+      if (lanes[l] !== null && l !== lane && !claimed.has(l)) through.push(l);
     }
 
     laneCount = Math.max(laneCount, lane + 1, ...branches.map(l => l + 1), ...through.map(l => l + 1));
-    rows.push({ lane, through, merges, branches, exiting: [...through, ...branches] });
+    rows.push({
+      lane,
+      through,
+      merges,
+      branches,
+      // A converged lane appears in both, and must be drawn once.
+      exiting: [...new Set([...through, ...branches])],
+    });
   }
 
   return { rows, laneCount: Math.max(1, laneCount) };
