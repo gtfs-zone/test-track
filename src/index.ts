@@ -44,6 +44,10 @@ session.addEventListener('staticloaded', e => {
   // `loadStaticFeed` replaces the previous feed's data in place — no explicit
   // clear, which would only cost an extra empty repaint.
   mapCtrl.loadStaticFeed((e as CustomEvent<GTFSStatic>).detail);
+  // Blank the vehicles layer for the new feed: `startPoller` resets the
+  // session's vehicle map, but if the first poll on the new feed fails the old
+  // feed's markers would otherwise linger on the map.
+  mapCtrl.clearVehicles();
 });
 session.addEventListener('vehicles', e => {
   mapCtrl.showVehicles((e as CustomEvent<VehiclePosition[]>).detail);
@@ -89,6 +93,9 @@ statusPage.initialize();
 // Clicking a stop, route, or vehicle on the map focuses it in the panel; the
 // reverse direction runs through onFocusChange above.
 mapCtrl.onSelect = state => appState.setFocus(state);
+// A click that hits no feature returns to home, clearing the spotlight, hiding
+// the panel, and closing the bottom sheet — all wired through onFocusChange.
+mapCtrl.onEmptySelect = () => appState.clearFocus();
 
 void appState.boot().then(loaded => {
   if (loaded) document.getElementById('refresh-rt-btn')!.classList.remove('hidden');

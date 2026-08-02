@@ -21,6 +21,7 @@ import {
   routeBadge,
   section,
   timestampWithAge,
+  vehicleDisplayName,
 } from '../render-utils';
 import { renderAlertList } from './alert-page';
 
@@ -142,6 +143,33 @@ export function renderVehiclePage(
   const trip = vehicle.tripId ? feed?.trips.get(vehicle.tripId) : undefined;
   const route = feed?.routes.get(trip?.route_id ?? vehicle.routeId ?? '');
 
+  // Every vehicle sharing this feed's `vehicle.id`. More than one is a GTFS-RT
+  // spec violation — VehicleDescriptor.id "should be unique per vehicle" — that
+  // test-track reports rather than hides (Plan 06 Root cause D).
+  const sharing = vehicle.vehicleId
+    ? [...ctx.session.vehicles.values()].filter(v => v.vehicleId === vehicle.vehicleId)
+    : [vehicle];
+  const sharedIdBanner =
+    sharing.length > 1
+      ? `<div class="rounded-lg border border-warning/50 bg-warning/10 p-3 text-xs space-y-1">
+           <p>The feed's <span class="font-mono">vehicle.id</span>
+           <span class="font-mono">${escHtml(vehicle.vehicleId)}</span> identifies
+           ${sharing.length} vehicles in this feed. GTFS-RT specifies
+           <span class="font-mono">VehicleDescriptor.id</span> "should be unique per
+           vehicle"; this feed reuses it.</p>
+           ${
+             vehicle.tripId
+               ? `<p>This instance is distinguished by trip
+                  <span class="font-mono">${escHtml(vehicle.tripId)}</span>${
+                    vehicle.startDate
+                      ? ` on <span class="font-mono">${escHtml(vehicle.startDate)}</span>`
+                      : ''
+                  }.</p>`
+               : ''
+           }
+         </div>`
+      : '';
+
   const goneBanner = live
     ? ''
     : `<div class="rounded-lg border border-warning/50 bg-warning/10 p-3 text-xs">
@@ -153,9 +181,10 @@ export function renderVehiclePage(
   return `
     <div class="space-y-4">
       ${goneBanner}
+      ${sharedIdBanner}
       <div class="space-y-1">
         <p class="text-xs uppercase tracking-wide opacity-50">Vehicle</p>
-        <h2 class="text-lg font-semibold leading-tight">${escHtml(vehicle.label || vehicle.id)}</h2>
+        <h2 class="text-lg font-semibold leading-tight">${escHtml(vehicleDisplayName(feed, vehicle))}</h2>
         <div class="flex items-center gap-2 flex-wrap">
           ${route ? routeBadge(ctx, route) : ''}
           ${trip?.headsign ? `<span class="text-xs opacity-60">${escHtml(trip.headsign)}</span>` : ''}
@@ -197,6 +226,12 @@ export function renderVehiclePage(
               : escHtml(OCCUPANCY_LABELS[vehicle.occupancyStatus] ?? String(vehicle.occupancyStatus)),
           ),
           prop('Timestamp', timestampWithAge(vehicle.timestamp)),
+          prop(
+            'vehicle.id',
+            vehicle.vehicleId
+              ? `<span class="font-mono">${escHtml(vehicle.vehicleId)}</span>`
+              : '<span class="opacity-40">empty in the feed</span>',
+          ),
           prop('Feed entity id', `<span class="font-mono">${escHtml(vehicle.entityId)}</span>`),
         ]),
       )}

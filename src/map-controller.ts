@@ -8,8 +8,19 @@ import { LayerManager } from './modules/layer-manager';
 import type { MapDataIssues } from './modules/layer-manager';
 
 export interface VehiclePosition {
-  /** `vehicle.id` when the feed provides one, else the feed entity id. */
-  id: string;
+  /**
+   * test-track's own internal instance handle: the map feature id, the key in
+   * `FeedSession.vehicles`, and the `vehicle_id` URL param. Derived to be unique
+   * per vehicle even when the feed's `vehicle.id` is not (Plan 06 Root cause D).
+   * When the feed's ids are already unique, `key === vehicleId`.
+   */
+  key: string;
+  /**
+   * The feed's `vehicle.id`, **verbatim** — duplicated, empty, whatever the feed
+   * said. This is reportage, never plumbing: it is what the vehicle page shows
+   * and dumps, and never synthesized.
+   */
+  vehicleId: string;
   entityId: string;
   label?: string;
   lat: number;
@@ -97,8 +108,20 @@ export class MapController {
   /** Height of the mobile bottom sheet, kept out of the camera's way. */
   private bottomPadding = 0;
 
+  /**
+   * Flips true exactly once, on the first `load`, and never back. Work issued
+   * before that point is queued and flushed in order; nothing else consults
+   * `map.loaded()`, which goes false on every dirty frame and would silently
+   * drop map updates issued mid-repaint (see Plan 06 Root cause A).
+   */
+  private ready = false;
+  private pending: Array<() => void> = [];
+
   /** Called when the user clicks a stop, route, or vehicle on the map. */
   onSelect: ((state: PageState) => void) | null = null;
+
+  /** Called when the user clicks the map away from any feature. */
+  onEmptySelect: (() => void) | null = null;
 
   initialize(container: string): void {
     const view = restoreView();
@@ -130,6 +153,7 @@ export class MapController {
           break;
       }
     };
+    this.layers.onEmptySelect = () => this.onEmptySelect?.();
 
     this.basemap = new BasemapControl(this.map, {
       initial: appearance,
@@ -141,6 +165,10 @@ export class MapController {
     this.map.once('load', () => {
       this.layers.rebuild();
       this.layers.attachInteraction();
+      this.ready = true;
+      const queued = this.pending;
+      this.pending = [];
+      for (const fn of queued) fn();
     });
 
     // setStyle drops every source and layer we own, so each basemap or
@@ -171,11 +199,8 @@ export class MapController {
   }
 
   private whenLoaded(fn: () => void): void {
-    if (this.map.loaded()) {
-      fn();
-    } else {
-      this.map.once('load', fn);
-    }
+    if (this.ready) fn();
+    else this.pending.push(fn);
   }
 
   loadStaticFeed(feed: GTFSStatic): void {

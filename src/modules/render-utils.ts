@@ -9,7 +9,8 @@
  */
 
 import type { RawRow } from '../gtfs-static';
-import type { Route } from '../gtfs-static';
+import type { GTFSStatic, Route } from '../gtfs-static';
+import type { VehiclePosition } from '../map-controller';
 import type { PageState } from '../types/page-state';
 import type { FeedSession } from './feed-session';
 
@@ -212,4 +213,26 @@ export function propList(rows: string[]): string {
 
 export function missing(what: string): string {
   return `<p class="text-sm opacity-60">${escHtml(what)} is not in the loaded feed.</p>`;
+}
+
+/**
+ * The name to *display* for a vehicle. Prefers the static trip's
+ * `trip_short_name` — for Amtrak this is the train number — then the trip
+ * headsign, then the feed's `vehicle.label`, then the id. This is display-layer
+ * only: the raw dump and the id field still show exactly what the feed sent.
+ *
+ * The feed's `label` was `hell-gate-bridge-amtrak` for all 53 trains before the
+ * upstream fix (Plan 06 Root cause D), so it named nothing; `trip_short_name`
+ * distinguishes them either way.
+ */
+export function vehicleDisplayName(
+  feed: GTFSStatic | null | undefined,
+  v: VehiclePosition,
+): string {
+  const trip = v.tripId ? feed?.trips.get(v.tripId) : undefined;
+  const shortName = trip?.raw?.trip_short_name?.trim();
+  if (shortName) return shortName;
+  if (trip?.headsign) return trip.headsign;
+  if (v.label) return v.label;
+  return v.vehicleId || v.key;
 }

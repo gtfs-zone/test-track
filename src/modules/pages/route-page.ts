@@ -31,6 +31,7 @@ import {
   renderRawFields,
   routeBadge,
   section,
+  vehicleDisplayName,
 } from '../render-utils';
 import { renderAlertList } from './alert-page';
 
@@ -174,7 +175,7 @@ function eta(prediction: Prediction | undefined): string {
 }
 
 function vehicleChip(ctx: RenderContext, vehicle: VehiclePosition): string {
-  const label = vehicle.label || vehicle.id;
+  const label = vehicleDisplayName(ctx.session.staticFeed, vehicle);
   const status =
     vehicle.currentStatus === undefined
       ? ''
@@ -187,7 +188,7 @@ function vehicleChip(ctx: RenderContext, vehicle: VehiclePosition): string {
         )}</span>`;
   return `<div class="text-xs flex items-center gap-1 flex-wrap">
     <span class="badge badge-xs badge-neutral">▶</span>
-    ${entityLink(ctx, { type: 'vehicle', vehicle_id: vehicle.id }, label, 'link link-hover font-medium')}
+    ${entityLink(ctx, { type: 'vehicle', vehicle_id: vehicle.key }, label, 'link link-hover font-medium')}
     ${status ? `<span class="opacity-40">·</span>${status}` : ''}
     ${occupancy ? `<span class="opacity-40">·</span>${occupancy}` : ''}
   </div>`;
@@ -297,7 +298,7 @@ function renderUnplaced(ctx: RenderContext, unplaced: Unplaced[]): string {
      <ul class="space-y-1">${unplaced
        .map(
          u => `<li class="text-xs flex justify-between gap-2">
-           ${entityLink(ctx, { type: 'vehicle', vehicle_id: u.vehicle.id }, u.vehicle.label || u.vehicle.id)}
+           ${entityLink(ctx, { type: 'vehicle', vehicle_id: u.vehicle.key }, vehicleDisplayName(ctx.session.staticFeed, u.vehicle))}
            <span class="opacity-60 text-right">${escHtml(u.reason)}</span>
          </li>`,
        )

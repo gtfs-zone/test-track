@@ -184,7 +184,14 @@ export class FeedSession extends EventTarget {
     poller.addEventListener('vehicles', e => {
       const detail = (e as CustomEvent<VehiclePosition[]>).detail;
       this.rtCounts.vehicles = detail.length;
-      this.vehicles = new Map(detail.map(v => [v.id, v]));
+      this.vehicles = new Map(detail.map(v => [v.key, v]));
+      // Keys are derived to be unique, so the map must not lose anything. A
+      // mismatch means the derivation collapsed two vehicles onto one key.
+      if (import.meta.env.DEV && this.vehicles.size !== detail.length) {
+        console.warn(
+          `[FeedSession] vehicle key collision: ${detail.length} payload vehicles, ${this.vehicles.size} distinct keys`,
+        );
+      }
       this.dispatchEvent(new CustomEvent<VehiclePosition[]>('vehicles', { detail }));
     });
     poller.addEventListener('tripUpdates', e => {

@@ -37,6 +37,13 @@ export interface MapDataIssues {
   stopsMissingCoords: number;
   /** Vehicles whose `trip.route_id` doesn't resolve against the static feed. */
   vehiclesUnmatched: number;
+  /**
+   * Vehicles sharing a promoted map-feature id after key derivation. Must be 0:
+   * a non-zero count means the derived `key` collapsed two vehicles onto one
+   * feature (the "one click highlights all of them" failure) and the derivation
+   * in `gtfs-rt.ts` is broken (Plan 06 Phase 4 backstop).
+   */
+  vehiclesDuplicateKeys: number;
 }
 
 /** Layer ids in paint order, bottom first. Used by `clear()` and ordering. */
@@ -151,9 +158,7 @@ export class LayerManager {
   private latestVehicles: VehiclePosition[] = [];
 
   private focus: FocusTarget = null;
-  /** Stops that currently carry the `onRoute` feature-state on the map. */
-  private routeStopIds: string[] = [];
-  /** Stops that *should* carry it — differs while a source is still loading. */
+  /** Stops that *should* carry the `onRoute` feature-state on the map. */
   private wantedRouteStopIds: string[] = [];
   /** Armed while feature state is waiting for a source to finish loading. */
   private retry: (() => void) | null = null;
@@ -162,9 +167,12 @@ export class LayerManager {
     stopsMissingId: 0,
     stopsMissingCoords: 0,
     vehiclesUnmatched: 0,
+    vehiclesDuplicateKeys: 0,
   };
 
   onSelect: ((target: Exclude<FocusTarget, null>) => void) | null = null;
+  /** Called when a click lands on no feature — the map's "click away". */
+  onEmptySelect: (() => void) | null = null;
 
   constructor(map: MapLibreMap) {
     this.map = map;
@@ -179,13 +187,10 @@ export class LayerManager {
     this.pushData('stops', this.stopsData);
     this.pushData('routes', this.routesData);
     // A new feed almost never contains the old focus; AppState clears it
-    // separately, but the map's own spotlight has to go now either way.
-    this.focus = null;
-    this.routeStopIds = [];
-    this.wantedRouteStopIds = [];
-    this.applyStopDim();
-    this.applySpotlight(null);
-    this.disarmRetry();
+    // separately, but the map's own spotlight and feature state have to go now
+    // either way. setFocus(null) wipes every source's feature state, so a stale
+    // `focused`/`onRoute` cannot survive into the new feed.
+    this.setFocus(null);
   }
 
   setShapeMode(mode: ShapeMode): void {
@@ -207,10 +212,6 @@ export class LayerManager {
   // ── Focus ──────────────────────────────────────────────────────────────────
 
   setFocus(target: FocusTarget): void {
-    const previous = this.focus;
-    if (previous && (!target || previous.kind !== target.kind || previous.id !== target.id)) {
-      this.setState(previous.kind, previous.id, { focused: false });
-    }
     this.focus = target;
 
     // Route focus spotlights the route and its stops; anything else clears it.
@@ -223,23 +224,36 @@ export class LayerManager {
   /**
    * Push the wanted feature state onto the sources.
    *
+   * Every pass first wipes *all* feature state on each source with
+   * `removeFeatureState({ source })`, then re-applies only what is wanted now.
+   * Feature state on a GeoJSON source survives `setData`, so a `focused: true`
+   * or `onRoute: true` left on a feature would otherwise leak across focus
+   * changes and — since a new feed reuses the same source — across feed changes
+   * too (Plan 06 Root cause C). Clearing wholesale removes that entire class of
+   * stale-highlight bug in one call.
+   *
    * `setFeatureState` silently no-ops when the source hasn't loaded its data
    * yet — exactly the case for the first focus restored from a link, and again
    * after every basemap change. Anything that doesn't land is retried on
-   * `sourcedata` until it does.
+   * `sourcedata` until it does; the clear runs on each retry pass as well.
    */
   private syncFeatureState(): void {
     let settled = true;
 
-    if (this.sourceReady('stops')) {
-      for (const id of this.routeStopIds) {
-        this.setState('stop', id, { onRoute: false });
+    for (const source of SOURCE_IDS) {
+      if (!this.map.getSource(source)) continue;
+      try {
+        this.map.removeFeatureState({ source });
+      } catch (err) {
+        console.debug(`[LayerManager] removeFeatureState failed for ${source}`, err);
       }
+    }
+
+    if (this.sourceReady('stops')) {
       for (const id of this.wantedRouteStopIds) {
         this.setState('stop', id, { onRoute: true });
       }
-      this.routeStopIds = this.wantedRouteStopIds;
-    } else if (this.wantedRouteStopIds.length > 0 || this.routeStopIds.length > 0) {
+    } else if (this.wantedRouteStopIds.length > 0) {
       settled = false;
     }
 
@@ -340,7 +354,7 @@ export class LayerManager {
   }
 
   vehiclePosition(vehicleId: string): [number, number] | null {
-    const v = this.latestVehicles.find(p => p.id === vehicleId);
+    const v = this.latestVehicles.find(p => p.key === vehicleId);
     return v ? [v.lon, v.lat] : null;
   }
 
@@ -371,7 +385,6 @@ export class LayerManager {
     this.addSources();
     this.addLayers();
     // Neither paint overrides nor feature state survive a style swap.
-    this.routeStopIds = [];
     this.applyStopDim();
     this.applySpotlight(this.focus?.kind === 'route' ? [this.focus.id] : null);
     this.syncFeatureState();
@@ -718,6 +731,7 @@ export class LayerManager {
     this.map.on('click', e => {
       const hit = this.queryTop(e.point);
       if (hit) this.onSelect?.(hit);
+      else this.onEmptySelect?.();
     });
 
     this.map.on('mousemove', e => {
@@ -842,17 +856,21 @@ export class LayerManager {
   private buildVehicles(positions: VehiclePosition[]): GeoJSON.FeatureCollection {
     const feed = this.feed;
     let unmatched = 0;
+    const seenKeys = new Set<string>();
+    let duplicateKeys = 0;
 
     const features = positions.map(v => {
       const routeId = v.routeId || (v.tripId ? feed?.trips.get(v.tripId)?.route_id : undefined);
       const route = routeId ? feed?.routes.get(routeId) : undefined;
       if (!route) unmatched++;
+      if (seenKeys.has(v.key)) duplicateKeys++;
+      else seenKeys.add(v.key);
 
       return {
         type: 'Feature' as const,
         geometry: { type: 'Point' as const, coordinates: [v.lon, v.lat] },
         properties: {
-          vehicle_id: v.id,
+          vehicle_id: v.key,
           bearing: v.bearing ?? 0,
           has_bearing: v.bearing !== undefined,
           color: route?.color ?? CONFIG.VEHICLE_UNMATCHED_COLOR,
@@ -863,6 +881,7 @@ export class LayerManager {
     });
 
     this.issues.vehiclesUnmatched = unmatched;
+    this.issues.vehiclesDuplicateKeys = duplicateKeys;
     return { type: 'FeatureCollection', features };
   }
 

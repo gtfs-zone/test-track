@@ -20,6 +20,7 @@ import {
   renderRawFields,
   routeBadge,
   section,
+  vehicleDisplayName,
 } from '../render-utils';
 import { renderAlertList } from './alert-page';
 
@@ -95,7 +96,7 @@ function renderVehiclesHere(ctx: RenderContext, rt: RtIndex, stopId: string): st
     `<ul class="space-y-1 text-xs">${vehicles
       .map(
         v => `<li class="flex justify-between gap-2">
-          ${entityLink(ctx, { type: 'vehicle', vehicle_id: v.id }, v.label || v.id)}
+          ${entityLink(ctx, { type: 'vehicle', vehicle_id: v.key }, vehicleDisplayName(ctx.session.staticFeed, v))}
           <span class="opacity-60">${escHtml(
             VEHICLE_STATUS_LABELS[v.currentStatus ?? -1] ?? '',
           )}</span>

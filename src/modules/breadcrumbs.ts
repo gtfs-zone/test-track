@@ -1,5 +1,6 @@
 import type { BreadcrumbItem, PageState } from '../types/page-state';
 import type { FeedSession } from './feed-session';
+import { vehicleDisplayName } from './render-utils';
 
 /**
  * Synchronous breadcrumb building and focus validation against the loaded feed.
@@ -22,7 +23,8 @@ export function stopLabel(session: FeedSession, stopId: string): string {
 }
 
 export function vehicleLabel(session: FeedSession, vehicleId: string): string {
-  return session.vehicles.get(vehicleId)?.label || vehicleId;
+  const vehicle = session.vehicles.get(vehicleId);
+  return vehicle ? vehicleDisplayName(session.staticFeed, vehicle) : vehicleId;
 }
 
 export function alertLabel(session: FeedSession, alertId: string): string {

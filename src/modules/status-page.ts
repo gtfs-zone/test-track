@@ -127,6 +127,46 @@ function renderEndpoint(ep: EndpointStatus, nextPollAt: number | null): string {
       </div>
 
       ${ep.header ? renderHeaderDump(ep) : ''}
+      ${renderVehicleIdReport(ep)}
+    </div>`;
+}
+
+const VEHICLE_ID_STRATEGY_NOTE: Record<string, string> = {
+  trip: 'derived from vehicle.id + trip_id + start_date',
+  entity: 'derived from vehicle.id + trip + entity.id',
+  index: 'no usable identity — derived from the entity index',
+};
+
+/**
+ * Report, don't absorb: when the vehicles feed's `vehicle.id` is not unique per
+ * vehicle, state it plainly and name the offending ids (Plan 06 Root cause D).
+ * A well-formed feed takes the `unique` no-op path and this renders nothing.
+ */
+function renderVehicleIdReport(ep: EndpointStatus): string {
+  if (ep.name !== 'vehicles') return '';
+  const strategy = ep.vehicleIdStrategy;
+  if (!strategy || strategy === 'unique') return '';
+
+  const dups = ep.vehiclesDuplicateIds;
+  const list = dups.length
+    ? `<ul class="mt-1 space-y-0.5">${dups
+        .map(
+          d =>
+            `<li><span class="font-mono break-all">${escHtml(d.vehicleId || '(empty)')}</span> — ${d.count} vehicles</li>`,
+        )
+        .join('')}</ul>`
+    : '';
+
+  return `
+    <div class="rounded-lg border border-warning/40 bg-warning/10 p-2 text-xs space-y-1">
+      <p class="font-medium">vehicle.id is not unique per vehicle</p>
+      <p class="opacity-70">
+        GTFS-RT specifies <span class="font-mono">VehicleDescriptor.id</span> "should be
+        unique per vehicle, and is used for tracking the vehicle as it proceeds through
+        the system." This feed reuses it, so test-track derived an instance key
+        (${escHtml(VEHICLE_ID_STRATEGY_NOTE[strategy] ?? strategy)}) to address vehicles.
+      </p>
+      ${list}
     </div>`;
 }
 
@@ -207,6 +247,11 @@ function renderMapIssues(issues: MapDataIssues | null): string {
       'Vehicles with no matching route',
       issues.vehiclesUnmatched,
       'Drawn in the neutral color instead of a route color.',
+    ],
+    [
+      'Vehicles collapsed onto one map feature',
+      issues.vehiclesDuplicateKeys,
+      'Should be 0 — a non-zero count means the vehicle key derivation is broken.',
     ],
   ];
   if (rows.every(([, count]) => count === 0)) return '';
