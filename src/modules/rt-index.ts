@@ -112,6 +112,19 @@ export class RtIndex {
     return (future.length ? future : list).slice(0, limit);
   }
 
+  /**
+   * Departures merged and re-sorted across several stops — the station page's
+   * aggregation over a station's platforms. Each returned prediction keeps its
+   * own `stop_id`, so the caller can label which platform it came from.
+   */
+  upcomingAtStops(stopIds: string[], limit: number, nowSeconds = Date.now() / 1000): Prediction[] {
+    const all: Prediction[] = [];
+    for (const id of stopIds) all.push(...(this.predictionsByStop.get(id) ?? []));
+    const future = all.filter(p => p.time === undefined || p.time >= nowSeconds - 60);
+    const list = future.length ? future : all;
+    return list.sort((a, b) => (a.time ?? Infinity) - (b.time ?? Infinity)).slice(0, limit);
+  }
+
   /** The soonest prediction at a stop for one specific route. */
   nextAtStopForRoute(
     stopId: string,

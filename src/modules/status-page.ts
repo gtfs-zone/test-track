@@ -277,6 +277,50 @@ function renderMapIssues(issues: MapDataIssues | null): string {
     </section>`;
 }
 
+/**
+ * Malformed `parent_station` links found while indexing the station hierarchy.
+ * A station page aggregates over its children, so a mis-wired hierarchy is a
+ * reportable feed defect (Plan 06 Phase 7).
+ */
+function renderStationIssues(session: FeedSession): string {
+  const issues = session.staticFeed?.stationIssues;
+  if (!issues) return '';
+  const rows: Array<[string, number, string]> = [
+    [
+      'parent_station points at a missing stop',
+      issues.danglingParent,
+      'The referenced parent is not in stops.txt.',
+    ],
+    [
+      'parent_station points at the wrong type',
+      issues.nonStationParent,
+      'A platform/entrance/node should reference a station; a boarding area a platform.',
+    ],
+    ['Stops caught in a parent_station cycle', issues.cyclicStops, 'Traversal is cut to avoid hanging.'],
+  ];
+  if (rows.every(([, count]) => count === 0)) return '';
+
+  return `
+    <section class="space-y-2">
+      <h3 class="font-semibold text-sm">Station hierarchy issues</h3>
+      <div class="rounded-lg border border-warning/40 p-3 space-y-2">
+        ${rows
+          .filter(([, count]) => count > 0)
+          .map(
+            ([label, count, note]) => `
+          <div>
+            <div class="flex justify-between gap-2 text-xs">
+              <span>${escHtml(label)}</span>
+              <span class="tabular-nums font-semibold">${count}</span>
+            </div>
+            <p class="text-xs opacity-50">${escHtml(note)}</p>
+          </div>`,
+          )
+          .join('')}
+      </div>
+    </section>`;
+}
+
 /** feed_info.txt and agency.txt, verbatim. */
 function renderRawTables(session: FeedSession): string {
   const feed = session.staticFeed;
@@ -430,6 +474,7 @@ export class StatusPage {
       <div class="space-y-4">
         ${renderCounts(this.session)}
         ${renderMapIssues(this.mapIssues?.() ?? null)}
+        ${renderStationIssues(this.session)}
         ${renderStaticSection(this.session)}
         ${renderEndpoints(this.session)}
         ${renderShare(this.session)}

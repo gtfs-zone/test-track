@@ -149,6 +149,15 @@ export class GTFSStatic {
   /** Trip ids serving a stop, in first-seen order. */
   stopTrips = new Map<string, string[]>();
 
+  /** Direct children of each stop, keyed by parent `stop_id`. */
+  childrenByParent = new Map<string, string[]>();
+  /**
+   * Malformed `parent_station` references, surfaced on the status page rather
+   * than thrown. A station page aggregates over its children, so a feed that
+   * mis-wires the hierarchy is worth reporting.
+   */
+  stationIssues = { danglingParent: 0, nonStationParent: 0, cyclicStops: 0 };
+
   private stopTimeCount = 0;
 
   async loadFromFile(file: File, hooks: LoadHooks = {}): Promise<void> {
@@ -198,6 +207,85 @@ export class GTFSStatic {
       done++;
       hooks.onParse?.(name, done, PARSE_ORDER.length);
     }
+
+    this.buildStationIndex();
+  }
+
+  /**
+   * Index the station hierarchy and count malformed `parent_station` links.
+   *
+   * Spec: a platform / entrance / generic node (`location_type` 0 / 2 / 3) has a
+   * station (type 1) parent; a boarding area (type 4) has a platform (type 0)
+   * parent. Anything else is a feed defect — counted, not thrown.
+   */
+  private buildStationIndex(): void {
+    const expectedParentType: Record<number, number> = { 0: 1, 2: 1, 3: 1, 4: 0 };
+    for (const stop of this.stops.values()) {
+      const parentId = stop.parent_station;
+      if (!parentId) continue;
+      const parent = this.stops.get(parentId);
+      if (!parent) {
+        this.stationIssues.danglingParent++;
+        continue;
+      }
+      const expected = expectedParentType[stop.location_type];
+      if (expected !== undefined && parent.location_type !== expected) {
+        this.stationIssues.nonStationParent++;
+      }
+      let children = this.childrenByParent.get(parentId);
+      if (!children) this.childrenByParent.set(parentId, (children = []));
+      children.push(stop.id);
+    }
+
+    // A parent_station cycle would hang descendants(); count the stops caught
+    // in one so the traversal's visited-guard is a reported fact, not a silent
+    // save.
+    for (const stop of this.stops.values()) {
+      const seen = new Set<string>([stop.id]);
+      let current: string | undefined = stop.parent_station;
+      while (current && this.stops.has(current)) {
+        if (seen.has(current)) {
+          this.stationIssues.cyclicStops++;
+          break;
+        }
+        seen.add(current);
+        current = this.stops.get(current)?.parent_station;
+      }
+    }
+  }
+
+  /** Walk `parent_station` to the topmost ancestor, guarding against cycles. */
+  stationRoot(stopId: string): string {
+    const seen = new Set<string>([stopId]);
+    let current = stopId;
+    for (;;) {
+      const parent = this.stops.get(current)?.parent_station;
+      if (!parent || !this.stops.has(parent) || seen.has(parent)) return current;
+      seen.add(parent);
+      current = parent;
+    }
+  }
+
+  /** Every stop beneath `stopId` in the hierarchy, recursive, cycle-guarded. */
+  descendants(stopId: string): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>([stopId]);
+    const stack = [...(this.childrenByParent.get(stopId) ?? [])];
+    while (stack.length) {
+      const id = stack.pop()!;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.push(id);
+      for (const child of this.childrenByParent.get(id) ?? []) {
+        if (!seen.has(child)) stack.push(child);
+      }
+    }
+    return out;
+  }
+
+  /** Boardable descendants only (`location_type` 0) — the service-bearing ones. */
+  boardableDescendants(stopId: string): string[] {
+    return this.descendants(stopId).filter(id => this.stops.get(id)?.location_type === 0);
   }
 
   private ingestAgencies(rows: RawRow[]): void {

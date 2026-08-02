@@ -212,10 +212,15 @@ export class LayerManager {
   // ── Focus ──────────────────────────────────────────────────────────────────
 
   setFocus(target: FocusTarget): void {
-    this.focus = target;
+    // A platform is never drawn, so focusing one highlights and eases to its
+    // drawn station instead (Plan 06 Phase 7). The panel still shows the
+    // platform page; only the map resolves upward.
+    this.focus =
+      target?.kind === 'stop' ? { kind: 'stop', id: this.drawnAncestor(target.id) } : target;
 
     // Route focus spotlights the route and its stops; anything else clears it.
-    this.wantedRouteStopIds = target?.kind === 'route' ? this.stopIdsForRoute(target.id) : [];
+    this.wantedRouteStopIds =
+      target?.kind === 'route' ? this.stopIdsForRoute(target.id) : [];
     this.applyStopDim();
     this.applySpotlight(target?.kind === 'route' ? [target.id] : null);
     this.syncFeatureState();
@@ -351,6 +356,14 @@ export class LayerManager {
     const stop = this.feed?.stops.get(stopId);
     if (!stop || !Number.isFinite(stop.lat) || !Number.isFinite(stop.lon)) return null;
     return [stop.lon, stop.lat];
+  }
+
+  /**
+   * Where the camera should ease to when focusing a stop: the drawn stop the
+   * focus resolves to (a platform resolves up to its station).
+   */
+  focusPosition(stopId: string): [number, number] | null {
+    return this.stopPosition(this.drawnAncestor(stopId));
   }
 
   vehiclePosition(vehicleId: string): [number, number] | null {
@@ -885,15 +898,39 @@ export class LayerManager {
     return { type: 'FeatureCollection', features };
   }
 
-  /** Every stop served by a route, via its trips' stop_times. */
+  /**
+   * Every *drawn* stop served by a route. `stop_times` names platforms, which
+   * are page-only and never drawn (Plan 06 Root cause E), so each stop id is
+   * mapped up to its drawn ancestor — otherwise a subway route's `onRoute`
+   * state lands on nothing and its stations get dimmed with everything else.
+   */
   private stopIdsForRoute(routeId: string): string[] {
     const feed = this.feed;
     if (!feed) return [];
     const ids = new Set<string>();
     for (const trip of feed.tripsByRoute.get(routeId) ?? []) {
-      for (const st of feed.stopTimesByTrip.get(trip.trip_id) ?? []) ids.add(st.stop_id);
+      for (const st of feed.stopTimesByTrip.get(trip.trip_id) ?? []) {
+        ids.add(this.drawnAncestor(st.stop_id));
+      }
     }
     return [...ids];
+  }
+
+  /**
+   * The nearest ancestor of a stop that is actually drawn on the map — a
+   * top-level stop or a station. Platforms resolve up to their station; a
+   * platform whose ancestry is not drawn resolves to itself and simply gets no
+   * highlight.
+   */
+  private drawnAncestor(stopId: string): string {
+    const feed = this.feed;
+    if (!feed) return stopId;
+    const stop = feed.stops.get(stopId);
+    if (!stop) return stopId;
+    // Drawn: a station, or a stop with no parent (STOPS_FILTER).
+    if (stop.location_type === 1 || !stop.parent_station) return stopId;
+    const root = feed.stationRoot(stopId);
+    return feed.stops.has(root) ? root : stopId;
   }
 }
 

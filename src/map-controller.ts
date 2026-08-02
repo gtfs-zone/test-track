@@ -283,7 +283,7 @@ export class MapController {
 
       case 'stop': {
         this.layers.setFocus({ kind: 'stop', id: state.stop_id });
-        this.easeToPoint(this.layers.stopPosition(state.stop_id));
+        this.easeToPoint(this.layers.focusPosition(state.stop_id));
         return;
       }
 
