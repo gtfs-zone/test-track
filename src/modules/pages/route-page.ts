@@ -211,6 +211,7 @@ function renderStrip(
   rt: RtIndex,
   route: Route,
   sequence: RouteSequence,
+  directionId: string,
   placed: PlacedVehicle[],
 ): string {
   const feed = ctx.session.staticFeed;
@@ -238,7 +239,7 @@ function renderStrip(
     }
 
     const name = feed?.stops.get(stop.stop_id)?.name || stop.stop_id;
-    const prediction = rt.nextAtStopForRoute(stop.stop_id, route.id, feed ?? null);
+    const prediction = rt.nextAtStopForRoute(stop.stop_id, route.id, directionId, feed ?? null);
     const stopAlerts = alertsForRouteStop(ctx.session, route.id, stop.stop_id);
 
     rows.push({
@@ -366,7 +367,7 @@ export function renderRoutePage(
 
       ${renderDirectionTabs(ctx, route.id, directions, active)}
       ${renderCoverage(sequence)}
-      ${renderStrip(ctx, rt, route, sequence, placed)}
+      ${renderStrip(ctx, rt, route, sequence, active, placed)}
       ${renderUnplaced(ctx, unplaced)}
 
       ${section(

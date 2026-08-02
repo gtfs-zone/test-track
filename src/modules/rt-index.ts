@@ -125,17 +125,32 @@ export class RtIndex {
     return list.sort((a, b) => (a.time ?? Infinity) - (b.time ?? Infinity)).slice(0, limit);
   }
 
-  /** The soonest prediction at a stop for one specific route. */
+  /**
+   * The soonest prediction at a stop for one specific route and direction.
+   *
+   * The direction is not optional: a stop on a bidirectional route is served by
+   * trips going both ways, and the soonest of those is as likely as not the one
+   * the reader is not looking at. A prediction whose direction cannot be
+   * determined at all is skipped rather than guessed onto this direction, the
+   * same call `placeVehicles` makes for vehicles it cannot resolve.
+   */
   nextAtStopForRoute(
     stopId: string,
     routeId: string,
+    directionId: string,
     feed: GTFSStatic | null,
     nowSeconds = Date.now() / 1000,
   ): Prediction | undefined {
     return (this.predictionsByStop.get(stopId) ?? []).find(p => {
       if (p.time !== undefined && p.time < nowSeconds - 60) return false;
-      const tripRoute = feed?.trips.get(p.trip_id)?.route_id ?? p.update.trip?.routeId;
-      return tripRoute === routeId;
+      const trip = feed?.trips.get(p.trip_id);
+      const tripRoute = trip?.route_id ?? p.update.trip?.routeId;
+      if (tripRoute !== routeId) return false;
+      // Static wins; the realtime field is a number, so both are stringified.
+      // `''` from static is a known direction (the column was absent for that
+      // trip) and must still match the `''` tab — only null/undefined is unknown.
+      const dir = trip?.direction_id ?? p.update.trip?.directionId;
+      return dir !== undefined && dir !== null && String(dir) === directionId;
     });
   }
 }
