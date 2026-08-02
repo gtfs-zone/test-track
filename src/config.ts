@@ -49,4 +49,9 @@ export const CONFIG = {
   RT_INTERVAL_KEY: 'tt.rt.interval',
   RT_INTERVAL_DEFAULT_MS: 15000,
   RT_INTERVAL_OPTIONS_MS: [5000, 10000, 15000, 30000, 60000],
+
+  // Prod URL of the schedule editor (coloring-book). Hardcoded to prod on
+  // purpose: dev editor URLs change often, so a shared/edit link should always
+  // point at the stable public editor. It loads a static GTFS via `#load=<url>`.
+  EDITOR_BASE: 'https://edit.gtfs.zone',
 } as const;

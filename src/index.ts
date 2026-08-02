@@ -103,9 +103,19 @@ mapCtrl.onEmptySelect = () => appState.clearFocus();
 // is a feed to act on.
 const reloadBtn = document.getElementById('reload-feed-btn') as HTMLButtonElement;
 const intervalDropdown = document.getElementById('rt-interval-dropdown')!;
+const editBtn = document.getElementById('edit-feed-btn') as HTMLAnchorElement;
 function showFeedControls(): void {
   reloadBtn.classList.remove('hidden');
   intervalDropdown.classList.remove('hidden');
+  // The editor link only works from a URL-backed static feed — file uploads
+  // have no URL to hand off — so it stays hidden otherwise.
+  const staticSrc = session.selection?.static;
+  if (staticSrc?.kind === 'url' && staticSrc.url) {
+    editBtn.href = `${CONFIG.EDITOR_BASE}/#load=${encodeURIComponent(staticSrc.url)}`;
+    editBtn.classList.remove('hidden');
+  } else {
+    editBtn.classList.add('hidden');
+  }
 }
 
 void appState.boot().then(loaded => {
