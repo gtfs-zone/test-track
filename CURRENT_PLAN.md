@@ -1,201 +1,225 @@
-# Replace Feed Config Form with Load Button Flow
+# Route Strip: Full Coverage, Endpoints, and a Branch Tree
 
 ## Summary
 
-Replace the current "Feed Configuration" card (which has raw URL inputs + upload button inline) with a cleaner UX: a simplified card that shows current feed status and a **Load** button that opens a dropdown menu with three choices — **Examples**, **From TransitLand Atlas**, and **Manual**. Copied and adapted from coloring-book's `atlas-search.ts` / `modal-utils.ts` pattern. The Manual option opens a modal with URL/upload fields for all four feed types.
+The route page renders one direction of a route as a vertical strip built from the
+shortest common supersequence (SCS) of the direction's distinct stop patterns. Three
+things are wrong with it:
+
+1. **It drops most of the route.** `build()` capped the strip at 12 stop patterns. On
+   routes where nearly every trip has its own pattern (Amtrak Northeast Regional), that
+   covers a small fraction of trips; every other vehicle lands in the "this trip's stop
+   pattern is not among those shown" list, and stops served only by dropped patterns —
+   including the trips continuing past Washington DC to Norfolk VA — vanish entirely.
+2. **The SCS fold lists stops twice.** Once every pattern is admitted, the pairwise fold
+   concatenates patterns that share few stops instead of interleaving them.
+3. **It is linear, so branches are invisible.** The Red Line's Ashmont/Braintree split is
+   fully present in the data and renders as one flat column.
+
+The fix, in order: show every pattern → order stops correctly → mark where trips start and
+end → draw a `git log --graph` style rail for genuine branches.
+
+**Phases 1 and 2 are done and committed** (`65c72f8`); Phase 3 is the remaining work.
 
 ## Relevant Context
 
-- `src/modules/modal-utils.ts` already exists but is behind coloring-book — sync it in Phase 0 before proceeding
-- coloring-book's `atlas-search.ts` uses `showModal()` + fuzzy search against `public/atlas-feeds.json`; we adapt the same pattern
-- coloring-book's `generate-atlas-data.ts` only fetches `gtfs` (static schedule) feeds; we extend it to also capture the three RT URL fields (`realtime_vehicle_positions`, `realtime_trip_updates`, `realtime_alerts`) from the DMFR spec
-- The `FeedConfig` object (static URL or file, plus three RT URLs, plus CORS flag) threads through all three load paths
-- `@leeoniya/ufuzzy` is already a dep in coloring-book — check whether it's already in test-track's `package.json` before adding it
-- DaisyUI dropdown: `<div class="dropdown">` + `<ul class="dropdown-content menu">` — no extra JS needed for open/close
-- The existing `loadFeeds()` function in `index.ts` reads directly from DOM inputs; we replace it with a function that accepts a `FeedConfig` argument
+### Files
 
-## Feed Config type (used across all phases)
+- `src/modules/route-sequence.ts` — builds the canonical stop order and the trip→strip
+  position mapping. Cached per `GTFSStatic` in a `WeakMap`.
+- `src/modules/pages/route-page.ts` — renders the strip as a two-column CSS grid
+  (rail, content). Pure string templating; `panel-renderer.ts` injects via `innerHTML`.
+- `src/modules/scs.ts` — **vendored, `@status verbatim`. Do not modify.** Its
+  `SCSResultHelper`, `shortestCommonSupersequenceWithAlignments` and `computeAlignments`
+  are unused by this repo.
 
-```ts
-interface FeedConfig {
-  staticUrl?: string;
-  staticFile?: File;
-  vehiclesUrl?: string;
-  tripUpdatesUrl?: string;
-  alertsUrl?: string;
-  useCors: boolean;
-}
-```
+### Measured evidence (real MBTA feed, 730 route/direction pairs)
 
-## Atlas feed type (extended for RT)
+Both ordering methods fail, on **disjoint** sets of routes:
 
-```ts
-interface AtlasFeed {
-  id: string;
-  name: string;
-  operator_name: string;
-  location: string;
-  staticUrl?: string;
-  vehiclesUrl?: string;
-  tripUpdatesUrl?: string;
-  alertsUrl?: string;
-}
-```
+| method | exact stop count | total rows | fails on |
+|---|---|---|---|
+| SCS fold | 716/730 | 14,286 | 14 routes — branching / short-turn |
+| topological sort | 725/730 | 14,258 (= real stop count) | 5 routes — loops; 70 of 91,772 trips |
 
----
+- **Worst SCS failure — Framingham/Worcester inbound (`CR-Worcester` dir 1):** 19 patterns,
+  25 stops, 31 rows. The fold seeds with a Framingham-origin short turn, then cannot align
+  it with the full Worcester run, so Framingham, West Natick, Natick Center, Wellesley
+  Square, Wellesley Hills and Wellesley Farms each appear **twice, with the entire line
+  between the two copies**.
+- **Worst topological failure — Winthrop Ferry (`Boat-F6` dir 1):** direction 1 contains
+  patterns running opposite ways (`Winthrop → Logan → Central Wharf → Seaport`, 6 trips,
+  and `Seaport → Logan → Winthrop`, 5 trips). A genuine cycle, so the sort must break an
+  edge, and it breaks one asserted by the *majority* pattern.
+- The 5 topological-breaking routes are **all** in the SCS-bloat list, and none of the 14
+  large SCS failures are cyclic. Hence the hybrid in Phase 1.
+- Speed is a non-issue: across the whole feed, SCS 12ms vs topological 32ms.
 
-## Phases
+### Decisions already taken
 
-### Phase 0 — Sync modal-utils.ts from coloring-book
+- **Ordering:** topological sort, falling back to the SCS fold for any route where the sort
+  has to break a precedence edge.
+- **Platforms:** collapse platform stop_ids to their `parent_station`. MBTA models JFK/UMass
+  as four stop_ids under `place-jfk` (`70085` Ashmont, `70095` Braintree, plus the reverse
+  pair); Framingham likewise. Without collapsing, the Red Line junction renders as two
+  adjacent rows both labelled "JFK/UMass".
+- **No percentages.** Show raw trip counts, not computed shares.
+- Show everything first; compress later.
 
-test-track's `src/modules/modal-utils.ts` was copied from coloring-book at an earlier point and has since fallen behind. Two behavioural changes and two helpers were added in coloring-book:
+### Gotchas
 
-1. **`boxClassName?: string`** on `showModal` options — lets callers pass extra CSS classes to the modal box (e.g. `max-w-3xl` for the wide atlas search modal). Used in Phase 2.
-2. **Backdrop-click-to-dismiss** — `modal.addEventListener('click', …)` closes the modal when clicking the backdrop, consistent with standard DaisyUI modal behaviour.
-3. **`renderTrashIcon(sizeClass?)`** and **`renderUploadIcon(sizeClass?)`** SVG helper exports — not needed by this plan but keep parity with coloring-book so future copies don't diverge further.
-
-Steps:
-- [x] Replace `src/modules/modal-utils.ts` with the current coloring-book version verbatim (all three additions above are already present there)
-
-**Gotchas:**
-- The backdrop-click handler only fires when `escapeAction` is defined; no change to call sites needed
-
----
-
-### Phase 1 — Extend and copy the atlas data script
-
-Copy `generate-atlas-data.ts` from coloring-book to `scripts/generate-atlas-data.ts` and extend it to capture realtime feed URLs from the DMFR spec.
-
-Changes vs. the coloring-book original:
-- `AtlasFeed` gains `vehiclesUrl?`, `tripUpdatesUrl?`, `alertsUrl?`
-- In the per-feed loop, read `feed.urls?.realtime_vehicle_positions`, `realtime_trip_updates`, `realtime_alerts` and map them into the output object
-- Rename `url` field → `staticUrl` in the output (matches the new type)
-- Change the skip-if-no-url guard: only skip feeds that have neither a static URL nor any RT URL
-- Output path stays `public/atlas-feeds.json`
-
-Also update `package.json`:
-- Add `"atlas": "tsx scripts/generate-atlas-data.ts"` to `scripts`
-- Add `tsx` to `devDependencies` if not already present
-
-Do **not** run the script (takes minutes and hits GitHub API) — leave that to the user. Just note in the phase prose how to run it (`npm run atlas`).
-
-- [x] Create `scripts/generate-atlas-data.ts`
-- [x] Update `package.json` scripts + deps
-
-**Gotchas:**
-- DMFR files may not have `urls` at all — always optional-chain
-- Some feeds have RT URLs but no static URL; keep those (they're useful for realtime-only mode)
-- The coloring-book script raw-fetches GitHub blobs via `https://raw.githubusercontent.com/...`; that approach works fine here too
+- `elementKey()` joins `stop_id` and `occurrence` with a **literal NUL byte**, not a space.
+  The Read tool renders it as a space, so the source *looks* like `${stop_id} ${occurrence}`.
+  `parseElement()` splits on `lastIndexOf` of that NUL. Any new code building or parsing
+  these keys must use the same separator. This is also why git reports the file as binary.
+- Repeat visits within one trip are already handled by `occurrence`, so a ferry loop
+  legitimately occupies two rows. Only a repeated `stop_id + occurrence` is a bug.
+- A vehicle reports `current_stop_sequence` in its own trip's numbering; it must be looked
+  up in that trip's `stop_times` for an index, then mapped through the pattern alignment.
+  `placeVehicles` already does this — don't disturb the row/gap indexing.
 
 ---
 
-### Phase 2 — Add atlas-search module
+## Phase 1 — Full coverage and correct ordering
 
-Create `src/modules/atlas-search.ts` adapted from coloring-book's version.
+Remove the pattern cap so every stop pattern shapes the strip, and replace the ordering
+algorithm with a topological sort of the stop precedence graph, falling back to the SCS
+fold on cyclic routes.
 
-Key differences from coloring-book:
-- `AtlasFeed` uses the extended type above (`staticUrl`, `vehiclesUrl`, `tripUpdatesUrl`, `alertsUrl`)
-- The search haystack string stays the same: `"${name} ${operator_name} ${location}"`
-- Each result row shows name, operator, location — plus small badges indicating which feed types are available (e.g. "Static", "RT" or individual icons), so the user can see at a glance what data the feed offers
-- `onSelect` returns a `FeedConfig` built from the selected feed's URLs, with `useCors` read from the checkbox in the `actionBarContent`
-- `showAtlasSearchModal()` returns `FeedConfig | null` (null on cancel)
-- The CORS checkbox and `?` tooltip carry over from coloring-book verbatim
+Each pattern asserts "stop A comes before stop B" for each consecutive pair. Collect those
+as a weighted graph (weight = trips asserting the edge) and topologically sort it: any
+valid topological order contains every pattern as a subsequence, with each element
+appearing exactly once — the guarantee the fold cannot make. Break ties by mean normalized
+position across patterns so the order stays geographic. If Kahn's algorithm stalls, the
+route is cyclic; abandon the sort and use the existing fold for that route.
 
-If `@leeoniya/ufuzzy` is not yet in test-track's `package.json`, add it.
+**Status: done, committed** (`65c72f8`).
 
-- [x] Create `src/modules/atlas-search.ts`
-- [x] Add `@leeoniya/ufuzzy` to `package.json` if missing
+- [x] Delete `MAX_PATTERNS` / `COVERAGE_TARGET`; fold all patterns busiest-first
+- [x] `isSubsequence` fast path before each fold
+- [x] Per-pattern alignment maps; drop the `SCSResultHelper` import
+- [x] Add `topoOrder(sequences, weights)` — Kahn's algorithm, mean-position tie-break,
+      returning `{ order, cyclic }`
+- [x] Use it in `build()`, falling back to `foldSupersequence` when `cyclic`
+- [x] Collapse stop ids to `parent_station` when building patterns
+- [x] Keep `positionOf` tolerant: return null only for indices that genuinely fail to map
 
-**Gotchas:**
-- The `cachedHaystack` still needs to be built from the extended feed objects; the field mapping changes but the logic is the same
-- coloring-book's `filterAndRender` is self-contained; copy and update the row HTML only
-- Pass `boxClassName: 'max-w-3xl'` (or similar) to `showModal` so the atlas results list is wide enough — `boxClassName` was added in Phase 0
+Discoveries:
+
+- `GTFSStatic` already had everything needed: `stationRoot()` (cycle-guarded walk to the
+  topmost ancestor), `descendants()` and `boardableDescendants()`. No new indexing.
+- Edge *weights* turned out to be dead: Kahn's algorithm never consults them. Trips only
+  weight the mean-position tie-break, and `topoOrder` says so rather than carrying a
+  weighted adjacency nothing reads.
+- Collapsing is done inside `tripStops`, before the occurrence counter, and two
+  consecutive stop times at one station fold into one element. That desynchronises a
+  trip's own `stop_times` indices from its element indices, so `tripStops` now also
+  returns `indexOfStop` and `build` keeps it — **only for the trips where it differs from
+  the identity**, which is a small minority. `positionOf` remaps through it.
+- Measured on the real MBTA feed: 725/730 exact, and the 5 on the fold are exactly the
+  known cyclic set (`Boat-F6`, `Boat-F7`, `15` dir 1, `37` dir 1, `70` dir 0). Amtrak:
+  116/121 exact, 5 cyclic. All 2,262,928 stop-time indices in the MBTA feed map to a
+  monotone strip position — nothing unmapped, nothing backwards.
+- **Knock-on the plan did not anticipate:** the strip now names stations while the
+  realtime feed predicts against platforms, so `nextAtStopForRoute` became
+  `nextAtStopsForRoute(stopIds, …)` and `alertsForRouteStop` took a stop id list. Both had
+  exactly one call site. The route page builds the two id sets the same way the station
+  page does — `boardableDescendants` for service, `descendants` for alerts.
+- CR-Worcester dir 1 is **18** rows, not the 25 this plan predicted: 25 counted platform
+  stop_ids, and 18 is the real station count for Worcester → South Station.
+
+## Phase 2 — Mark where trips start and end
+
+With everything on the strip, the missing information is which stations are endpoints.
+Graph degree gets this wrong: Northeast Regional trains continue past Washington to
+Norfolk, so Washington has outgoing edges and looks like a through stop, when in fact most
+of the route's trips end there. Endpoints must be counted per pattern.
+
+`RouteSequence` gains `stopStats: StopStats[]` parallel to `stops`, each `{ startsHere,
+endsHere, serves }`, weighted by trips. A stop where at least `ENDPOINT_SHARE` (5%) of the
+direction's trips start or end gets a filled dot instead of an open one, plus a raw count
+beside the name.
+
+**Status: done, committed** (`65c72f8`, alongside Phase 1 — the two changes share
+`route-page.ts` and could not be split cleanly).
+
+- [x] `StopStats` on `RouteSequence`, accumulated from the alignment maps
+- [x] Filled dot for endpoints (the `'solid'` variant already existed in `rail()`, unused)
+- [x] `endpointNote()` rendering `142 end · 18 start`, gated by the same threshold
+- [x] Replace the `%` badge with a raw count (`87 of 300 trips`); keep the dimming
+- [x] Reword the coverage note to match
+
+`MINORITY_SHARE` stayed — it is still what decides *whether* a stop is a deviation, it
+just no longer supplies the text.
+
+Discoveries: the 5% threshold behaves on both feeds. Northeast Regional dir 1 marks
+Washington (258 of 373 trips end there) while Norfolk, Newport News and Roanoke all
+remain on the strip below it, each correctly marked as its own terminus. Red Line dir 0
+marks Alewife (816 start) and Park Street (684 start), Ashmont (754 end) and Braintree
+(746 end) — the four the plan predicted, and nothing else. Amtrak's feed gives several
+genuinely distinct stations the same name ("Boston" for both South Station and Back Bay,
+two "New Haven"s) and has no `parent_station` linking them, so those still render as two
+rows. That is the feed, not the ordering.
+
+## Phase 3 — The branch tree
+
+The graph is already computed and discarded: the per-pattern position maps give, for each
+pattern, the ascending strip positions it occupies. Edges between consecutive positions,
+deduped across patterns, are the DAG. No new algorithm.
+
+Drawing every edge as a lane would be unreadable — on a route where each trip skips a
+different subset, most edges are stopping policy, not geography. Classify:
+
+- **bypass** — a skip edge `i → j` where another path from `i` to `j` exists through the
+  positions it skips (an express rejoining the same line). **No lane.**
+- **branch** — a skip edge with no alternate path, plus any node with two or more outgoing
+  edges surviving the filter. **Lane.**
+
+The alternate-path test is a bounded DFS over positions in `(i, j]` ignoring edge `(i,j)`,
+so cost is proportional to the span. Lane assignment is the standard git-graph sweep:
+lanes hold the node index they are reserved for; at each row the leftmost lane targeting it
+wins, others emit merge elbows; outgoing branch edges allocate new lanes; untouched lanes
+pass through as verticals. Cap at 5 lanes, overflow sharing the outermost.
+
+- [ ] New `src/modules/route-graph.ts` — pure, no DOM; edge classification + lane sweep,
+      memoised per `RouteSequence` in a `WeakMap`
+- [ ] `RailRow { lane, through[], branches[], merges[], bypassed }` + `laneCount`
+- [ ] Replace `railStyle()` / `rail()` in `route-page.ts` with a `RailRow`-driven renderer
+- [ ] Gutter width `laneCount * LANE_WIDTH` (~12px); `stripRow`'s `grid-cols-[2.5rem_1fr]`
+      becomes an inline `grid-template-columns`
+- [ ] Lines as one inline `<svg viewBox="0 0 W 100" preserveAspectRatio="none">` per row,
+      every path carrying `vector-effect="non-scaling-stroke"`
+- [ ] Dots stay absolutely-positioned HTML spans at `left: laneX(row.lane)`
+- [ ] Vehicle rows draw the gap state so chips no longer break the rail
+- [ ] Update the file header comment, which currently says the strip is not an SVG
+
+Gotchas: row heights are content-driven and unknown at render time, hence the non-uniform
+viewBox scale — circles must not go in the SVG. Terminal caps come from Phase 2's
+`stopStats`, never from graph degree. A single-lane route must look exactly as it does
+today. Text stays real HTML so stop names remain selectable and links stay links.
 
 ---
 
-### Phase 3 — Add examples list
+## Verification
 
-Create `src/modules/examples.ts` that exports a typed array of hardcoded example feeds and a `showExamplesModal()` function.
+`pnpm typecheck` and `pnpm build` after each phase. Per CLAUDE.md, no browser automation —
+hand off for visual checks.
 
-```ts
-export interface ExampleFeed {
-  name: string;
-  description?: string;
-  config: FeedConfig;
-}
+Analysis harnesses live in the session scratchpad. Re-download the feeds with
+`curl -sL -o mbta.zip https://cdn.mbta.com/MBTA_GTFS.zip` and
+`curl -sL -o amtrak.zip https://content.amtrak.com/content/gtfs/GTFS.zip` if needed.
 
-export const EXAMPLES: ExampleFeed[] = [
-  // Leave empty for now — easy to add later
-];
+**Phases 1 and 2 — done.** The harnesses were rebuilt as `sweep.mts`, `detail.mts`,
+`place.mts` and `amtrak.mts` (`.mts` so tsx allows top-level await; pass the zip as a
+`Buffer` cast to `File`, since JSZip rejects a Node `Blob`). Results are recorded in each
+phase above. `pnpm typecheck` and `pnpm build` both clean. Still owed: the visual pass on
+the Red Line, CR-Worcester and Northeast Regional pages.
 
-export async function showExamplesModal(): Promise<FeedConfig | null> { ... }
-```
-
-The modal (via `showModal()`) lists `EXAMPLES` as clickable rows. Clicking a row resolves with its `FeedConfig`. If `EXAMPLES` is empty, show a "No examples configured yet" placeholder. Cancel returns `null`.
-
-- [x] Create `src/modules/examples.ts`
-
-**Gotchas:**
-- Keep the `EXAMPLES` array at the top of the file, clearly labelled, so it's trivially easy to add entries later
-
----
-
-### Phase 4 — Add manual load modal
-
-Create `src/modules/manual-load-modal.ts` with `showManualLoadModal()`.
-
-The modal contains:
-- Static GTFS section: URL text input + "Upload ZIP" button (triggers hidden file input) — matches current card's layout
-- Vehicle Positions URL input
-- Trip Updates URL input
-- Service Alerts URL input
-- CORS proxy checkbox (checked by default) + `?` tooltip (same text as current card)
-- Actions: **Load** (primary), **Cancel**
-
-`showManualLoadModal()` returns `FeedConfig | null`. On Load, it validates that at least one field is filled; if nothing is filled, keep the modal open (return `true` from `onClick`).
-
-- [x] Create `src/modules/manual-load-modal.ts`
-
-**Gotchas:**
-- The file input is inside the modal's body HTML string; after `onMount`, get the hidden `<input type="file">` and wire up the upload button click listener
-- `showModal()` accepts `body` as an HTML string, so use `id` attributes and retrieve elements in `onMount`
-
----
-
-### Phase 5 — Redesign the feed config card and wire everything up
-
-**HTML changes (`src/index.html`):**
-
-Replace the entire `#feed-config` card contents with a simpler layout:
-
-```
-[card header: "Feed Configuration"]
-  [status line: "No feed loaded" or feed name after load]
-  [Load ▼ dropdown button]
-    ├── Examples
-    ├── From TransitLand Atlas
-    └── Manual…
-  [Refresh RT button — hidden until a feed is loaded]
-```
-
-Use DaisyUI `dropdown` + `dropdown-end` on the card so the menu opens upward or downward correctly. The Load button is `btn btn-primary btn-sm`, the dropdown items are a `<ul class="dropdown-content menu">`.
-
-Remove the old inline inputs, divider, CORS checkbox, and static file input entirely from the HTML.
-
-**`src/index.ts` changes:**
-
-- Remove DOM reads for `#static-gtfs-url`, `#static-gtfs-file`, `#rt-vehicles-url`, etc.
-- Refactor `loadFeeds()` to accept `FeedConfig` instead of reading from DOM
-- Add `maybeProxy(url, useCors)` signature update (pass flag explicitly)
-- Wire up each dropdown item to call its respective modal, then call `loadFeeds(config)` on non-null result
-- After a successful load, update the status line with a feed label (atlas feed name, "Custom feed", or example name)
-- Add a `#refresh-rt-btn` click handler that re-polls RT feeds using the last `FeedConfig`
-
-- [x] Update `src/index.html` — replace card body
-- [x] Update `src/index.ts` — refactor loadFeeds + wire dropdown
-
-**Gotchas:**
-- DaisyUI dropdowns close on click-outside automatically; no JS needed
-- The dropdown `<ul>` needs `z-50` or similar to appear above the map
-- Keep the `#feed-config` `<details>` collapsible — the `<summary>` header and arrow toggle stay as-is
-- The `#cors-proxy-checkbox` ID is currently referenced in `index.ts`; remove that reference since CORS is now per-modal
+**Phase 3**
+- Red Line dir 0 renders JFK/UMass as one node with two lanes below it, to Ashmont and
+  Braintree, given the Phase 1 parent-station collapse.
+- A route where all trips stop everywhere renders as a single lane.
+- If a gutter is wide, the bypass/branch classification is admitting express skips it
+  should filter — fix that, not the lane cap.
+- Vehicles still land in the right gaps; `placeVehicles` is unchanged, so a regression
+  points at row indexing in `renderStrip`.
