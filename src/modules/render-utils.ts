@@ -13,6 +13,7 @@ import type { GTFSStatic, Route } from '../gtfs-static';
 import type { VehiclePosition } from '../map-controller';
 import type { PageState } from '../types/page-state';
 import type { FeedSession } from './feed-session';
+import { clockAt, feedTimezone, formatScheduleTime, zoneLabel } from './feed-time';
 
 
 export interface RenderContext {
@@ -102,18 +103,29 @@ export function renderRawJson(title: string, value: unknown): string {
 
 // ─── Time ─────────────────────────────────────────────────────────────────────
 
-/** Clock time from a GTFS-RT epoch-seconds value. */
-export function formatEpochTime(seconds: number | undefined): string {
+/**
+ * Clock time from a GTFS-RT epoch-seconds value, in the feed's zone (see
+ * `feed-time.ts`) and labelled with it, so a time can never be read against
+ * the wrong clock. Pass `withZone: false` where the surrounding text already
+ * establishes the zone.
+ */
+export function formatEpochTime(seconds: number | undefined, withZone = true): string {
   if (seconds === undefined) return '—';
-  return new Date(seconds * 1000).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const clock = clockAt(seconds);
+  return withZone ? `${clock} ${zoneLabel(seconds * 1000)}` : clock;
+}
+
+/** A static `stop_times` clock time, formatted to match `formatEpochTime`. */
+export function formatScheduledTime(value: string | undefined, withZone = true): string {
+  const clock = formatScheduleTime(value);
+  if (!withZone || clock === '—') return clock;
+  return `${clock} ${zoneLabel()}`;
 }
 
 export function formatAbsolute(seconds: number | undefined): string {
   if (seconds === undefined) return '—';
-  return new Date(seconds * 1000).toLocaleString();
+  const ms = seconds * 1000;
+  return `${new Date(ms).toLocaleString([], { timeZone: feedTimezone() ?? undefined })} ${zoneLabel(ms)}`;
 }
 
 /** "12s ago" / "3m ago" — driven by the panel's shared ticker. */

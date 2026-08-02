@@ -3,6 +3,7 @@ import type { FeedSession } from './feed-session';
 import type { MapDataIssues } from './layer-manager';
 import type { RealtimeEndpointName } from './feed-selection';
 import { REALTIME_ENDPOINTS, REALTIME_ENDPOINT_LABELS } from './feed-selection';
+import { localClock } from './feed-time';
 import { isReproducible } from './feed-url';
 import { notify } from './notification-system';
 
@@ -19,9 +20,14 @@ function escHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+/**
+ * Poll times are facts about this browser, not about the railroad, so they stay
+ * in the reader's zone — labelled, so they read as distinct from the feed clock
+ * used on the object pages.
+ */
 function formatClock(ms: number | null): string {
   if (!ms) return '—';
-  return new Date(ms).toLocaleTimeString();
+  return localClock(ms);
 }
 
 /** "12s ago" / "3m ago" — rendered by the shared ticker, not per-row timers. */

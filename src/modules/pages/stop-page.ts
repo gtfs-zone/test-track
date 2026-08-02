@@ -14,6 +14,7 @@ import type { AlertRecord } from '../../gtfs-rt';
 import type { Stop } from '../../gtfs-static';
 import type { PageState } from '../../types/page-state';
 import { alertsForStop } from '../alerts';
+import { zoneLabel } from '../feed-time';
 import type { RtIndex } from '../rt-index';
 import type { RenderContext } from '../render-utils';
 import {
@@ -23,6 +24,7 @@ import {
   escHtml,
   formatDelay,
   formatEpochTime,
+  formatScheduledTime,
   missing,
   prop,
   propList,
@@ -135,8 +137,12 @@ function renderDepartures(
       }</td>
       <td class="max-w-0 truncate">${escHtml(trip?.headsign || p.trip_id)}</td>
       ${isStation ? `<td class="whitespace-nowrap">${fromChild(ctx, p.stop_id)}</td>` : ''}
-      <td class="text-right whitespace-nowrap tabular-nums opacity-60">${escHtml(scheduled || '—')}</td>
-      <td class="text-right whitespace-nowrap tabular-nums">${escHtml(formatEpochTime(p.time))}</td>
+      <td class="text-right whitespace-nowrap tabular-nums opacity-60">${escHtml(
+        formatScheduledTime(scheduled, false),
+      )}</td>
+      <td class="text-right whitespace-nowrap tabular-nums">${escHtml(
+        formatEpochTime(p.time, false),
+      )}</td>
       <td class="text-right whitespace-nowrap">${formatDelay(p.delay)}</td>
     </tr>`;
   });
@@ -144,7 +150,9 @@ function renderDepartures(
   const body = `<table class="table table-xs">
       <thead><tr>
         <th>Route</th><th>Headsign</th>${isStation ? '<th>Platform</th>' : ''}
-        <th class="text-right">Sched</th><th class="text-right">Pred</th><th class="text-right">Delay</th>
+        <th class="text-right">Sched ${escHtml(zoneLabel())}</th>
+        <th class="text-right">Pred ${escHtml(zoneLabel())}</th>
+        <th class="text-right">Delay</th>
       </tr></thead>
       <tbody>${rows.join('')}</tbody>
     </table>`;

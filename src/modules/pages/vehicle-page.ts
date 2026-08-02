@@ -23,6 +23,7 @@ import {
   timestampWithAge,
   vehicleDisplayName,
 } from '../render-utils';
+import { localClock, zoneLabel } from '../feed-time';
 import { renderAlertList } from './alert-page';
 
 /**
@@ -100,7 +101,9 @@ function renderPredictions(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosi
     `<table class="table table-xs">
       <thead><tr>
         <th class="text-right">Seq</th><th>Stop</th>
-        <th class="text-right">Arr</th><th class="text-right">Dep</th><th class="text-right">Delay</th>
+        <th class="text-right">Arr ${escHtml(zoneLabel())}</th>
+        <th class="text-right">Dep ${escHtml(zoneLabel())}</th>
+        <th class="text-right">Delay</th>
       </tr></thead>
       <tbody>${predictions
         .map(p => {
@@ -113,8 +116,12 @@ function renderPredictions(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosi
                 ? entityLink(ctx, { type: 'stop', stop_id: stop.id }, stop.name || stop.id)
                 : escHtml(p.stop_id)
             }</td>
-            <td class="text-right whitespace-nowrap tabular-nums">${escHtml(formatEpochTime(p.arrival))}</td>
-            <td class="text-right whitespace-nowrap tabular-nums">${escHtml(formatEpochTime(p.departure))}</td>
+            <td class="text-right whitespace-nowrap tabular-nums">${escHtml(
+              formatEpochTime(p.arrival, false),
+            )}</td>
+            <td class="text-right whitespace-nowrap tabular-nums">${escHtml(
+              formatEpochTime(p.departure, false),
+            )}</td>
             <td class="text-right whitespace-nowrap">${formatDelay(p.delay)}</td>
           </tr>`;
         })
@@ -174,7 +181,7 @@ export function renderVehiclePage(
     ? ''
     : `<div class="rounded-lg border border-warning/50 bg-warning/10 p-3 text-xs">
          No longer in the feed as of ${escHtml(
-           new Date(remembered!.at).toLocaleTimeString(),
+           localClock(remembered!.at),
          )}. Everything below is the last poll that contained it.
        </div>`;
 

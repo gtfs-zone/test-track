@@ -2,6 +2,7 @@ import { GTFSStatic } from '../gtfs-static';
 import { GTFSRealtime } from '../gtfs-rt';
 import type { AlertRecord, FeedStatus, FetchStartDetail, TripUpdate } from '../gtfs-rt';
 import type { VehiclePosition } from '../map-controller';
+import { adoptFeedTimezone } from './feed-time';
 import { feedProgressIndicator } from './feed-progress-indicator';
 import { notify } from './notification-system';
 import type { FeedSelection, RealtimeEndpointName, StaticSource } from './feed-selection';
@@ -144,6 +145,8 @@ export class FeedSession extends EventTarget {
         await feed.loadFromUrl(resolvedStaticUrl(source), hooks);
       }
       this.staticFeed = feed;
+      // Every transit time rendered from here on is anchored to this feed's zone.
+      adoptFeedTimezone(feed);
       this.staticError = null;
       this.staticLoadedAt = Date.now();
       this.dispatchEvent(new CustomEvent<GTFSStatic>('staticloaded', { detail: feed }));
