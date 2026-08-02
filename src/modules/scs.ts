@@ -1,10 +1,17 @@
 /* @vendored-from coloring-book:src/modules/scs.ts
-   @sha f9c718c
+   @sha 3f42194
    @status verbatim */
 /**
- * Shortest Common Supersequence (SCS) module
- * Uses dynamic programming to find the exact optimal solution
- * Enhanced version includes alignment information
+ * Shortest Common Supersequence (SCS) module.
+ *
+ * The exact SCS of k sequences is NP-hard in k, and a naive k-way DP memoises
+ * on a position tuple, so its state space is the product of all k input
+ * lengths — unusable for real inputs. We instead fold pairwise: each fold is
+ * the exact two-sequence SCS, computed with an iterative O(n·m) table and
+ * backpointers (no recursion, no memo-size guard, bounded memory). Folding is
+ * not guaranteed to yield the globally shortest supersequence, but the result
+ * always contains every input, and it runs in predictable time and space for
+ * any input. Enhanced entry point additionally returns alignment information.
  */
 
 export type Sequence<T> = T[];
@@ -92,10 +99,11 @@ export class SCSResultHelper<T> {
 }
 
 /**
- * Computes the exact shortest common supersequence for multiple sequences
- * Uses dynamic programming with memoization for optimal results
- * @param sequences Array of sequences to find the SCS for
- * @returns The shortest common supersequence (exact)
+ * Common supersequence of many sequences, built by pairwise folding of the
+ * exact two-sequence SCS. Deduplicates identical inputs first. The result
+ * contains every input; it is not guaranteed to be globally shortest.
+ * @param sequences Array of sequences to find a common supersequence for
+ * @returns A common supersequence of every input
  */
 export function shortestCommonSupersequence<T>(
   sequences: Sequence<T>[]
@@ -135,91 +143,92 @@ export function shortestCommonSupersequence<T>(
     return [...uniqueSequences[0]];
   }
 
-  // Use dynamic programming to find exact SCS on unique sequences only
-  return computeExactSCS(uniqueSequences);
+  // Fold pairwise: each fold is the exact two-sequence SCS. Order follows
+  // first appearance in the input, which lets a caller front-load the
+  // dominant sequence to steer fold quality.
+  let acc = uniqueSequences[0];
+  for (let i = 1; i < uniqueSequences.length; i++) {
+    acc = shortestCommonSupersequencePair(acc, uniqueSequences[i]);
+  }
+  return acc;
+}
+
+/** Stable equality key for an element (primitives compare directly). */
+function elementKey<T>(element: T): string {
+  return typeof element === 'string' ? element : JSON.stringify(element);
 }
 
 /**
- * Computes the exact SCS using dynamic programming with memoization
+ * Exact shortest common supersequence of two sequences.
+ *
+ * Iterative bottom-up DP: `dp[i][j]` is the SCS length of the first `i`
+ * elements of `a` and the first `j` of `b`. The supersequence is recovered by
+ * walking the table back from `(n, m)`. O(n·m) time and memory, with no
+ * recursion and no fallback path — the failure mode of the old k-way memo is
+ * gone.
  */
-function computeExactSCS<T>(sequences: Sequence<T>[]): Sequence<T> {
-  const memo = new Map<string, Sequence<T>>();
-  const MAX_MEMO_SIZE = 50000; // Prevent memory exhaustion
-
-  function scsRecursive(positions: number[]): Sequence<T> {
-    // Check if memo is getting too large (indicates potential infinite recursion)
-    if (memo.size > MAX_MEMO_SIZE) {
-      console.error(
-        'SCS: Memo size exceeded maximum, likely infinite recursion detected'
-      );
-      console.error('Current positions:', positions);
-      console.error('Sequences:', sequences);
-      // Return a fallback result - just concatenate all sequences
-      return sequences.flat();
-    }
-    // Create cache key from current positions
-    const key = positions.join(',');
-    if (memo.has(key)) {
-      return memo.get(key)!;
-    }
-
-    // Base case: if all sequences are fully consumed, return empty array
-    if (positions.every((pos, i) => pos >= sequences[i].length)) {
-      const result: T[] = [];
-      memo.set(key, result);
-      return result;
-    }
-
-    // Check if all active sequences have the same current element
-    const activeSequences = positions
-      .map((pos, i) => (pos < sequences[i].length ? i : -1))
-      .filter((i) => i !== -1);
-
-    if (activeSequences.length > 0) {
-      const currentElements = activeSequences.map(
-        (i) => sequences[i][positions[i]]
-      );
-      const firstElement = currentElements[0];
-      const allSame = currentElements.every(
-        (el) => JSON.stringify(el) === JSON.stringify(firstElement)
-      );
-
-      if (allSame) {
-        // All active sequences have the same current element, include it once
-        const newPositions = [...positions];
-        activeSequences.forEach((i) => newPositions[i]++);
-        const rest = scsRecursive(newPositions);
-        const result = [firstElement, ...rest];
-        memo.set(key, result);
-        return result;
-      }
-    }
-
-    // Try advancing each sequence individually and pick the best result
-    let bestResult: Sequence<T> = [];
-    let bestLength = Infinity;
-
-    for (let i = 0; i < sequences.length; i++) {
-      if (positions[i] < sequences[i].length) {
-        const newPositions = [...positions];
-        newPositions[i]++;
-
-        const rest = scsRecursive(newPositions);
-        const result = [sequences[i][positions[i]], ...rest];
-
-        if (result.length < bestLength) {
-          bestLength = result.length;
-          bestResult = result;
-        }
-      }
-    }
-
-    memo.set(key, bestResult);
-    return bestResult;
+function shortestCommonSupersequencePair<T>(
+  a: Sequence<T>,
+  b: Sequence<T>
+): Sequence<T> {
+  const n = a.length;
+  const m = b.length;
+  if (n === 0) {
+    return [...b];
+  }
+  if (m === 0) {
+    return [...a];
   }
 
-  const initialPositions = new Array(sequences.length).fill(0);
-  return scsRecursive(initialPositions);
+  const keyA = a.map(elementKey);
+  const keyB = b.map(elementKey);
+
+  const width = m + 1;
+  const dp = new Int32Array((n + 1) * width);
+  for (let i = 0; i <= n; i++) {
+    dp[i * width] = i;
+  }
+  for (let j = 0; j <= m; j++) {
+    dp[j] = j;
+  }
+
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      if (keyA[i - 1] === keyB[j - 1]) {
+        dp[i * width + j] = dp[(i - 1) * width + (j - 1)] + 1;
+      } else {
+        const fromA = dp[(i - 1) * width + j];
+        const fromB = dp[i * width + (j - 1)];
+        dp[i * width + j] = 1 + (fromA <= fromB ? fromA : fromB);
+      }
+    }
+  }
+
+  // Reconstruct in reverse; ties resolve toward `a` to match the length DP.
+  const result: T[] = [];
+  let i = n;
+  let j = m;
+  while (i > 0 && j > 0) {
+    if (keyA[i - 1] === keyB[j - 1]) {
+      result.push(a[i - 1]);
+      i--;
+      j--;
+    } else if (dp[(i - 1) * width + j] <= dp[i * width + (j - 1)]) {
+      result.push(a[i - 1]);
+      i--;
+    } else {
+      result.push(b[j - 1]);
+      j--;
+    }
+  }
+  while (i > 0) {
+    result.push(a[--i]);
+  }
+  while (j > 0) {
+    result.push(b[--j]);
+  }
+  result.reverse();
+  return result;
 }
 
 /**
@@ -249,8 +258,10 @@ function computeAlignments<T>(
   supersequence: Sequence<T>
 ): SequenceAlignment<T>[] {
   const alignments: SequenceAlignment<T>[] = [];
+  const superKeys = supersequence.map(elementKey);
 
   sequences.forEach((sequence, sequenceIndex) => {
+    const seqKeys = sequence.map(elementKey);
     let inputPosition = 0;
 
     // Walk through supersequence and find matches with this input sequence
@@ -259,10 +270,7 @@ function computeAlignments<T>(
       superPosition < supersequence.length && inputPosition < sequence.length;
       superPosition++
     ) {
-      if (
-        JSON.stringify(sequence[inputPosition]) ===
-        JSON.stringify(supersequence[superPosition])
-      ) {
+      if (seqKeys[inputPosition] === superKeys[superPosition]) {
         alignments.push({
           sequenceIndex,
           inputPosition,
