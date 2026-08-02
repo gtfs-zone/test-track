@@ -358,9 +358,7 @@ export class LayerManager {
   // ── Geometry lookups, for camera moves ─────────────────────────────────────
 
   stopPosition(stopId: string): [number, number] | null {
-    const stop = this.feed?.stops.get(stopId);
-    if (!stop || !Number.isFinite(stop.lat) || !Number.isFinite(stop.lon)) return null;
-    return [stop.lon, stop.lat];
+    return this.feed?.resolvedPosition(stopId) ?? null;
   }
 
   /**
@@ -821,13 +819,14 @@ export class LayerManager {
         missingId++;
         continue;
       }
-      if (!Number.isFinite(stop.lat) || !Number.isFinite(stop.lon)) {
+      const position = feed.resolvedPosition(stop.id);
+      if (!position) {
         missingCoords++;
         continue;
       }
       features.push({
         type: 'Feature',
-        geometry: { type: 'Point', coordinates: [stop.lon, stop.lat] },
+        geometry: { type: 'Point', coordinates: position },
         properties: {
           stop_id: stop.id,
           stop_name: stop.name,

@@ -289,6 +289,20 @@ export class GTFSStatic {
     return this.descendants(stopId).filter(id => this.stops.get(id)?.location_type === 0);
   }
 
+  /** The stop's own position, or the nearest ancestor's with valid coordinates. */
+  resolvedPosition(stopId: string): [number, number] | null {
+    const seen = new Set<string>();
+    let current: string | undefined = stopId;
+    while (current && !seen.has(current)) {
+      seen.add(current);
+      const stop = this.stops.get(current);
+      if (!stop) return null;
+      if (Number.isFinite(stop.lat) && Number.isFinite(stop.lon)) return [stop.lon, stop.lat];
+      current = stop.parent_station;
+    }
+    return null;
+  }
+
   private ingestAgencies(rows: RawRow[]): void {
     this.agencies = rows.map(row => ({
       id: row.agency_id ?? '',
