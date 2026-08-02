@@ -9,8 +9,10 @@ import { alertsForTrip } from '../alerts';
 import type { RtIndex } from '../rt-index';
 import type { RenderContext } from '../render-utils';
 import {
+  DERIVED_STOP_SEQUENCE_TITLE,
   OCCUPANCY_LABELS,
   VEHICLE_STATUS_LABELS,
+  derivedMark,
   entityLink,
   escHtml,
   formatDelay,
@@ -35,7 +37,20 @@ import { renderAlertList } from './alert-page';
  */
 const lastSeen = new Map<string, { vehicle: VehiclePosition; at: number }>();
 
-function renderTripSection(ctx: RenderContext, vehicle: VehiclePosition): string {
+/**
+ * The `current_stop_sequence` row of the raw property region: what the feed
+ * sent, and — when it sent nothing — what test-track inferred instead.
+ */
+function renderStopSequenceValue(rt: RtIndex, vehicle: VehiclePosition): string {
+  if (vehicle.currentStopSequence !== undefined) {
+    return `<span class="tabular-nums">${vehicle.currentStopSequence}</span>`;
+  }
+  const current = rt.stopSequenceFor(vehicle);
+  if (!current) return '<span class="opacity-40">not reported</span>';
+  return `<span class="opacity-40">not reported</span> <span class="opacity-60">— derived <span class="tabular-nums">${current.sequence}</span> from trip updates</span>`;
+}
+
+function renderTripSection(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosition): string {
   const feed = ctx.session.staticFeed;
   const trip = vehicle.tripId ? feed?.trips.get(vehicle.tripId) : undefined;
   if (!vehicle.tripId) {
@@ -43,15 +58,17 @@ function renderTripSection(ctx: RenderContext, vehicle: VehiclePosition): string
   }
 
   const times = trip ? (feed?.stopTimesByTrip.get(trip.trip_id) ?? []) : [];
-  const currentIndex =
-    vehicle.currentStopSequence === undefined
-      ? -1
-      : times.findIndex(t => t.stop_sequence === vehicle.currentStopSequence);
+  const current = rt.stopSequenceFor(vehicle);
+  const currentIndex = current
+    ? times.findIndex(t => t.stop_sequence === current.sequence)
+    : -1;
   const currentStop = currentIndex >= 0 ? feed?.stops.get(times[currentIndex].stop_id) : undefined;
   const statusWord =
     vehicle.currentStatus === undefined
       ? 'at'
       : (VEHICLE_STATUS_LABELS[vehicle.currentStatus] ?? 'at');
+  // The whole section hangs off the stop, so the mark rides with the value.
+  const mark = current?.source === 'derived' ? ` ${derivedMark(DERIVED_STOP_SEQUENCE_TITLE)}` : '';
 
   return section(
     'Trip',
@@ -71,11 +88,14 @@ function renderTripSection(ctx: RenderContext, vehicle: VehiclePosition): string
       currentStop
         ? prop(
             `Currently ${escHtml(statusWord)}`,
-            entityLink(ctx, { type: 'stop', stop_id: currentStop.id }, currentStop.name || currentStop.id),
+            `${entityLink(ctx, { type: 'stop', stop_id: currentStop.id }, currentStop.name || currentStop.id)}${mark}`,
           )
         : '',
       currentIndex >= 0
-        ? prop('Progress', `<span class="tabular-nums">${currentIndex + 1} of ${times.length} stops</span>`)
+        ? prop(
+            'Progress',
+            `<span class="tabular-nums">${currentIndex + 1} of ${times.length} stops</span>${mark}`,
+          )
         : '',
       vehicle.startDate || vehicle.startTime
         ? prop('Trip start', escHtml(`${vehicle.startDate ?? ''} ${vehicle.startTime ?? ''}`.trim()))
@@ -95,6 +115,7 @@ function renderPredictions(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosi
     );
   }
   const feed = ctx.session.staticFeed;
+  const current = rt.stopSequenceFor(vehicle);
 
   return section(
     'Predictions',
@@ -108,7 +129,7 @@ function renderPredictions(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosi
       <tbody>${predictions
         .map(p => {
           const stop = feed?.stops.get(p.stop_id);
-          const isCurrent = p.stop_sequence === vehicle.currentStopSequence;
+          const isCurrent = current !== undefined && p.stop_sequence === current.sequence;
           return `<tr class="${isCurrent ? 'bg-base-200' : ''}">
             <td class="text-right tabular-nums opacity-60">${escHtml(String(p.stop_sequence ?? '—'))}</td>
             <td class="max-w-0 truncate">${
@@ -220,12 +241,9 @@ export function renderVehiclePage(
               ? '<span class="opacity-40">not reported</span>'
               : escHtml(VEHICLE_STATUS_LABELS[vehicle.currentStatus] ?? String(vehicle.currentStatus)),
           ),
-          prop(
-            'current_stop_sequence',
-            vehicle.currentStopSequence === undefined
-              ? '<span class="opacity-40">not reported</span>'
-              : `<span class="tabular-nums">${vehicle.currentStopSequence}</span>`,
-          ),
+          // This region reports the wire, so an omitted field still reads as
+          // omitted; the derived value is stated next to it, not in place of it.
+          prop('current_stop_sequence', renderStopSequenceValue(rt, vehicle)),
           prop(
             'Occupancy',
             vehicle.occupancyStatus === undefined
@@ -243,7 +261,7 @@ export function renderVehiclePage(
         ]),
       )}
 
-      ${renderTripSection(ctx, vehicle)}
+      ${renderTripSection(ctx, rt, vehicle)}
       ${renderPredictions(ctx, rt, vehicle)}
       ${renderAlertList(
         ctx,

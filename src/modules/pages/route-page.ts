@@ -25,7 +25,9 @@ import type { RenderContext } from '../render-utils';
 import {
   OCCUPANCY_LABELS,
   ROUTE_TYPE_LABELS,
+  DERIVED_STOP_SEQUENCE_TITLE,
   VEHICLE_STATUS_LABELS,
+  derivedMark,
   entityLink,
   escHtml,
   formatDelay,
@@ -76,6 +78,8 @@ interface PlacedVehicle {
   position: number;
   /** STOPPED_AT sits on the stop; everything else sits in the gap before it. */
   atStop: boolean;
+  /** The stop_sequence behind this position was inferred, not reported. */
+  derived: boolean;
 }
 
 // ─── Vehicle placement ────────────────────────────────────────────────────────
@@ -88,6 +92,10 @@ interface PlacedVehicle {
  * value has to be looked up in the trip's `stop_times` to get an index, then
  * that index mapped through the alignment of the trip's pattern. Skipping
  * either step puts vehicles at plausible-looking but wrong stops.
+ *
+ * A vehicle that never reported the field can still be placed from its trip's
+ * predictions (`RtIndex.stopSequenceFor`); those carry `derived` so the chip can
+ * say where the position came from.
  */
 function placeVehicles(
   ctx: RenderContext,
@@ -116,17 +124,21 @@ function placeVehicles(
       continue;
     }
 
-    if (vehicle.currentStopSequence === undefined) {
-      unplaced.push({ vehicle, reason: 'no current_stop_sequence reported' });
+    const current = rt.stopSequenceFor(vehicle);
+    if (!current) {
+      unplaced.push({
+        vehicle,
+        reason: 'no current_stop_sequence, and no future prediction to derive one from',
+      });
       continue;
     }
 
     const times = feed?.stopTimesByTrip.get(trip.trip_id) ?? [];
-    const stopIndex = times.findIndex(t => t.stop_sequence === vehicle.currentStopSequence);
+    const stopIndex = times.findIndex(t => t.stop_sequence === current.sequence);
     if (stopIndex < 0) {
       unplaced.push({
         vehicle,
-        reason: `stop_sequence ${vehicle.currentStopSequence} is not in this trip's stop_times`,
+        reason: `stop_sequence ${current.sequence} is not in this trip's stop_times`,
       });
       continue;
     }
@@ -137,7 +149,12 @@ function placeVehicles(
       continue;
     }
 
-    placed.push({ vehicle, position, atStop: vehicle.currentStatus === 1 });
+    placed.push({
+      vehicle,
+      position,
+      atStop: vehicle.currentStatus === 1,
+      derived: current.source === 'derived',
+    });
   }
 
   return { placed, unplaced };
@@ -243,7 +260,7 @@ function eta(prediction: Prediction | undefined): string {
   return parts.length ? `<span class="text-xs flex gap-2 shrink-0">${parts.join('')}</span>` : '';
 }
 
-function vehicleChip(ctx: RenderContext, vehicle: VehiclePosition): string {
+function vehicleChip(ctx: RenderContext, vehicle: VehiclePosition, derived: boolean): string {
   const label = vehicleDisplayName(ctx.session.staticFeed, vehicle);
   const status =
     vehicle.currentStatus === undefined
@@ -260,6 +277,7 @@ function vehicleChip(ctx: RenderContext, vehicle: VehiclePosition): string {
     ${entityLink(ctx, { type: 'vehicle', vehicle_id: vehicle.key }, label, 'link link-hover font-medium')}
     ${status ? `<span class="opacity-40">·</span>${status}` : ''}
     ${occupancy ? `<span class="opacity-40">·</span>${occupancy}` : ''}
+    ${derived ? derivedMark(DERIVED_STOP_SEQUENCE_TITLE) : ''}
   </div>`;
 }
 
@@ -316,17 +334,24 @@ function renderStrip(
   const graph = routeGraph(sequence);
 
   /**
-   * The lanes a vehicle chip's row has to carry, so a chip no longer breaks the
-   * rail. Above the first stop and below the last there is only that stop's own
-   * lane, and the chip row takes the terminal cap with it — which is what the
-   * old single-bar rail did too.
+   * A vehicle chip's row carries the lanes that are live across it, so a chip no
+   * longer breaks the rail.
+   *
+   * Past the end of the strip there is nothing live, only the neighbouring
+   * stop's own lane, and the rail has to stop inside the chip's row rather than
+   * run out of it — otherwise the strip ends in a bare stub with a flat cut
+   * instead of a rounded terminus. `last` says this chip is the outermost of a
+   * run, so only it gets the half-length capped segment; chips between it and
+   * the stop still need the full height.
    */
-  const gapLanes = (index: number, side: 'above' | 'below'): number[] => {
+  const gapPaths = (index: number, side: 'above' | 'below', last: boolean): string[] => {
     const row = graph.rows[index];
-    if (side === 'above') {
-      return row.merges.length === 0 ? [row.lane] : [...row.merges, ...row.through];
-    }
-    return row.exiting.length === 0 ? [row.lane] : row.exiting;
+    const live = side === 'above' ? [...row.merges, ...row.through] : row.exiting;
+    if (live.length > 0) return live.map(verticalPath);
+    if (!last) return [verticalPath(row.lane)];
+    // The outermost row of a terminus. Above the first stop the rail runs from
+    // this row's centre down; below the last stop, from the top to the centre.
+    return [side === 'above' ? branchPath(row.lane, row.lane) : mergePath(row.lane, row.lane)];
   };
 
   /**
@@ -356,13 +381,13 @@ function renderStrip(
   sequence.stops.forEach((stop, index) => {
     const chipsBefore = before.get(index) ?? [];
     const chipsAt = at.get(index) ?? [];
-    for (const p of chipsBefore) {
+    chipsBefore.forEach((p, n) => {
       rows.push({
         dot: { kind: 'none' },
-        paths: gapLanes(index, 'above').map(verticalPath),
-        content: vehicleChip(ctx, p.vehicle),
+        paths: gapPaths(index, 'above', n === 0),
+        content: vehicleChip(ctx, p.vehicle, p.derived),
       });
-    }
+    });
 
     const name = feed?.stops.get(stop.stop_id)?.name || stop.stop_id;
     // The strip shows stations; the realtime feed talks about platforms. Ask
@@ -407,13 +432,13 @@ function renderStrip(
       </div>`,
     });
 
-    for (const p of chipsAt) {
+    chipsAt.forEach((p, n) => {
       rows.push({
         dot: { kind: 'none' },
-        paths: gapLanes(index, 'below').map(verticalPath),
-        content: vehicleChip(ctx, p.vehicle),
+        paths: gapPaths(index, 'below', n === chipsAt.length - 1),
+        content: vehicleChip(ctx, p.vehicle, p.derived),
       });
-    }
+    });
   });
 
   return `<div class="-mx-1">${rows

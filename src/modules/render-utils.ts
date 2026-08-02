@@ -228,6 +228,20 @@ export function missing(what: string): string {
 }
 
 /**
+ * Marks a value test-track worked out from the feed rather than one the feed
+ * reported. The tool exists to show what a feed says, so anything it inferred
+ * has to carry this wherever it is shown — the status page's count is the
+ * feed-wide version of the same disclosure.
+ */
+export function derivedMark(title: string): string {
+  return `<span class="badge badge-ghost badge-xs align-middle" title="${escHtml(title)}">derived</span>`;
+}
+
+/** The standard explanation behind every derived `current_stop_sequence`. */
+export const DERIVED_STOP_SEQUENCE_TITLE =
+  'The feed reported no current_stop_sequence. This position comes from the soonest still-future stop_time_update on the same trip.';
+
+/**
  * The name to *display* for a vehicle. Prefers the static trip's
  * `trip_short_name` — for Amtrak this is the train number — then the trip
  * headsign, then the feed's `vehicle.label`, then the id. This is display-layer
