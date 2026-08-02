@@ -1,10 +1,10 @@
 
-name: Build
+name: Build and Deploy
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
 
 jobs:
   build:
@@ -14,15 +14,16 @@ jobs:
       - name: Install dependencies
         run: |
           apk add --no-cache nodejs npm git curl tar
+          npm install -g pnpm
 
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          submodules: true
+          fetch-depth: 0
           github-server-url: https://git.kcfam.us
 
       - name: Build
-        run: npm ci && npm run build
+        run: pnpm install --frozen-lockfile && pnpm build
 
       - name: Deploy
         run: |
