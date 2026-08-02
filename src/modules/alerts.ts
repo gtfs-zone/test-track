@@ -11,7 +11,7 @@
  */
 
 import type { AlertRecord, ServiceAlert } from '../gtfs-rt';
-import { toSeconds } from '../gtfs-rt';
+import { presentNumber } from '../gtfs-rt';
 import type { FeedSession } from './feed-session';
 
 type EntitySelector = NonNullable<ServiceAlert['informedEntity']>[number];
@@ -141,8 +141,8 @@ export interface ActivePeriod {
  */
 export function activePeriods(alert: ServiceAlert): ActivePeriod[] {
   return (alert.activePeriod ?? []).map(p => ({
-    start: toSeconds(p.start),
-    end: toSeconds(p.end),
+    start: presentNumber(p, 'start'),
+    end: presentNumber(p, 'end'),
   }));
 }
 

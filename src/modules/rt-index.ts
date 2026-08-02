@@ -9,7 +9,7 @@
  */
 
 import type { TripUpdate } from '../gtfs-rt';
-import { toSeconds } from '../gtfs-rt';
+import { presentNumber } from '../gtfs-rt';
 import type { GTFSStatic } from '../gtfs-static';
 import type { VehiclePosition } from '../map-controller';
 import type { FeedSession } from './feed-session';
@@ -30,21 +30,32 @@ export interface Prediction {
 }
 
 /**
- * A vehicle's working `stop_sequence`, and whether the feed said so.
+ * Where a vehicle's working `stop_sequence` came from.
  *
- * `derived` means the producer omitted `current_stop_sequence` and test-track
- * worked the value out from the trip's predictions. Every surface that shows a
- * derived value has to say so — see `derivedMark` in `render-utils`.
+ * - `reported` — the producer sent `current_stop_sequence`.
+ * - `stop_id` — it sent `stop_id` instead, which the spec equally allows. Still
+ *   reported data: the feed named the stop, just not its ordinal.
+ * - `derived` — it sent neither, and test-track worked the stop out from the
+ *   trip's predictions. This one is an inference and has to be declared.
  */
+export type StopSequenceSource = 'reported' | 'stop_id' | 'derived';
+
 export interface VehicleStopSequence {
   sequence: number;
-  source: 'reported' | 'derived';
+  source: StopSequenceSource;
+  /** `stop_id` only: the trip calls at that stop more than once. */
+  ambiguous: boolean;
 }
 
-/** What the vehicles feed left out, counted for the status page. */
+/**
+ * How the vehicles feed identifies the current stop, counted for the status
+ * page. A feed that uses `stop_id` throughout is not defective — but which
+ * field it used is a fact about the feed worth stating.
+ */
 export interface FeedGaps {
   vehicles: number;
   missingStopSequence: number;
+  resolvedFromStopId: number;
   stopSequenceDerived: number;
 }
 
@@ -64,7 +75,12 @@ export class RtIndex {
   readonly vehiclesByRoute = new Map<string, VehiclePosition[]>();
   /** Only vehicles reporting `STOPPED_AT` with a resolvable stop. */
   readonly vehiclesAtStop = new Map<string, VehiclePosition[]>();
-  readonly gaps: FeedGaps = { vehicles: 0, missingStopSequence: 0, stopSequenceDerived: 0 };
+  readonly gaps: FeedGaps = {
+    vehicles: 0,
+    missingStopSequence: 0,
+    resolvedFromStopId: 0,
+    stopSequenceDerived: 0,
+  };
 
   /** Derivation is per-trip, and several vehicles can share a trip. */
   private readonly derivedByTrip = new Map<string, number | undefined>();
@@ -96,14 +112,16 @@ export class RtIndex {
       // Producers may give `stop_id`, `stop_sequence`, or both. When only the
       // sequence is given the stop has to come from the static trip, which is
       // also the only way to place the prediction on the strip.
-      const sequence = stu.stopSequence ?? undefined;
+      const sequence = presentNumber(stu, 'stopSequence');
       const stopId =
         stu.stopId ?? (sequence !== undefined ? times?.find(t => t.stop_sequence === sequence)?.stop_id : undefined);
       if (!stopId) continue;
 
-      const arrival = toSeconds(stu.arrival?.time);
-      const departure = toSeconds(stu.departure?.time);
-      const delay = stu.arrival?.delay ?? stu.departure?.delay ?? undefined;
+      // Every one of these is a proto2 default away from being a lie: an absent
+      // time reads back as midnight 1970 and an absent delay as "on time".
+      const arrival = presentNumber(stu.arrival, 'time');
+      const departure = presentNumber(stu.departure, 'time');
+      const delay = presentNumber(stu.arrival, 'delay') ?? presentNumber(stu.departure, 'delay');
 
       predictions.push({
         update,
@@ -112,7 +130,7 @@ export class RtIndex {
         stop_sequence: sequence,
         arrival,
         departure,
-        delay: delay ?? undefined,
+        delay,
         time: departure ?? arrival,
       });
     }
@@ -130,7 +148,9 @@ export class RtIndex {
     this.gaps.vehicles++;
     if (vehicle.currentStopSequence === undefined) {
       this.gaps.missingStopSequence++;
-      if (this.stopSequenceFor(vehicle)) this.gaps.stopSequenceDerived++;
+      const source = this.stopSequenceFor(vehicle)?.source;
+      if (source === 'stop_id') this.gaps.resolvedFromStopId++;
+      else if (source === 'derived') this.gaps.stopSequenceDerived++;
     }
 
     if (vehicle.currentStatus === 1) {
@@ -140,29 +160,55 @@ export class RtIndex {
   }
 
   /**
-   * The stop this vehicle is working on, reported or derived.
+   * The stop this vehicle is working on, and where that came from.
    *
-   * GTFS-RT makes `current_stop_sequence` optional, and a producer that omits it
-   * while publishing full `stop_time_update`s has still said where the vehicle
-   * is — just indirectly. Rather than drop those vehicles, take the soonest
-   * still-future prediction on the same trip and label the result `derived`.
+   * GTFS-RT gives a producer two ways to name the current stop —
+   * `current_stop_sequence` and `stop_id` — and does not require either. Take
+   * them in order of how directly the feed said it:
+   *
+   *   1. the sequence, as reported;
+   *   2. the vehicle's own `stop_id`, looked up in the trip's `stop_times`;
+   *   3. failing both, an inference from the trip's predictions.
+   *
+   * Only the third is a guess. Feeds that use `stop_id` exclusively are common
+   * (RIPTA is one), and reading step 2 as a fallback would understate what those
+   * feeds actually told us.
    *
    * `undefined` for `currentStopSequence` genuinely means "not sent" (see the
-   * `present()` guard in `gtfs-rt.ts`), so a reported `0` never reaches the
-   * derivation path.
+   * `present()` guard in `gtfs-rt.ts`), so a reported `0` stops at step 1.
    */
   stopSequenceFor(vehicle: VehiclePosition): VehicleStopSequence | undefined {
     if (vehicle.currentStopSequence !== undefined) {
-      return { sequence: vehicle.currentStopSequence, source: 'reported' };
+      return { sequence: vehicle.currentStopSequence, source: 'reported', ambiguous: false };
     }
     if (!vehicle.tripId) return undefined;
+
+    const fromStopId = this.stopSequenceFromStopId(vehicle);
+    if (fromStopId) return fromStopId;
 
     const tripId = vehicle.tripId;
     if (!this.derivedByTrip.has(tripId)) {
       this.derivedByTrip.set(tripId, this.deriveStopSequence(tripId));
     }
     const sequence = this.derivedByTrip.get(tripId);
-    return sequence === undefined ? undefined : { sequence, source: 'derived' };
+    return sequence === undefined ? undefined : { sequence, source: 'derived', ambiguous: false };
+  }
+
+  /**
+   * The `stop_sequence` of the stop the vehicle named with `stop_id`.
+   *
+   * A trip that calls at a stop twice makes this genuinely ambiguous — the feed
+   * named a stop, not a visit — so the first visit is taken and the result says
+   * so. Not memoised per trip: two vehicles on one trip sit at different stops.
+   */
+  private stopSequenceFromStopId(vehicle: VehiclePosition): VehicleStopSequence | undefined {
+    if (!vehicle.stopId || !vehicle.tripId) return undefined;
+    const times = this.feed?.stopTimesByTrip.get(vehicle.tripId);
+    if (!times) return undefined;
+
+    const visits = times.filter(t => t.stop_id === vehicle.stopId);
+    if (visits.length === 0) return undefined;
+    return { sequence: visits[0].stop_sequence, source: 'stop_id', ambiguous: visits.length > 1 };
   }
 
   /**

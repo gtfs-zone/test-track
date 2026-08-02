@@ -24,18 +24,6 @@ export interface AlertRecord {
 }
 
 /**
- * protobuf 64-bit fields decode to `Long` objects, not numbers, and every
- * timestamp in GTFS-RT is one of them. `Number(long)` goes through the Long's
- * own `toString`, so this works whether or not protobufjs installed Long
- * support.
- */
-export function toSeconds(value: unknown): number | undefined {
-  if (value === null || value === undefined) return undefined;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : undefined;
-}
-
-/**
  * Whether the producer actually sent a field, as opposed to protobufjs handing
  * back a proto2 default.
  *
@@ -49,6 +37,28 @@ export function toSeconds(value: unknown): number | undefined {
  */
 function present<T>(msg: object, field: string, value: T | null | undefined): T | undefined {
   return Object.prototype.hasOwnProperty.call(msg, field) ? (value ?? undefined) : undefined;
+}
+
+/**
+ * A numeric field, or `undefined` when the producer did not send it.
+ *
+ * `present` plus the coercion the 64-bit fields need: protobuf decodes those to
+ * `Long` objects rather than numbers, and every timestamp in GTFS-RT is one.
+ * `Number(long)` goes through the Long's own `toString`, so this works whether
+ * or not protobufjs installed Long support.
+ *
+ * Reading such a field without the own-property check is worse than useless: an
+ * absent `int64` reads back as `Long{0,0}`, which is finite, so the value comes
+ * out as `0` — midnight 1970 for a time, "on time" for a delay. Both are things
+ * the feed never said.
+ *
+ * `msg` is nullable so the whole containing message may be absent, as in
+ * `presentNumber(stu.arrival, 'time')`.
+ */
+export function presentNumber(msg: object | null | undefined, field: string): number | undefined {
+  if (!msg || !Object.prototype.hasOwnProperty.call(msg, field)) return undefined;
+  const n = Number((msg as Record<string, unknown>)[field]);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 /** Verbatim FeedHeader fields, for the status page's raw dump. */
@@ -316,7 +326,7 @@ export class GTFSRealtime extends EventTarget {
         stopId: present(v, 'stopId', v.stopId),
         currentStatus: present(v, 'currentStatus', v.currentStatus),
         occupancyStatus: present(v, 'occupancyStatus', v.occupancyStatus),
-        timestamp: toSeconds(v.timestamp),
+        timestamp: presentNumber(v, 'timestamp'),
         raw: transit_realtime.VehiclePosition.toObject(v as transit_realtime.VehiclePosition, {
           longs: Number,
           enums: String,
