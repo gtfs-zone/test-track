@@ -10,7 +10,8 @@
     "start": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "atlas": "tsx scripts/generate-atlas-data.ts"
+    "atlas": "tsx scripts/generate-atlas-data.ts",
+    "vendor:check": "tsx scripts/vendor-check.ts"
   },
   "keywords": [
     "gtfs",

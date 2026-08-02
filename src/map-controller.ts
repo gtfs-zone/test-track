@@ -15,6 +15,7 @@ const STYLE_URL = 'https://tiles.openfreemap.org/styles/liberty';
 export class MapController {
   private map!: maplibregl.Map;
   private stopClickCallback: ((stopId: string) => void) | null = null;
+  private resizeTimeout: ReturnType<typeof setTimeout> | null = null;
 
   initialize(container: string): void {
     this.map = new maplibregl.Map({
@@ -193,5 +194,31 @@ export class MapController {
     if (this.map.getLayer('shapes-layer')) this.map.removeLayer('shapes-layer');
     if (this.map.getSource('stops')) this.map.removeSource('stops');
     if (this.map.getSource('shapes')) this.map.removeSource('shapes');
+  }
+
+  /** Immediate resize — called on every frame of a panel drag. */
+  resizeNow(): void {
+    this.map?.resize();
+  }
+
+  /**
+   * Deferred resize for after a CSS transition settles. Restores center and
+   * zoom so the viewport doesn't jump when the canvas changes size.
+   */
+  forceMapResize(): void {
+    if (!this.map) return;
+
+    if (this.resizeTimeout) clearTimeout(this.resizeTimeout);
+
+    this.resizeTimeout = setTimeout(() => {
+      const center = this.map.getCenter();
+      const zoom = this.map.getZoom();
+
+      this.map.resize();
+      this.map.setCenter(center);
+      this.map.setZoom(zoom);
+
+      this.resizeTimeout = null;
+    }, 350);
   }
 }

@@ -1,2 +1,153 @@
-@import "tailwindcss";
-@plugin "daisyui";
+/* @vendored-from coloring-book:src/styles/main.css
+   @sha f9c718c
+   @status modified
+   @changes
+   - Theme list trimmed to `light --default, dark --prefersdark` (dropped cupcake/night).
+   - Dropped the CodeMirror overrides (.cm-editor, .cm-focused) — no editor here.
+   - Dropped `td input.input`, `.file-required`, and the `#map-overlay` transition.
+   - Renamed the mobile scroll-gating selector `.tab-content` → `.panel-scroll`; there
+     are no tabs, just the single `#panel-content` host.
+   - Dropped `--dock-height`: there is no mobile dock, so `#right-panel` anchors to
+     `bottom: 0` and `.basemap-control` to `bottom: 10px`.
+   - Translated daisyUI v4 color refs to v5 custom properties, which were dead rules
+     upstream: `oklch(var(--b3))` → `var(--color-base-300)`, `oklch(var(--p))` →
+     `var(--color-primary)`, `oklch(var(--pc))` → `var(--color-primary-content)`, and
+     the `oklch(var(--p) / 0.2)` ring → `color-mix(in oklch, var(--color-primary) 20%, transparent)`.
+     These now take effect where upstream they did not. */
+
+@import 'tailwindcss';
+@source "../**/*.{html,js,ts}";
+
+@plugin "daisyui" {
+  themes:
+    light --default,
+    dark --prefersdark;
+}
+
+html,
+body {
+  overscroll-behavior: none;
+  overflow: hidden;
+}
+
+/* Minimal custom utilities */
+@layer utilities {
+  .h-15 {
+    height: 60px;
+  }
+}
+
+.app-container {
+  grid-template-columns: 1fr var(--panel-width, 650px);
+}
+
+@media (max-width: 767px) {
+  .app-container {
+    grid-template-columns: 1fr;
+  }
+
+  .basemap-control {
+    position: fixed !important;
+    bottom: 10px !important;
+    right: 10px !important;
+    z-index: 40 !important;
+  }
+
+  #right-panel {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 0;
+    z-index: 50;
+    border-left: none;
+    border-top: 1px solid var(--color-base-300);
+    border-radius: 1rem 1rem 0 0;
+    transition: height 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
+  }
+
+  #right-panel .panel-scroll {
+    height: 100%;
+    /* Only allow content scroll in half/full states */
+    overflow-y: hidden;
+  }
+
+  #right-panel.sheet-half .panel-scroll,
+  #right-panel.sheet-full .panel-scroll {
+    overflow-y: auto;
+  }
+}
+
+@layer components {
+  /* Map controls styling */
+  #map-controls .btn {
+    transition: all 0.2s ease;
+  }
+
+  #map-controls .btn.btn-active {
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
+    color: var(--color-primary-content);
+    box-shadow: 0 0 0 2px
+      color-mix(in oklch, var(--color-primary) 20%, transparent);
+  }
+
+  #map-controls .btn:hover:not(.btn-active) {
+    background-color: var(--color-base-300);
+  }
+
+  #map-controls .btn svg {
+    transition: transform 0.2s ease;
+  }
+
+  /* Better tooltip positioning for map controls */
+  #map-controls .tooltip {
+    --tooltip-offset: 0.75rem;
+  }
+
+  /* Square button improvements */
+  #map-controls .btn-square {
+    min-height: 2.5rem;
+    height: 2.5rem;
+    width: 2.5rem;
+  }
+}
+
+@layer components {
+  /* Search results styles */
+  .search-results {
+    z-index: 1000;
+    max-height: 24rem;
+    overflow-y: auto;
+  }
+
+  .search-result-item {
+    transition: colors 0.15s ease;
+  }
+
+  .search-section-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+}
+
+@layer utilities {
+  /* My hacks to fix the tooltip issues */
+  .stop-name:hover {
+    z-index: 2;
+  }
+
+  .stop-name {
+    z-index: 1;
+  }
+
+  .tooltip:before {
+    max-width: 20rem;
+    white-space: pre-line; /* Preserve newlines, allow wrapping */
+    text-align: left;
+    overflow-wrap: break-word; /* Break long words if needed */
+    font-size: 11px;
+  }
+}

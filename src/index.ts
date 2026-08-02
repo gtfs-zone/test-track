@@ -2,18 +2,34 @@ import { GTFSStatic } from './gtfs-static';
 import { MapController } from './map-controller';
 import type { VehiclePosition } from './map-controller';
 import { GTFSRealtime } from './gtfs-rt';
-import type { TripUpdate, ServiceAlert } from './gtfs-rt';
+import type { ServiceAlert } from './gtfs-rt';
 import { showAboutModal } from './modules/about-modal';
 import type { FeedConfig } from './modules/atlas-search';
 import { showAtlasSearchModal } from './modules/atlas-search';
 import { showExamplesModal } from './modules/examples';
 import { showManualLoadModal } from './modules/manual-load-modal';
+import { notify } from './modules/notification-system';
+import { feedProgressIndicator } from './modules/feed-progress-indicator';
+import { PanelResizer, restorePanelWidth } from './modules/panel-resizer';
+import { BottomSheetController } from './modules/bottom-sheet';
+import { ThemeController } from './modules/theme-controller';
+
+// ─── Shell ────────────────────────────────────────────────────────────────────
+const appContainer = document.querySelector<HTMLElement>('.app-container')!;
+restorePanelWidth(appContainer);
+
+notify.initialize();
+new ThemeController().initialize();
 
 const mapCtrl = new MapController();
 mapCtrl.initialize('map');
 
-let staticFeed: GTFSStatic | null = null;
-let latestTripUpdates: TripUpdate[] = [];
+new PanelResizer(appContainer, mapCtrl);
+
+const rightPanel = document.getElementById('right-panel')!;
+const bottomSheet = new BottomSheetController(rightPanel);
+void bottomSheet;
+
 let latestAlerts: ServiceAlert[] = [];
 let rtPoller: GTFSRealtime | null = null;
 let lastConfig: FeedConfig | null = null;
@@ -23,26 +39,22 @@ document.getElementById('app-version')!.textContent = __APP_VERSION__;
 document.getElementById('about-btn')!
   .addEventListener('click', () => showAboutModal(__APP_VERSION__));
 
-// ─── Theme toggle ─────────────────────────────────────────────────────────────
-const themeInput = document.querySelector<HTMLInputElement>('.theme-controller')!;
-if (localStorage.getItem('theme') === 'light') themeInput.checked = true;
-themeInput.addEventListener('change', () =>
-  localStorage.setItem('theme', themeInput.checked ? 'light' : 'dark')
-);
 
 // ─── Load dropdown ────────────────────────────────────────────────────────────
 async function handleLoadResult(config: FeedConfig | null, label: string): Promise<void> {
   if (!config) return;
   // Close dropdown by blurring the tabindex element
   (document.activeElement as HTMLElement | null)?.blur();
+  feedProgressIndicator.startLoading('feed-load', `Loading ${label}…`);
   try {
     await loadFeeds(config);
-    document.getElementById('feed-status')!.textContent = label;
     document.getElementById('refresh-rt-btn')!.classList.remove('hidden');
-    (document.getElementById('feed-config') as HTMLDetailsElement).open = false;
+    notify.success(`Loaded ${label}`);
   } catch (err) {
     console.error('Load failed:', err);
-    alert(`Failed to load feeds: ${err instanceof Error ? err.message : String(err)}`);
+    notify.error(`Failed to load feeds: ${err instanceof Error ? err.message : String(err)}`);
+  } finally {
+    feedProgressIndicator.finishLoading('feed-load');
   }
 }
 
@@ -68,7 +80,7 @@ document.getElementById('refresh-rt-btn')!.addEventListener('click', async () =>
     await startRtPoller(lastConfig);
   } catch (err) {
     console.error('RT refresh failed:', err);
-    alert(`Failed to refresh RT feeds: ${err instanceof Error ? err.message : String(err)}`);
+    notify.error(`Failed to refresh RT feeds: ${err instanceof Error ? err.message : String(err)}`);
   }
 });
 
@@ -89,9 +101,8 @@ function startRtPoller(config: FeedConfig): void {
   rtPoller.addEventListener('vehicles', e => {
     mapCtrl.showVehicles((e as CustomEvent<VehiclePosition[]>).detail);
   });
-  rtPoller.addEventListener('tripUpdates', e => {
-    latestTripUpdates = (e as CustomEvent<TripUpdate[]>).detail;
-  });
+  // Trip updates are collected by the state store in a later plan; the panel
+  // has no consumer for them yet.
   rtPoller.addEventListener('alerts', e => {
     latestAlerts = (e as CustomEvent<ServiceAlert[]>).detail;
     renderAlertsModal(latestAlerts);
@@ -109,72 +120,11 @@ async function loadFeeds(config: FeedConfig): Promise<void> {
     } else {
       await feed.loadFromUrl(maybeProxy(config.staticUrl!, config.useCors));
     }
-    staticFeed = feed;
     mapCtrl.clearStaticFeed();
     mapCtrl.loadStaticFeed(feed);
   }
 
   startRtPoller(config);
-}
-
-// ─── Stop sheet ───────────────────────────────────────────────────────────────
-mapCtrl.onStopClick(stopId => {
-  const stop = staticFeed?.stops.get(stopId);
-  const sheet = document.getElementById('stop-sheet')!;
-
-  document.getElementById('stop-sheet-name')!.textContent = stop?.name ?? stopId;
-  document.getElementById('stop-sheet-id')!.textContent = stopId;
-
-  const tripIds = new Set(staticFeed?.stopTrips.get(stopId) ?? []);
-  const matchingUpdates = latestTripUpdates.filter(tu => tripIds.has(tu.trip?.tripId ?? ''));
-  const tripsEl = document.getElementById('stop-sheet-trips')!;
-  tripsEl.innerHTML = matchingUpdates.length > 0
-    ? matchingUpdates.map(tu => renderTripRow(tu, stopId)).join('')
-    : '<p class="text-xs opacity-40">No upcoming trip data.</p>';
-
-  const stopAlerts = latestAlerts.filter(a =>
-    a.informedEntity?.some(e => !e.stopId || e.stopId === stopId)
-  );
-  const alertsSection = document.getElementById('stop-sheet-alerts-section')!;
-  if (stopAlerts.length > 0) {
-    document.getElementById('stop-sheet-alerts')!.innerHTML = stopAlerts.map(renderAlertCard).join('');
-    alertsSection.classList.remove('hidden');
-  } else {
-    alertsSection.classList.add('hidden');
-  }
-
-  sheet.classList.remove('translate-y-full');
-});
-
-function renderTripRow(tu: TripUpdate, stopId: string): string {
-  const tripId = tu.trip?.tripId ?? '';
-  const trip = staticFeed?.trips.get(tripId);
-  const route = trip ? staticFeed?.routes.get(trip.route_id) : null;
-  const headsign = trip?.headsign ?? '';
-
-  const stu = tu.stopTimeUpdate?.find(u => u.stopId === stopId);
-  const rawDelay = stu?.departure?.delay ?? stu?.arrival?.delay ?? null;
-  const delaySecs = rawDelay != null ? Number(rawDelay) : null;
-
-  const color = route?.color ?? '#0066ff';
-  const textColor = route?.text_color ?? '#ffffff';
-  const name = route?.short_name ?? tripId;
-
-  const delayClass = delaySecs != null && delaySecs > 60 ? 'text-error'
-    : delaySecs != null && delaySecs < -30 ? 'text-success' : '';
-  const delayLabel = delaySecs != null ? formatDelay(delaySecs) : '';
-
-  return `<div class="flex items-center gap-2 text-xs py-1">
-    <span class="badge badge-sm font-mono shrink-0" style="background:${escHtml(color)};color:${escHtml(textColor)}">${escHtml(name)}</span>
-    <span class="flex-1 truncate opacity-80">${escHtml(headsign)}</span>
-    ${delayLabel ? `<span class="font-mono shrink-0 ${delayClass}">${escHtml(delayLabel)}</span>` : ''}
-  </div>`;
-}
-
-function formatDelay(secs: number): string {
-  if (Math.abs(secs) < 30) return 'On time';
-  const mins = Math.round(secs / 60);
-  return mins > 0 ? `+${mins}m` : `${mins}m`;
 }
 
 // ─── Alerts modal ─────────────────────────────────────────────────────────────

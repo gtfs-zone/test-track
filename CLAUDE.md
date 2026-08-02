@@ -24,7 +24,9 @@ A static frontend for visualizing GTFS realtime feeds
 ## Rules
 
 - Never include `Co-Authored-By: Claude ...` trailers in commit messages.
-- Only read files within this repo's directory. Do not access parent directories or sibling repos.
+- Do NOT use Playwright (or any browser automation) to verify changes. The user does
+  visual/browser verification themselves. Stop at `pnpm typecheck` / `pnpm build` and
+  hand off.
 
 <!-- Add project-specific rules and invariants here -->
 
