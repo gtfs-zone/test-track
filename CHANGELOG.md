@@ -1,3 +1,9 @@
+## v0.3.3 (2026-08-02)
+
+### Fix
+
+- overhaul feed URL inputs and support localhost endpoints
+
 ## v0.3.2 (2026-08-02)
 
 ### Fix
