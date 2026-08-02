@@ -8,6 +8,62 @@ export interface ExampleFeed {
 }
 
 /**
+ * The music-student stack running on this machine, for working against a feed
+ * before it is deployed.
+ *
+ * The realtime URLs are same-origin `/rt-local/**` paths that vite forwards to
+ * `localhost:8000` (see `server.proxy` in `vite.config.js`), not direct
+ * localhost URLs. cafe-car's `CORS_ALLOWED_ORIGINS` names a single fixed origin
+ * and vite quietly moves to 8081+ when 8080 is already taken, so a direct fetch
+ * fails CORS the moment the port shifts; going through the dev server never
+ * does. `useCors` stays false throughout — the remote CORS proxy could not
+ * reach a local stack anyway.
+ *
+ * The static halves stay on their public origins — only the realtime side is
+ * served locally.
+ */
+const LOCAL_EXAMPLES: ExampleFeed[] = [
+  {
+    name: 'Amtrak (local)',
+    description: 'Amtrak static, realtime from the local music-student stack',
+    selection: {
+      static: {
+        kind: 'url',
+        url: 'https://content.amtrak.com/content/gtfs/GTFS.zip',
+        useCors: true,
+        label: 'Amtrak',
+      },
+      realtime: {
+        vehiclesUrl: '/rt-local/amtrak/vehicle_positions.pb',
+        tripUpdatesUrl: '/rt-local/amtrak/trip_updates.pb',
+        alertsUrl: '/rt-local/amtrak/service_alerts.pb',
+        useCors: false,
+        label: 'Amtrak RT (local)',
+      },
+    },
+  },
+  {
+    name: 'Columbia County (local)',
+    description: 'Columbia County static, realtime from the local music-student stack',
+    selection: {
+      static: {
+        kind: 'url',
+        url: 'https://raw.githubusercontent.com/columbia-county-ny-transit/gtfs-generator/refs/heads/main/columbia_county_gtfs.zip',
+        useCors: false,
+        label: 'Columbia County',
+      },
+      realtime: {
+        vehiclesUrl: '/rt-local/columbia-county/vehicle_positions.pb',
+        tripUpdatesUrl: '/rt-local/columbia-county/trip_updates.pb',
+        alertsUrl: '/rt-local/columbia-county/service_alerts.pb',
+        useCors: false,
+        label: 'Columbia County RT (local)',
+      },
+    },
+  },
+];
+
+/**
  * Curated, ready-to-load pairs. Every entry names both a static source and a
  * realtime source, so picking one satisfies the load requirement in one click.
  *
@@ -77,6 +133,8 @@ export const EXAMPLES: ExampleFeed[] = [
       },
     },
   },
+  // Dev only — a localhost URL is dead weight in the built site.
+  ...(import.meta.env.DEV ? LOCAL_EXAMPLES : []),
 ];
 
 function escHtml(s: string): string {
