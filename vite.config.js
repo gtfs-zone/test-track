@@ -4,9 +4,15 @@ import { execSync } from 'child_process'
 
 let version
 try {
-  version = execSync('git describe --tags --long --always').toString().trim()
+  // Exactly on a tag: use the clean tag name (e.g. "0.3.1").
+  version = execSync('git describe --tags --exact-match').toString().trim().replace(/^v/, '')
 } catch {
-  version = '0.0.0-development'
+  try {
+    // Between tags: tag + commit count + hash (e.g. "0.3.1-2-gabc1234").
+    version = execSync('git describe --tags --long --always').toString().trim().replace(/^v/, '')
+  } catch {
+    version = '0.0.0-development'
+  }
 }
 
 export default defineConfig({
