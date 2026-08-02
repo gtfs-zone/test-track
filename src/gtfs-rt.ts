@@ -34,6 +34,22 @@ export function toSeconds(value: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+/**
+ * Whether the producer actually sent a field, as opposed to protobufjs handing
+ * back a proto2 default.
+ *
+ * The generated bindings keep every default on the message *prototype*
+ * (`VehiclePosition.prototype.currentStopSequence = 0`, `currentStatus = 2`),
+ * and decoding only assigns own properties for fields that were on the wire. So
+ * `msg.currentStopSequence ?? undefined` can never yield `undefined`, and an
+ * absent field is indistinguishable from a reported zero unless the own-property
+ * is checked. Getting this wrong makes test-track assert things the feed never
+ * said — a stop_sequence of 0, a bearing of due north, an IN_TRANSIT_TO status.
+ */
+function present<T>(msg: object, field: string, value: T | null | undefined): T | undefined {
+  return Object.prototype.hasOwnProperty.call(msg, field) ? (value ?? undefined) : undefined;
+}
+
 /** Verbatim FeedHeader fields, for the status page's raw dump. */
 export interface RawFeedHeader {
   gtfsRealtimeVersion: string;
@@ -265,20 +281,19 @@ export class GTFSRealtime extends EventTarget {
         label: v.vehicle?.label ?? undefined,
         lat: v.position!.latitude,
         lon: v.position!.longitude,
-        bearing: v.position!.bearing ?? undefined,
-        speed: v.position!.speed ?? undefined,
+        bearing: present(v.position!, 'bearing', v.position!.bearing),
+        speed: present(v.position!, 'speed', v.position!.speed),
         tripId: v.trip?.tripId ?? undefined,
         routeId: v.trip?.routeId ?? undefined,
-        directionId:
-          v.trip?.directionId === null || v.trip?.directionId === undefined
-            ? undefined
-            : String(v.trip.directionId),
+        directionId: v.trip
+          ? present(v.trip, 'directionId', v.trip.directionId)?.toString()
+          : undefined,
         startDate: v.trip?.startDate ?? undefined,
         startTime: v.trip?.startTime ?? undefined,
-        currentStopSequence: v.currentStopSequence ?? undefined,
-        stopId: v.stopId ?? undefined,
-        currentStatus: v.currentStatus ?? undefined,
-        occupancyStatus: v.occupancyStatus ?? undefined,
+        currentStopSequence: present(v, 'currentStopSequence', v.currentStopSequence),
+        stopId: present(v, 'stopId', v.stopId),
+        currentStatus: present(v, 'currentStatus', v.currentStatus),
+        occupancyStatus: present(v, 'occupancyStatus', v.occupancyStatus),
         timestamp: toSeconds(v.timestamp),
         raw: transit_realtime.VehiclePosition.toObject(v as transit_realtime.VehiclePosition, {
           longs: Number,
