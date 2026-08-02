@@ -117,6 +117,15 @@ export class MapController {
   private ready = false;
   private pending: Array<() => void> = [];
 
+  /**
+   * The vehicle key currently being followed, or null. Focusing a vehicle
+   * enters follow mode; each `vehicles` payload re-centres on its new position
+   * until the user takes the camera back (see the gesture listeners in
+   * `initialize`). Focusing anything else — including home and alert — leaves
+   * follow mode.
+   */
+  private following: string | null = null;
+
   /** Called when the user clicks a stop, route, or vehicle on the map. */
   onSelect: ((state: PageState) => void) | null = null;
 
@@ -177,6 +186,16 @@ export class MapController {
     this.map.on('basemap:changed', () => this.layers.rebuild());
 
     this.map.on('moveend', () => this.queueViewSave());
+
+    // A user-initiated camera gesture unlocks follow permanently for the
+    // current focus. Our own programmatic easeTo/fitBounds carry no
+    // `originalEvent`, which is exactly what distinguishes them from a real
+    // drag/scroll/rotate/pitch — so the follow ease itself never unlocks.
+    for (const type of ['dragstart', 'zoomstart', 'rotatestart', 'pitchstart'] as const) {
+      this.map.on(type, e => {
+        if ((e as { originalEvent?: unknown }).originalEvent) this.following = null;
+      });
+    }
   }
 
   /** Feed problems the map found, for the status page. */
@@ -215,7 +234,22 @@ export class MapController {
   }
 
   showVehicles(positions: VehiclePosition[]): void {
-    this.whenLoaded(() => this.layers.setVehicles(positions));
+    this.whenLoaded(() => {
+      this.layers.setVehicles(positions);
+      // Follow: re-centre on the followed vehicle's new position. If it has
+      // left the feed, leave the camera where it is — the vehicle page keeps a
+      // lastSeen fallback.
+      if (this.following) {
+        const v = positions.find(p => p.key === this.following);
+        if (v) {
+          this.map.easeTo({
+            center: [v.lon, v.lat],
+            duration: CONFIG.FOLLOW_DURATION,
+            essential: true,
+          });
+        }
+      }
+    });
   }
 
   clearVehicles(): void {
@@ -264,6 +298,9 @@ export class MapController {
   }
 
   private applyFocus(state: PageState): void {
+    // Any focus that is not this same vehicle leaves follow mode.
+    if (state.type !== 'vehicle') this.following = null;
+
     switch (state.type) {
       case 'home':
         this.layers.setFocus(null);
@@ -277,7 +314,14 @@ export class MapController {
       case 'route': {
         this.layers.setFocus({ kind: 'route', id: state.route_id });
         const bounds = this.layers.routeBounds(state.route_id);
-        if (bounds) this.map.fitBounds(bounds, { padding: this.padding(), maxZoom: 15 });
+        if (bounds) {
+          this.map.fitBounds(bounds, {
+            padding: this.padding(),
+            maxZoom: 15,
+            duration: CONFIG.FOCUS_BOUNDS_DURATION,
+            essential: true,
+          });
+        }
         return;
       }
 
@@ -289,6 +333,8 @@ export class MapController {
 
       case 'vehicle': {
         this.layers.setFocus({ kind: 'vehicle', id: state.vehicle_id });
+        // Re-arm follow on this vehicle (a different vehicle replaces the old).
+        this.following = state.vehicle_id;
         this.easeToPoint(this.layers.vehiclePosition(state.vehicle_id));
         return;
       }
@@ -296,33 +342,18 @@ export class MapController {
   }
 
   /**
-   * Ease to a point, but leave the camera alone when it is already on screen
-   * and close enough to see — yanking the map on every panel click is worse
-   * than not moving at all.
+   * Ease to a point, always. Focusing something moves the camera to it — unlike
+   * the earlier "already visible" bail-out, which left the camera where it was
+   * and made a panel click feel like it did nothing.
    */
   private easeToPoint(point: [number, number] | null): void {
     if (!point) return;
-
-    const bounds = this.map.getBounds();
-    const visible =
-      point[0] >= bounds.getWest() &&
-      point[0] <= bounds.getEast() &&
-      point[1] >= bounds.getSouth() &&
-      point[1] <= bounds.getNorth();
-    // The bottom sheet covers the lower part of the canvas on mobile, so a
-    // point down there counts as hidden even though it is technically in view.
-    const screenY = this.map.project(point).y;
-    const behindSheet =
-      this.bottomPadding > 0 &&
-      screenY > this.map.getCanvas().clientHeight - this.bottomPadding;
-
-    if (visible && !behindSheet && this.map.getZoom() >= 12) return;
-
     this.map.easeTo({
       center: point,
       zoom: Math.max(this.map.getZoom(), CONFIG.STOP_FOCUS_ZOOM),
       padding: { top: 0, left: 0, right: 0, bottom: this.bottomPadding },
-      duration: 600,
+      duration: CONFIG.FOCUS_POINT_DURATION,
+      essential: true,
     });
   }
 

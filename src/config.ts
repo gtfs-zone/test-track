@@ -9,6 +9,13 @@ export const CONFIG = {
   // Map navigation — zoom level used when focusing a single stop or vehicle.
   STOP_FOCUS_ZOOM: 16,
 
+  // Camera animation durations (ms). Focusing always moves the camera now;
+  // these match coloring-book. The follow ease is short so it never queues
+  // behind the next 15s poll.
+  FOCUS_POINT_DURATION: 1500,
+  FOCUS_BOUNDS_DURATION: 2000,
+  FOLLOW_DURATION: 300,
+
   // Map spotlight — zoom range over which plain stops fade in/out. Shared
   // between LayerManager's fade-opacity expression and its click-area hit
   // radius so hidden stops are never hoverable/clickable. Changing one

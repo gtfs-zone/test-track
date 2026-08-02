@@ -55,6 +55,7 @@ const LAYER_ORDER = [
   'stops-station-dot',
   'stops-clickarea',
   'vehicles-halo',
+  'vehicles-casing',
   'vehicles-dot',
   'vehicles-arrow',
   'vehicles-clickarea',
@@ -81,6 +82,10 @@ const STOP_STROKE_COLOR = '#37474f';
 const STOP_STROKE_WIDTH = 2;
 const STOP_FILL_COLOR = '#ffffff';
 const FOCUS_ACCENT = '#e74c3c';
+/** Hard-contrast edge for vehicles, so a route-colored marker reads on top of
+ *  its own route line. Reads on light basemaps; on dark ones the dot keeps its
+ *  white inner stroke and the arrow its route-colored fill. */
+const VEHICLE_CASING_COLOR = '#0f172a';
 
 const ROUTE_WIDTH_STOPS: Array<[number, number]> = [
   [10, 1.5],
@@ -650,13 +655,19 @@ export class LayerManager {
 
     // Focus halo: a soft ring that only exists for the focused vehicle. The
     // arrow's size is a layout property and so cannot read feature-state; the
-    // halo carries the emphasis instead.
+    // halo carries the emphasis instead. It scales with zoom so it reads at any
+    // scale rather than being a flat pixel radius.
     this.map.addLayer({
       id: 'vehicles-halo',
       type: 'circle',
       source: 'vehicles',
       paint: {
-        'circle-radius': ['case', FOCUSED, 18, 0],
+        'circle-radius': [
+          'case',
+          FOCUSED,
+          ['interpolate', ['linear'], ['zoom'], 8, 11, 14, 17, 18, 23],
+          0,
+        ] as unknown as ExpressionSpecification,
         'circle-color': FOCUS_ACCENT,
         'circle-opacity': 0.25,
         'circle-stroke-color': FOCUS_ACCENT,
@@ -664,15 +675,31 @@ export class LayerManager {
       },
     });
 
+    // Dark casing behind the dot: a vehicle takes its fill from the route it
+    // runs on and sits on that same-colored line, so without a hard-contrast
+    // edge it disappears into the line. The casing is a slightly larger dark
+    // circle drawn just under the dot (the arrow gets a dark halo instead).
+    this.map.addLayer({
+      id: 'vehicles-casing',
+      type: 'circle',
+      source: 'vehicles',
+      filter: ['==', ['get', 'has_bearing'], false] as unknown as FilterSpecification,
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 7, 14, 9.5, 18, 13],
+        'circle-color': VEHICLE_CASING_COLOR,
+      },
+    });
+
     // Vehicles with no bearing render as a plain circle rather than an
-    // arbitrarily-pointed arrow.
+    // arbitrarily-pointed arrow. Larger minimum size than the route casing so
+    // the dot never reads as thinner than the line it sits on.
     this.map.addLayer({
       id: 'vehicles-dot',
       type: 'circle',
       source: 'vehicles',
       filter: ['==', ['get', 'has_bearing'], false] as unknown as FilterSpecification,
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 3.5, 14, 6, 18, 9],
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 5, 14, 7.5, 18, 11],
         'circle-color': ['get', 'color'],
         'circle-stroke-color': '#ffffff',
         'circle-stroke-width': ['case', FOCUSED, 3, 1.5],
@@ -686,26 +713,32 @@ export class LayerManager {
       filter: ['==', ['get', 'has_bearing'], true] as unknown as FilterSpecification,
       layout: {
         'icon-image': 'vehicle-arrow',
-        'icon-size': ['interpolate', ['linear'], ['zoom'], 8, 0.45, 14, 0.7, 18, 1],
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 8, 0.6, 14, 0.85, 18, 1.15],
         'icon-rotate': ['get', 'bearing'],
         'icon-rotation-alignment': 'map',
         'icon-allow-overlap': true,
         'icon-ignore-placement': true,
       },
       paint: {
-        // The arrow image is an SDF, so its fill follows the route color and
-        // the halo can thicken on focus.
+        // The arrow image is an SDF, so its fill follows the route color and a
+        // dark halo gives it the same hard-contrast edge as the dot's casing.
         'icon-color': ['get', 'color'],
-        'icon-halo-color': '#ffffff',
-        'icon-halo-width': ['case', FOCUSED, 2.5, 1],
+        'icon-halo-color': VEHICLE_CASING_COLOR,
+        'icon-halo-width': ['case', FOCUSED, 3, 2],
       },
     });
 
+    // Never smaller than the largest drawn vehicle (focused halo aside): the
+    // clickarea is the sole hit-test layer, same contract as the stops one.
     this.map.addLayer({
       id: 'vehicles-clickarea',
       type: 'circle',
       source: 'vehicles',
-      paint: { 'circle-radius': 14, 'circle-color': 'transparent', 'circle-opacity': 0 },
+      paint: {
+        'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 12, 14, 15, 18, 20],
+        'circle-color': 'transparent',
+        'circle-opacity': 0,
+      },
     });
   }
 
