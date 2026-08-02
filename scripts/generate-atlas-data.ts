@@ -1,3 +1,16 @@
+/**
+ * Build public/atlas-feeds.json from the transitland-atlas DMFR corpus.
+ *
+ * Two passes. The first walks every DMFR file and builds a global operator
+ * index; the second walks feeds and resolves against it. A per-file index does
+ * not work: in the real corpus a feed almost never declares `operators[]` —
+ * the link runs the other way, from `operator.associated_feeds[].feed_onestop_id`
+ * back to the feed, and frequently from a different file than the feed lives in.
+ *
+ * Output is one row per *source kind*: a `static` row when the feed has
+ * `static_current`, an `rt` row when it has any realtime URL. The UI pins one of
+ * each, so they must be separately selectable.
+ */
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -9,6 +22,9 @@ const BRANCH = 'main';
 const CONCURRENCY = 8;
 const OUTPUT_PATH = path.join(__dirname, '..', 'public', 'atlas-feeds.json');
 const LOCAL_ATLAS_PATH = path.join(__dirname, '..', '..', 'transitland-atlas');
+
+/** GBFS is bikeshare discovery, not something this app can load. */
+const USABLE_SPECS = new Set(['gtfs', 'gtfs-rt']);
 
 interface DmfrUrls {
   static_current?: string;
@@ -29,7 +45,7 @@ interface DmfrOperator {
   name?: string;
   short_name?: string;
   tags?: Record<string, string>;
-  places?: Array<{ name: string; adm1_name?: string; adm0_name?: string }>;
+  associated_feeds?: Array<{ feed_onestop_id?: string; gtfs_agency_id?: string }>;
 }
 
 interface DmfrFile {
@@ -37,11 +53,21 @@ interface DmfrFile {
   operators?: DmfrOperator[];
 }
 
-interface AtlasFeed {
-  id: string;
+/** One DMFR document plus where it came from (the domain is search context). */
+interface SourceDoc {
+  origin: string;
+  dmfr: DmfrFile;
+}
+
+export interface AtlasRow {
+  /** Stable identity for pinning: `${feedId}:static` or `${feedId}:rt`. */
+  rowId: string;
+  kind: 'static' | 'rt';
+  feedId: string;
   name: string;
   operator_name: string;
-  location: string;
+  /** DMFR source domain (e.g. "511.org"). The corpus carries no place data. */
+  source: string;
   staticUrl?: string;
   vehiclesUrl?: string;
   tripUpdatesUrl?: string;
@@ -79,101 +105,129 @@ async function runConcurrently<T, R>(
   return results;
 }
 
-function deriveLocation(op: DmfrOperator): string {
-  if (op.places && op.places.length > 0) {
-    const p = op.places[0];
-    const parts = [p.name, p.adm1_name, p.adm0_name].filter(Boolean);
-    if (parts.length) return parts.join(', ');
-  }
-  const tags = op.tags ?? {};
-  const country = tags['country_name'] ?? tags['adm0_name'] ?? '';
-  const state = tags['us_state_iso'] ?? tags['adm1_name'] ?? '';
-  return [state, country].filter(Boolean).join(', ');
+/** "511.org.dmfr.json" → "511.org" */
+function originFromFilename(filePath: string): string {
+  return path.basename(filePath).replace(/\.dmfr\.json$/, '').replace(/\.json$/, '');
 }
 
-async function processDmfrFile(rawUrl: string): Promise<AtlasFeed[]> {
-  let dmfr: DmfrFile;
-  try {
-    dmfr = await fetchJson<DmfrFile>(rawUrl);
-  } catch {
-    return [];
-  }
+const GEOHASH_SEGMENT = /^[0-9bcdefghjkmnpqrstuvwxyz]{1,6}$/;
 
-  const operatorMap = new Map<string, DmfrOperator>();
-  for (const op of dmfr.operators ?? []) {
-    operatorMap.set(op.onestop_id, op);
-  }
-
-  const feeds: AtlasFeed[] = [];
-  for (const feed of dmfr.feeds ?? []) {
-    const urls = feed.urls ?? {};
-    const staticUrl = urls.static_current;
-    const vehiclesUrl = urls.realtime_vehicle_positions;
-    const tripUpdatesUrl = urls.realtime_trip_updates;
-    const alertsUrl = urls.realtime_alerts;
-
-    if (!staticUrl && !vehiclesUrl && !tripUpdatesUrl && !alertsUrl) continue;
-
-    const opId = feed.operators?.[0]?.onestop_id;
-    const op = opId ? operatorMap.get(opId) : undefined;
-    const operatorName = op?.name ?? op?.short_name ?? '';
-    const location = op ? deriveLocation(op) : '';
-
-    feeds.push({
-      id: feed.id,
-      name: op?.short_name ?? op?.name ?? feed.id,
-      operator_name: operatorName,
-      location,
-      ...(staticUrl ? { staticUrl } : {}),
-      ...(vehiclesUrl ? { vehiclesUrl } : {}),
-      ...(tripUpdatesUrl ? { tripUpdatesUrl } : {}),
-      ...(alertsUrl ? { alertsUrl } : {}),
-    });
-  }
-  return feeds;
+/**
+ * Humanize a feed onestop id when no operator resolves.
+ * `f-9q8-samtrans` → "samtrans"; `f-columbia~county~public~transportation` →
+ * "columbia county public transportation".
+ *
+ * The second dash-segment of a onestop id is a geohash when one is present, so
+ * it is dropped — but only when there is a third segment to fall back to,
+ * otherwise a genuinely short name would be eaten.
+ */
+function humanizeFeedId(feedId: string): string {
+  const segments = feedId.split('-');
+  if (segments[0] === 'f') segments.shift();
+  if (segments.length > 1 && GEOHASH_SEGMENT.test(segments[0])) segments.shift();
+  return segments
+    .join('-')
+    .replace(/~/g, ' ')
+    .replace(/_/g, ' ')
+    .trim();
 }
 
-async function processDmfrFileLocal(filePath: string): Promise<AtlasFeed[]> {
-  let dmfr: DmfrFile;
-  try {
-    const raw = await fs.readFile(filePath, 'utf8');
-    dmfr = JSON.parse(raw) as DmfrFile;
-  } catch {
-    return [];
+/** Global operator index, keyed by feed onestop id. */
+function buildOperatorIndex(docs: SourceDoc[]): Map<string, DmfrOperator> {
+  const byOnestopId = new Map<string, DmfrOperator>();
+  const byFeedId = new Map<string, DmfrOperator>();
+
+  for (const { dmfr } of docs) {
+    for (const op of dmfr.operators ?? []) {
+      byOnestopId.set(op.onestop_id, op);
+      for (const assoc of op.associated_feeds ?? []) {
+        // First operator to claim a feed wins; later files do not clobber.
+        if (assoc.feed_onestop_id && !byFeedId.has(assoc.feed_onestop_id)) {
+          byFeedId.set(assoc.feed_onestop_id, op);
+        }
+      }
+    }
   }
 
-  const operatorMap = new Map<string, DmfrOperator>();
-  for (const op of dmfr.operators ?? []) {
-    operatorMap.set(op.onestop_id, op);
+  // Feeds that *do* declare operators[] get resolved through the onestop index.
+  for (const { dmfr } of docs) {
+    for (const feed of dmfr.feeds ?? []) {
+      if (byFeedId.has(feed.id)) continue;
+      const opId = feed.operators?.[0]?.onestop_id;
+      const op = opId ? byOnestopId.get(opId) : undefined;
+      if (op) byFeedId.set(feed.id, op);
+    }
   }
 
-  const feeds: AtlasFeed[] = [];
-  for (const feed of dmfr.feeds ?? []) {
-    const urls = feed.urls ?? {};
-    const staticUrl = urls.static_current;
-    const vehiclesUrl = urls.realtime_vehicle_positions;
-    const tripUpdatesUrl = urls.realtime_trip_updates;
-    const alertsUrl = urls.realtime_alerts;
+  return byFeedId;
+}
 
-    if (!staticUrl && !vehiclesUrl && !tripUpdatesUrl && !alertsUrl) continue;
+function buildRows(docs: SourceDoc[]): AtlasRow[] {
+  const operatorsByFeedId = buildOperatorIndex(docs);
+  const rows: AtlasRow[] = [];
+  const seenRowIds = new Set<string>();
 
-    const opId = feed.operators?.[0]?.onestop_id;
-    const op = opId ? operatorMap.get(opId) : undefined;
-    const operatorName = op?.name ?? op?.short_name ?? '';
-    const location = op ? deriveLocation(op) : '';
+  for (const { origin, dmfr } of docs) {
+    for (const feed of dmfr.feeds ?? []) {
+      if (!USABLE_SPECS.has(feed.spec ?? 'gtfs')) continue;
 
-    feeds.push({
-      id: feed.id,
-      name: op?.short_name ?? op?.name ?? feed.id,
-      operator_name: operatorName,
-      location,
-      ...(staticUrl ? { staticUrl } : {}),
-      ...(vehiclesUrl ? { vehiclesUrl } : {}),
-      ...(tripUpdatesUrl ? { tripUpdatesUrl } : {}),
-      ...(alertsUrl ? { alertsUrl } : {}),
-    });
+      const urls = feed.urls ?? {};
+      const staticUrl = urls.static_current;
+      const vehiclesUrl = urls.realtime_vehicle_positions;
+      const tripUpdatesUrl = urls.realtime_trip_updates;
+      const alertsUrl = urls.realtime_alerts;
+      if (!staticUrl && !vehiclesUrl && !tripUpdatesUrl && !alertsUrl) continue;
+
+      const op = operatorsByFeedId.get(feed.id);
+      const operatorName = op?.name ?? op?.short_name ?? '';
+      const name = op?.short_name ?? op?.name ?? humanizeFeedId(feed.id);
+
+      const base = {
+        feedId: feed.id,
+        name,
+        operator_name: operatorName,
+        source: origin,
+      };
+
+      const push = (row: AtlasRow) => {
+        if (seenRowIds.has(row.rowId)) return;
+        seenRowIds.add(row.rowId);
+        rows.push(row);
+      };
+
+      if (staticUrl) {
+        push({ ...base, rowId: `${feed.id}:static`, kind: 'static', staticUrl });
+      }
+      if (vehiclesUrl || tripUpdatesUrl || alertsUrl) {
+        push({
+          ...base,
+          rowId: `${feed.id}:rt`,
+          kind: 'rt',
+          ...(vehiclesUrl ? { vehiclesUrl } : {}),
+          ...(tripUpdatesUrl ? { tripUpdatesUrl } : {}),
+          ...(alertsUrl ? { alertsUrl } : {}),
+        });
+      }
+    }
   }
-  return feeds;
+
+  rows.sort((a, b) => a.rowId.localeCompare(b.rowId));
+  return rows;
+}
+
+async function writeRows(rows: AtlasRow[]): Promise<void> {
+  await fs.mkdir(path.dirname(OUTPUT_PATH), { recursive: true });
+  // Minified: this file is fetched by the browser on first atlas open.
+  await fs.writeFile(OUTPUT_PATH, JSON.stringify(rows));
+
+  const { size } = await fs.stat(OUTPUT_PATH);
+  const staticCount = rows.filter(r => r.kind === 'static').length;
+  const named = rows.filter(r => r.operator_name).length;
+  console.log(
+    `\n${rows.length} rows (${staticCount} static, ${rows.length - staticCount} rt), ` +
+      `${named} with a resolved operator, ${(size / 1024 / 1024).toFixed(2)} MB`,
+  );
+  console.log(`Written to ${OUTPUT_PATH}`);
 }
 
 async function mainLocal(atlasPath: string) {
@@ -183,22 +237,18 @@ async function mainLocal(atlasPath: string) {
     .filter(e => e.endsWith('.json'))
     .map(e => path.join(feedsDir, e));
 
-  console.log(`Processing ${dmfrFiles.length} local DMFR files from ${atlasPath}...`);
+  console.log(`Reading ${dmfrFiles.length} local DMFR files from ${atlasPath}...`);
 
-  let done = 0;
-  const chunks = await runConcurrently(dmfrFiles, CONCURRENCY, async (filePath) => {
-    const result = await processDmfrFileLocal(filePath);
-    done++;
-    if (done % 100 === 0) process.stdout.write(`  ${done}/${dmfrFiles.length}\r`);
-    return result;
+  const docs = await runConcurrently(dmfrFiles, CONCURRENCY, async (filePath) => {
+    try {
+      const raw = await fs.readFile(filePath, 'utf8');
+      return { origin: originFromFilename(filePath), dmfr: JSON.parse(raw) as DmfrFile };
+    } catch {
+      return { origin: originFromFilename(filePath), dmfr: {} as DmfrFile };
+    }
   });
 
-  const allFeeds = chunks.flat();
-  console.log(`\nFound ${allFeeds.length} feeds with URLs.`);
-
-  await fs.mkdir(path.dirname(OUTPUT_PATH), { recursive: true });
-  await fs.writeFile(OUTPUT_PATH, JSON.stringify(allFeeds, null, 2));
-  console.log(`Written to ${OUTPUT_PATH}`);
+  await writeRows(buildRows(docs));
 }
 
 async function mainRemote() {
@@ -209,24 +259,25 @@ async function mainRemote() {
 
   const dmfrFiles = tree.tree
     .filter(item => item.type === 'blob' && item.path.startsWith('feeds/') && item.path.endsWith('.json'))
-    .map(item => `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${item.path}`);
+    .map(item => item.path);
 
-  console.log(`Processing ${dmfrFiles.length} DMFR files...`);
+  console.log(`Fetching ${dmfrFiles.length} DMFR files...`);
 
   let done = 0;
-  const chunks = await runConcurrently(dmfrFiles, CONCURRENCY, async (url) => {
-    const result = await processDmfrFile(url);
+  const docs = await runConcurrently(dmfrFiles, CONCURRENCY, async (repoPath) => {
+    const url = `https://raw.githubusercontent.com/${REPO}/${BRANCH}/${repoPath}`;
+    let dmfr: DmfrFile;
+    try {
+      dmfr = await fetchJson<DmfrFile>(url);
+    } catch {
+      dmfr = {};
+    }
     done++;
     if (done % 100 === 0) process.stdout.write(`  ${done}/${dmfrFiles.length}\r`);
-    return result;
+    return { origin: originFromFilename(repoPath), dmfr };
   });
 
-  const allFeeds = chunks.flat();
-  console.log(`\nFound ${allFeeds.length} feeds with URLs.`);
-
-  await fs.mkdir(path.dirname(OUTPUT_PATH), { recursive: true });
-  await fs.writeFile(OUTPUT_PATH, JSON.stringify(allFeeds, null, 2));
-  console.log(`Written to ${OUTPUT_PATH}`);
+  await writeRows(buildRows(docs));
 }
 
 async function main() {
