@@ -181,17 +181,52 @@ lanes hold the node index they are reserved for; at each row the leftmost lane t
 wins, others emit merge elbows; outgoing branch edges allocate new lanes; untouched lanes
 pass through as verticals. Cap at 5 lanes, overflow sharing the outermost.
 
-- [ ] New `src/modules/route-graph.ts` — pure, no DOM; edge classification + lane sweep,
+**Status: done, committed** (`cb34af4`, with fixes in `5ad98e5`).
+
+- [x] New `src/modules/route-graph.ts` — pure, no DOM; edge classification + lane sweep,
       memoised per `RouteSequence` in a `WeakMap`
-- [ ] `RailRow { lane, through[], branches[], merges[], bypassed }` + `laneCount`
-- [ ] Replace `railStyle()` / `rail()` in `route-page.ts` with a `RailRow`-driven renderer
-- [ ] Gutter width `laneCount * LANE_WIDTH` (~12px); `stripRow`'s `grid-cols-[2.5rem_1fr]`
-      becomes an inline `grid-template-columns`
-- [ ] Lines as one inline `<svg viewBox="0 0 W 100" preserveAspectRatio="none">` per row,
+- [x] `RailRow { lane, through[], branches[], merges[], exiting[] }` + `laneCount`
+- [x] Replace `railStyle()` / `rail()` in `route-page.ts` with a `RailRow`-driven renderer
+- [x] Gutter width; `stripRow`'s `grid-cols-[2.5rem_1fr]` becomes an inline
+      `grid-template-columns`
+- [x] Lines as one inline `<svg viewBox="0 0 W 100" preserveAspectRatio="none">` per row,
       every path carrying `vector-effect="non-scaling-stroke"`
-- [ ] Dots stay absolutely-positioned HTML spans at `left: laneX(row.lane)`
-- [ ] Vehicle rows draw the gap state so chips no longer break the rail
-- [ ] Update the file header comment, which currently says the strip is not an SVG
+- [x] Dots stay absolutely-positioned HTML spans at `left: laneX(row.lane)`
+- [x] Vehicle rows draw the gap state so chips no longer break the rail
+- [x] Update the file header comment, which currently says the strip is not an SVG
+
+Discoveries:
+
+- **`bypassed` was dropped.** Express skips already read as Phase 2's dimming plus the
+  "87 of 300 trips" count; a second visual for the same fact is noise. `exiting`
+  (`through ∪ branches`) took its place on `RailRow`, because what the renderer actually
+  needed was the lane set live in the gap below a row — that is what a vehicle chip has to
+  carry so it stops breaking the rail.
+- Geometry keeps lane 0 where the old rail was — `laneX(l) = 20 + l*14`, gutter
+  `40 + (laneCount-1)*14` — so a single-lane route is unchanged. 620 of the MBTA's 730
+  route/directions are single-lane; the rest are 94 at two, 15 at three, 1 at four. The
+  5-lane cap is never reached on either feed, so its overflow path is untested in anger.
+- The neutral hairline had no SVG equivalent, so every path is stroked twice: a wider
+  `currentColor` at `text-base-content/15` underneath, then the route colour.
+- **Two defects the flat strip had been hiding**, both found from real routes rather than
+  from the plan:
+  - *Branch legs interleaved.* `topoOrder`'s tie-break used mean fractional position alone,
+    and two legs of a branch span the same fraction of their patterns — so their stops came
+    out alternating and each leg zigzagged between lanes on nearly every row. RIPTA 60 (East
+    Main Rd vs West Main Rd, 39/40 trips each) was the worst case; the Red Line did it too.
+    The tie-break now first prefers a stop the previous one leads directly to. This is a
+    Phase 1 file, but the bug was invisible until the rail was drawn. It also merges legs
+    back sooner — single-lane routes went 617 → 620.
+  - *Merges broke.* The sweep excluded any lane in `branches` from `through`, so a row
+    converging into a lane that was already carrying something dropped that lane's vertical.
+    On the Fall River / New Bedford line the Fall River leg vanished for exactly the one row
+    where New Bedford's leg rejoined it. `through` now excludes only lanes the row claimed
+    for the first time, and `exiting` dedupes.
+- A vehicle chip at either end of the strip drew a full-height vertical, so the rail ran
+  past the last dot and stopped in a flat cut. Terminal chip rows now draw a half-length
+  capped segment, and only the outermost chip of a run does.
+- RIPTA needs the CORS proxy to fetch: `curl -H "Origin: http://localhost:8081"
+  "https://cors.gtfs.zone/https://ripta.com/RIPTA-GTFS.zip"`. Direct requests get a 403.
 
 Gotchas: row heights are content-driven and unknown at render time, hence the non-uniform
 viewBox scale — circles must not go in the SVG. Terminal caps come from Phase 2's
@@ -215,11 +250,25 @@ Analysis harnesses live in the session scratchpad. Re-download the feeds with
 phase above. `pnpm typecheck` and `pnpm build` both clean. Still owed: the visual pass on
 the Red Line, CR-Worcester and Northeast Regional pages.
 
-**Phase 3**
-- Red Line dir 0 renders JFK/UMass as one node with two lanes below it, to Ashmont and
-  Braintree, given the Phase 1 parent-station collapse.
-- A route where all trips stop everywhere renders as a single lane.
-- If a gutter is wide, the bypass/branch classification is admitting express skips it
-  should filter — fix that, not the lane cap.
-- Vehicles still land in the right gaps; `placeVehicles` is unchanged, so a regression
-  points at row indexing in `renderStrip`.
+**Phase 3 — done.** `pnpm typecheck` and `pnpm build` clean. A new `verify.mts` harness
+walks both the MBTA and RIPTA feeds and asserts the properties that matter, all of which
+hold:
+
+| check | MBTA (730 pairs) | RIPTA (124 pairs) |
+|---|---|---|
+| rail continuity breaks | 0 | 0 |
+| route/directions with a duplicated stop | 5 (the known cyclic fold-fallbacks) | 0 |
+| stop-time indices mapped, monotone | 2,262,928 / 0 unmapped / 0 backwards | 212,733 / 0 / 0 |
+| lane counts | 620·1, 94·2, 15·3, 1·4 | 107·1, 16·2, 1·3 |
+
+"Rail continuity" is the check worth keeping: every lane leaving row `i` must arrive at row
+`i+1`, the last row must leave nothing, and the first must receive nothing. Both defects
+found during this phase — the broken Fall River merge and the tail past the last dot —
+would have been caught by it, and neither was visible in a lane-count summary.
+
+Spot-checked by hand: Red Line dir 0 splits at JFK/UMass with Braintree and Ashmont each
+running as a contiguous block; CR-Worcester dir 1 stays 18 rows and one lane; RIPTA 60 dir 0
+runs East Main and West Main as two solid legs rejoining at Roger Williams University;
+CR-NewBedford merges Fall River and New Bedford into East Taunton without a gap.
+
+Still owed: the visual pass in a browser, which per CLAUDE.md is yours.
