@@ -237,38 +237,50 @@ function renderStaticSection(session: FeedSession): string {
 }
 
 /**
- * Report, don't absorb: `current_stop_sequence` is optional in GTFS-RT, and a
- * producer that omits it has not said which stop each vehicle is working on.
- * test-track fills the gap from the trip's own predictions rather than dropping
- * the vehicle, which is an inference and so has to be declared — here for the
- * feed as a whole, and with a "derived" mark on every vehicle it touched.
+ * How the feed names each vehicle's current stop.
  *
- * A conformant feed renders nothing.
+ * `current_stop_sequence` is optional in GTFS-RT, and `stop_id` is an equally
+ * legitimate way to say the same thing — plenty of feeds use only the latter.
+ * That is worth stating but is not a defect, so it renders neutral. The border
+ * turns to a warning only when test-track had to infer a position from
+ * predictions, or could not place a vehicle at all: those are the cases where
+ * what is on screen is not simply what the feed said.
+ *
+ * A feed that reports the sequence renders nothing.
  */
 function renderFeedGaps(gaps: FeedGaps | null): string {
   if (!gaps || gaps.missingStopSequence === 0) return '';
-  const unplaced = gaps.missingStopSequence - gaps.stopSequenceDerived;
+  const unplaced = gaps.missingStopSequence - gaps.resolvedFromStopId - gaps.stopSequenceDerived;
+  const inferred = gaps.stopSequenceDerived > 0 || unplaced > 0;
+
+  const notes = [
+    `GTFS-RT makes the field optional, so ${gaps.missingStopSequence} of ${gaps.vehicles} vehicles do not report it.`,
+  ];
+  if (gaps.resolvedFromStopId > 0) {
+    notes.push(
+      `${gaps.resolvedFromStopId} named the stop with <span class="font-mono">stop_id</span> instead, which the spec equally allows; their positions come from that.`,
+    );
+  }
+  if (gaps.stopSequenceDerived > 0) {
+    notes.push(
+      `${gaps.stopSequenceDerived} named no stop at all, so test-track took the soonest still-future <span class="font-mono">stop_time_update</span> on the same trip; those are marked "derived" wherever they appear.`,
+    );
+  }
+  if (unplaced > 0) {
+    notes.push(
+      `${unplaced} could not be placed by any of these and stay in the route strip's unplaced list.`,
+    );
+  }
 
   return `
     <section class="space-y-2">
-      <h3 class="font-semibold text-sm">Feed data gaps</h3>
-      <div class="rounded-lg border border-warning/40 p-3 space-y-2">
+      <h3 class="font-semibold text-sm">${inferred ? 'Feed data gaps' : 'How this feed reports position'}</h3>
+      <div class="rounded-lg border ${inferred ? 'border-warning/40' : 'border-base-300'} p-3 space-y-2">
         <div class="flex justify-between gap-2 text-xs">
           <span>Vehicles with no <span class="font-mono">current_stop_sequence</span></span>
           <span class="tabular-nums font-semibold">${gaps.missingStopSequence}</span>
         </div>
-        <p class="text-xs opacity-50">
-          GTFS-RT makes the field optional, so ${gaps.missingStopSequence} of ${gaps.vehicles}
-          vehicles do not say which stop they are working on. test-track derived a position for
-          ${gaps.stopSequenceDerived} of them from the soonest still-future
-          <span class="font-mono">stop_time_update</span> on the same trip; those are marked
-          "derived" wherever they appear.
-          ${
-            unplaced > 0
-              ? `The remaining ${unplaced} have no usable prediction and stay in the route strip's unplaced list.`
-              : ''
-          }
-        </p>
+        <p class="text-xs opacity-50">${notes.join(' ')}</p>
       </div>
     </section>`;
 }

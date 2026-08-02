@@ -17,7 +17,7 @@ import type { VehiclePosition } from '../../map-controller';
 import type { PageState } from '../../types/page-state';
 import { alertsForRoute, alertsForRouteStop, feedWideAlerts } from '../alerts';
 import { routeGraph } from '../route-graph';
-import type { RtIndex } from '../rt-index';
+import type { RtIndex, VehicleStopSequence } from '../rt-index';
 import type { Prediction } from '../rt-index';
 import type { RouteSequence, StopStats } from '../route-sequence';
 import { directionsForRoute, routeSequence } from '../route-sequence';
@@ -25,9 +25,7 @@ import type { RenderContext } from '../render-utils';
 import {
   OCCUPANCY_LABELS,
   ROUTE_TYPE_LABELS,
-  DERIVED_STOP_SEQUENCE_TITLE,
   VEHICLE_STATUS_LABELS,
-  derivedMark,
   entityLink,
   escHtml,
   formatDelay,
@@ -39,6 +37,7 @@ import {
   renderRawFields,
   routeBadge,
   section,
+  stopSequenceMark,
   vehicleDisplayName,
 } from '../render-utils';
 import { renderAlertList } from './alert-page';
@@ -78,8 +77,8 @@ interface PlacedVehicle {
   position: number;
   /** STOPPED_AT sits on the stop; everything else sits in the gap before it. */
   atStop: boolean;
-  /** The stop_sequence behind this position was inferred, not reported. */
-  derived: boolean;
+  /** Where the stop_sequence behind this position came from. */
+  current: VehicleStopSequence;
 }
 
 // ─── Vehicle placement ────────────────────────────────────────────────────────
@@ -93,9 +92,10 @@ interface PlacedVehicle {
  * that index mapped through the alignment of the trip's pattern. Skipping
  * either step puts vehicles at plausible-looking but wrong stops.
  *
- * A vehicle that never reported the field can still be placed from its trip's
- * predictions (`RtIndex.stopSequenceFor`); those carry `derived` so the chip can
- * say where the position came from.
+ * A vehicle that never reported the field can still be placed from the `stop_id`
+ * it did report, or failing that from its trip's predictions — see
+ * `RtIndex.stopSequenceFor`. The resolution rides along on each placement so the
+ * chip can say where the position came from.
  */
 function placeVehicles(
   ctx: RenderContext,
@@ -149,12 +149,7 @@ function placeVehicles(
       continue;
     }
 
-    placed.push({
-      vehicle,
-      position,
-      atStop: vehicle.currentStatus === 1,
-      derived: current.source === 'derived',
-    });
+    placed.push({ vehicle, position, atStop: vehicle.currentStatus === 1, current });
   }
 
   return { placed, unplaced };
@@ -260,7 +255,11 @@ function eta(prediction: Prediction | undefined): string {
   return parts.length ? `<span class="text-xs flex gap-2 shrink-0">${parts.join('')}</span>` : '';
 }
 
-function vehicleChip(ctx: RenderContext, vehicle: VehiclePosition, derived: boolean): string {
+function vehicleChip(
+  ctx: RenderContext,
+  vehicle: VehiclePosition,
+  current: VehicleStopSequence,
+): string {
   const label = vehicleDisplayName(ctx.session.staticFeed, vehicle);
   const status =
     vehicle.currentStatus === undefined
@@ -277,7 +276,7 @@ function vehicleChip(ctx: RenderContext, vehicle: VehiclePosition, derived: bool
     ${entityLink(ctx, { type: 'vehicle', vehicle_id: vehicle.key }, label, 'link link-hover font-medium')}
     ${status ? `<span class="opacity-40">·</span>${status}` : ''}
     ${occupancy ? `<span class="opacity-40">·</span>${occupancy}` : ''}
-    ${derived ? derivedMark(DERIVED_STOP_SEQUENCE_TITLE) : ''}
+    ${stopSequenceMark(vehicle, current)}
   </div>`;
 }
 
@@ -385,7 +384,7 @@ function renderStrip(
       rows.push({
         dot: { kind: 'none' },
         paths: gapPaths(index, 'above', n === 0),
-        content: vehicleChip(ctx, p.vehicle, p.derived),
+        content: vehicleChip(ctx, p.vehicle, p.current),
       });
     });
 
@@ -436,7 +435,7 @@ function renderStrip(
       rows.push({
         dot: { kind: 'none' },
         paths: gapPaths(index, 'below', n === chipsAt.length - 1),
-        content: vehicleChip(ctx, p.vehicle, p.derived),
+        content: vehicleChip(ctx, p.vehicle, p.current),
       });
     });
   });

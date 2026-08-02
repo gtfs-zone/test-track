@@ -13,6 +13,7 @@ import type { GTFSStatic, Route } from '../gtfs-static';
 import type { VehiclePosition } from '../map-controller';
 import type { PageState } from '../types/page-state';
 import type { FeedSession } from './feed-session';
+import type { VehicleStopSequence } from './rt-index';
 import { clockAt, feedTimezone, formatScheduleTime, zoneLabel } from './feed-time';
 
 
@@ -233,13 +234,32 @@ export function missing(what: string): string {
  * has to carry this wherever it is shown — the status page's count is the
  * feed-wide version of the same disclosure.
  */
-export function derivedMark(title: string): string {
-  return `<span class="badge badge-ghost badge-xs align-middle" title="${escHtml(title)}">derived</span>`;
+export function badgeMark(label: string, title: string): string {
+  return `<span class="badge badge-ghost badge-xs align-middle" title="${escHtml(title)}">${escHtml(label)}</span>`;
 }
 
 /** The standard explanation behind every derived `current_stop_sequence`. */
 export const DERIVED_STOP_SEQUENCE_TITLE =
   'The feed reported no current_stop_sequence. This position comes from the soonest still-future stop_time_update on the same trip.';
+
+/**
+ * How a vehicle's position was arrived at, when that is worth saying.
+ *
+ * A `stop_id` the feed reported is not a guess and gets no mark — GTFS-RT lets a
+ * producer name the current stop that way. The exception is a trip that calls at
+ * that stop more than once, where choosing a visit *is* a guess and the reader
+ * deserves to know which way it went.
+ */
+export function stopSequenceMark(v: VehiclePosition, current: VehicleStopSequence): string {
+  if (current.source === 'derived') return badgeMark('derived', DERIVED_STOP_SEQUENCE_TITLE);
+  if (current.source === 'stop_id' && current.ambiguous) {
+    return badgeMark(
+      'ambiguous',
+      `The feed reported no current_stop_sequence, only stop_id ${v.stopId}. This trip calls there more than once; the first visit was assumed.`,
+    );
+  }
+  return '';
+}
 
 /**
  * The name to *display* for a vehicle. Prefers the static trip's

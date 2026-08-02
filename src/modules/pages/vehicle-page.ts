@@ -9,10 +9,8 @@ import { alertsForTrip } from '../alerts';
 import type { RtIndex } from '../rt-index';
 import type { RenderContext } from '../render-utils';
 import {
-  DERIVED_STOP_SEQUENCE_TITLE,
   OCCUPANCY_LABELS,
   VEHICLE_STATUS_LABELS,
-  derivedMark,
   entityLink,
   escHtml,
   formatDelay,
@@ -22,6 +20,7 @@ import {
   renderRawJson,
   routeBadge,
   section,
+  stopSequenceMark,
   timestampWithAge,
   vehicleDisplayName,
 } from '../render-utils';
@@ -38,16 +37,25 @@ import { renderAlertList } from './alert-page';
 const lastSeen = new Map<string, { vehicle: VehiclePosition; at: number }>();
 
 /**
- * The `current_stop_sequence` row of the raw property region: what the feed
- * sent, and — when it sent nothing — what test-track inferred instead.
+ * The `current_stop_sequence` row of the raw property region: exactly what the
+ * feed sent, and — when it sent nothing — where the value in use came from
+ * instead. The "not reported" half never goes away; this region reports the
+ * wire.
  */
 function renderStopSequenceValue(rt: RtIndex, vehicle: VehiclePosition): string {
   if (vehicle.currentStopSequence !== undefined) {
     return `<span class="tabular-nums">${vehicle.currentStopSequence}</span>`;
   }
+
+  const absent = '<span class="opacity-40">not reported</span>';
   const current = rt.stopSequenceFor(vehicle);
-  if (!current) return '<span class="opacity-40">not reported</span>';
-  return `<span class="opacity-40">not reported</span> <span class="opacity-60">— derived <span class="tabular-nums">${current.sequence}</span> from trip updates</span>`;
+  if (!current) return absent;
+
+  const note =
+    current.source === 'stop_id'
+      ? `stop_id ${escHtml(vehicle.stopId ?? '')} is stop_sequence <span class="tabular-nums">${current.sequence}</span> on this trip`
+      : `derived <span class="tabular-nums">${current.sequence}</span> from trip updates`;
+  return `${absent} <span class="opacity-60">— ${note}</span>`;
 }
 
 function renderTripSection(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosition): string {
@@ -68,7 +76,7 @@ function renderTripSection(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosi
       ? 'at'
       : (VEHICLE_STATUS_LABELS[vehicle.currentStatus] ?? 'at');
   // The whole section hangs off the stop, so the mark rides with the value.
-  const mark = current?.source === 'derived' ? ` ${derivedMark(DERIVED_STOP_SEQUENCE_TITLE)}` : '';
+  const mark = current ? ` ${stopSequenceMark(vehicle, current)}` : '';
 
   return section(
     'Trip',
