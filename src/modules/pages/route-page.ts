@@ -13,7 +13,7 @@ import type { PageState } from '../../types/page-state';
 import { alertsForRoute, alertsForRouteStop, feedWideAlerts } from '../alerts';
 import type { RtIndex } from '../rt-index';
 import type { Prediction } from '../rt-index';
-import type { RouteSequence } from '../route-sequence';
+import type { RouteSequence, StopStats } from '../route-sequence';
 import { directionsForRoute, routeSequence } from '../route-sequence';
 import type { RenderContext } from '../render-utils';
 import {
@@ -36,6 +36,21 @@ import {
 import { renderAlertList } from './alert-page';
 
 const RAIL_WIDTH = 9;
+
+/**
+ * A stop is called an endpoint when this share of the direction's trips begin
+ * or end there. Any threshold is arbitrary; this one is low enough to catch a
+ * genuine branch terminus and high enough to ignore the one train a day that
+ * happens to lay up mid-route.
+ */
+const ENDPOINT_SHARE = 0.05;
+/**
+ * Below this share of trips, a stop is drawn as a deviation from the trunk and
+ * labelled with how many trips actually call there. The label is a raw count,
+ * not a percentage: "87 of 300 trips" is a fact about the timetable, while
+ * "29%" is a number the reader has to unpack before it says anything.
+ */
+const MINORITY_SHARE = 0.5;
 
 /** A vehicle that could not be put on the strip, and why not. */
 interface Unplaced {
@@ -206,6 +221,22 @@ function alertPips(ctx: RenderContext, alerts: AlertRecord[]): string {
   );
 }
 
+/**
+ * Where trips begin and end, when enough of them do it here to be a fact about
+ * the route rather than about one trip. Washington is the case this is for: the
+ * strip continues south to Norfolk past it, so nothing about the line's shape
+ * says "terminus", but most of the route's trains stop there.
+ */
+function endpointNote(stats: StopStats, threshold: number): string {
+  const parts: string[] = [];
+  if (stats.endsHere >= threshold) parts.push(`${stats.endsHere} end`);
+  if (stats.startsHere >= threshold) parts.push(`${stats.startsHere} start`);
+  if (parts.length === 0) return '';
+  return `<span class="text-xs opacity-60 tabular-nums shrink-0">${escHtml(
+    parts.join(' · '),
+  )}</span>`;
+}
+
 function renderStrip(
   ctx: RenderContext,
   rt: RtIndex,
@@ -233,19 +264,34 @@ function renderStrip(
   // down onto its own row.
   const rows: Array<{ dot: 'none' | 'open' | 'solid'; content: string }> = [];
 
+  const endpointThreshold = Math.max(1, sequence.totalTrips * ENDPOINT_SHARE);
+
   sequence.stops.forEach((stop, index) => {
     for (const p of before.get(index) ?? []) {
       rows.push({ dot: 'none', content: vehicleChip(ctx, p.vehicle) });
     }
 
     const name = feed?.stops.get(stop.stop_id)?.name || stop.stop_id;
-    const prediction = rt.nextAtStopForRoute(stop.stop_id, route.id, directionId, feed ?? null);
-    const stopAlerts = alertsForRouteStop(ctx.session, route.id, stop.stop_id);
+    // The strip shows stations; the realtime feed talks about platforms. Ask
+    // for the station and everything under it, the same split the station page
+    // makes between boardable descendants (service) and all of them (alerts).
+    const serviceIds = [stop.stop_id, ...(feed?.boardableDescendants(stop.stop_id) ?? [])];
+    const alertIds = [stop.stop_id, ...(feed?.descendants(stop.stop_id) ?? [])];
+    const prediction = rt.nextAtStopsForRoute(serviceIds, route.id, directionId, feed ?? null);
+    const stopAlerts = alertsForRouteStop(ctx.session, route.id, alertIds);
+
+    const stats = sequence.stopStats[index];
+    const endpoint =
+      stats.startsHere >= endpointThreshold || stats.endsHere >= endpointThreshold;
+    const share = sequence.totalTrips > 0 ? stats.serves / sequence.totalTrips : 1;
+    const minority = share < MINORITY_SHARE;
 
     rows.push({
-      dot: 'open',
-      content: `<div class="flex items-center gap-2">
-        <span class="flex-1 min-w-0 truncate text-sm">${entityLink(
+      dot: endpoint ? 'solid' : 'open',
+      content: `<div class="flex items-center gap-2" title="${escHtml(
+        `Served by ${stats.serves} of ${sequence.totalTrips} trips`,
+      )}">
+        <span class="flex-1 min-w-0 truncate text-sm${minority ? ' opacity-60' : ''}">${entityLink(
           ctx,
           { type: 'stop', stop_id: stop.stop_id },
           name,
@@ -254,6 +300,14 @@ function renderStrip(
             ? `<span class="opacity-50 text-xs ml-1">(visit ${stop.occurrence + 1})</span>`
             : ''
         }</span>
+        ${endpointNote(stats, endpointThreshold)}
+        ${
+          minority
+            ? `<span class="text-xs opacity-50 tabular-nums shrink-0">${escHtml(
+                `${stats.serves} of ${sequence.totalTrips} trips`,
+              )}</span>`
+            : ''
+        }
         ${alertPips(ctx, stopAlerts)}
         ${eta(prediction)}
       </div>`,
@@ -275,9 +329,9 @@ function renderStrip(
 
 function renderCoverage(sequence: RouteSequence): string {
   const notes: string[] = [];
-  if (sequence.includedPatterns < sequence.totalPatterns) {
+  if (sequence.totalPatterns > 1) {
     notes.push(
-      `Showing ${sequence.includedPatterns} of ${sequence.totalPatterns} stop patterns, covering ${sequence.includedTrips} of ${sequence.totalTrips} trips. Stops served only by the remaining patterns are not on the strip.`,
+      `${sequence.totalPatterns} stop patterns across ${sequence.totalTrips} trips, all of them on the strip. A trip count marks a stop fewer than half the trips call at; a filled dot marks where trips start or end. Platforms are shown under their parent station.`,
     );
   }
   if (sequence.isLoop) {

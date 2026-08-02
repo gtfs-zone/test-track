@@ -99,10 +99,16 @@ export function alertsForStop(session: FeedSession, stopId: string): AlertRecord
 export function alertsForRouteStop(
   session: FeedSession,
   routeId: string,
-  stopId: string,
+  stopIds: string[],
 ): AlertRecord[] {
+  // Several ids because the caller may be asking on behalf of a whole station:
+  // an alert naming one platform is an alert about that station's row on the
+  // route strip.
+  const wanted = new Set(stopIds);
   return all(session).filter(r =>
-    selectors(r).some(e => e.stopId === stopId && (!e.routeId || e.routeId === routeId)),
+    selectors(r).some(
+      e => Boolean(e.stopId) && wanted.has(e.stopId!) && (!e.routeId || e.routeId === routeId),
+    ),
   );
 }
 
