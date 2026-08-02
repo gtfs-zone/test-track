@@ -2,7 +2,10 @@ import maplibregl from 'maplibre-gl';
 import type { GTFSStatic } from './gtfs-static';
 
 export interface VehiclePosition {
+  /** `vehicle.id` when the feed provides one, else the feed entity id. */
   id: string;
+  entityId: string;
+  label?: string;
   lat: number;
   lon: number;
   bearing?: number;

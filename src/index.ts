@@ -1,7 +1,7 @@
 import { MapController } from './map-controller';
 import type { VehiclePosition } from './map-controller';
 import type { GTFSStatic } from './gtfs-static';
-import type { ServiceAlert } from './gtfs-rt';
+import type { AlertRecord, ServiceAlert } from './gtfs-rt';
 import { showAboutModal } from './modules/about-modal';
 import { showAtlasSearchModal } from './modules/atlas-search';
 import { showExamplesModal } from './modules/examples';
@@ -14,6 +14,8 @@ import type { FeedSelection } from './modules/feed-selection';
 import { describeSelection } from './modules/feed-selection';
 import { FeedSession } from './modules/feed-session';
 import { StatusPage } from './modules/status-page';
+import { AppState } from './modules/app-state';
+import { renderPlaceholderPage } from './modules/panel-placeholder';
 
 // ─── Shell ────────────────────────────────────────────────────────────────────
 const appContainer = document.querySelector<HTMLElement>('.app-container')!;
@@ -29,7 +31,6 @@ new PanelResizer(appContainer, mapCtrl);
 
 const rightPanel = document.getElementById('right-panel')!;
 const bottomSheet = new BottomSheetController(rightPanel);
-void bottomSheet;
 
 // ─── Feed session ─────────────────────────────────────────────────────────────
 const session = new FeedSession();
@@ -44,10 +45,37 @@ session.addEventListener('vehicles', e => {
 // Trip updates are collected by the state store in a later plan; the panel
 // has no consumer for them yet.
 session.addEventListener('alerts', e => {
-  renderAlertsModal((e as CustomEvent<ServiceAlert[]>).detail);
+  renderAlertsModal((e as CustomEvent<AlertRecord[]>).detail.map(r => r.alert));
 });
 
-new StatusPage(document.getElementById('panel-content')!, session).initialize();
+// ─── Focus state ──────────────────────────────────────────────────────────────
+const panelContent = document.getElementById('panel-content')!;
+const statusPage = new StatusPage(panelContent, session);
+
+const appState = new AppState(session, {
+  onFocusChange: state => {
+    const atHome = state.type === 'home';
+    // The status page is the panel's home content; anything else takes it over.
+    statusPage.setActive(atHome);
+    if (!atHome) {
+      panelContent.innerHTML = renderPlaceholderPage(session, state, appState.breadcrumbs);
+      bottomSheet.open('half');
+    } else {
+      bottomSheet.close();
+    }
+  },
+});
+
+statusPage.setShareUrlProvider(() => appState.shareableUrl());
+statusPage.initialize();
+
+// Plan 04 owns the rest of the map's click surfaces; this is the one handler
+// that already existed, wired to the new focus path.
+mapCtrl.onStopClick(stopId => appState.setFocus({ type: 'stop', stop_id: stopId }));
+
+void appState.boot().then(loaded => {
+  if (loaded) document.getElementById('refresh-rt-btn')!.classList.remove('hidden');
+});
 
 // ─── About button ─────────────────────────────────────────────────────────────
 document.getElementById('app-version')!.textContent = __APP_VERSION__;

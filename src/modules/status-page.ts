@@ -2,6 +2,7 @@ import type { EndpointStatus } from '../gtfs-rt';
 import type { FeedSession } from './feed-session';
 import type { RealtimeEndpointName } from './feed-selection';
 import { REALTIME_ENDPOINTS, REALTIME_ENDPOINT_LABELS } from './feed-selection';
+import { isReproducible } from './feed-url';
 import { notify } from './notification-system';
 
 /**
@@ -56,6 +57,7 @@ function renderCounts(session: FeedSession): string {
         ${statTile('Shapes', s?.shapes ?? 0)}
         ${statTile('Agencies', s?.agencies ?? 0)}
         ${statTile('Services', s?.services ?? 0)}
+        ${statTile('Stop times', s?.stopTimes ?? 0)}
         ${statTile('Vehicles', rt.vehicles)}
         ${statTile('Trip updates', rt.tripUpdates)}
         ${statTile('Alerts', rt.alerts)}
@@ -191,8 +193,8 @@ function renderRawTables(session: FeedSession): string {
   const feed = session.staticFeed;
   if (!feed) return '';
   const tables = [
-    ...feed.feedInfo.map(row => ['feed_info.txt', row] as const),
-    ...feed.agencies.map(row => ['agency.txt', row] as const),
+    ...feed.feedInfo.map(info => ['feed_info.txt', info.raw] as const),
+    ...feed.agencies.map(agency => ['agency.txt', agency.raw] as const),
   ];
   if (tables.length === 0) return '';
 
@@ -222,6 +224,31 @@ function renderRawTables(session: FeedSession): string {
     </section>`;
 }
 
+/**
+ * The hash is long enough that reading it out of the address bar is unpleasant,
+ * so copying is the primary path rather than an afterthought.
+ */
+function renderShare(session: FeedSession): string {
+  if (!session.selection) return '';
+  const reproducible = isReproducible(session.selection);
+  return `
+    <section class="space-y-2">
+      <h3 class="font-semibold text-sm">Share</h3>
+      <div class="rounded-lg border border-base-300 p-3 space-y-2">
+        <button class="btn btn-xs btn-primary" id="status-copy-link" ${
+          reproducible ? '' : 'disabled'
+        }>Copy shareable link</button>
+        <p class="text-xs opacity-60">
+          ${
+            reproducible
+              ? 'The link carries both feed URLs and whatever is focused.'
+              : 'This session loaded a static feed from an uploaded file, which a link cannot reproduce.'
+          }
+        </p>
+      </div>
+    </section>`;
+}
+
 function renderEmpty(): string {
   return `
     <div class="h-full flex flex-col items-center justify-center text-center gap-2 py-12">
@@ -238,10 +265,25 @@ export class StatusPage {
   private session: FeedSession;
   private tickerId: ReturnType<typeof setInterval> | null = null;
   private renderQueued = false;
+  /** False while an object page owns the panel; polls must not paint over it. */
+  private active = true;
 
   constructor(host: HTMLElement, session: FeedSession) {
     this.host = host;
     this.session = session;
+  }
+
+  private shareUrl: (() => string) | null = null;
+
+  /** Supplied by AppState, which is the only thing that knows the full hash. */
+  setShareUrlProvider(fn: () => string): void {
+    this.shareUrl = fn;
+  }
+
+  /** Called by AppState when focus moves to or away from home. */
+  setActive(active: boolean): void {
+    this.active = active;
+    if (active) this.render();
   }
 
   initialize(): void {
@@ -268,6 +310,7 @@ export class StatusPage {
   }
 
   private tick(): void {
+    if (!this.active) return;
     this.host.querySelectorAll<HTMLElement>('[data-since]').forEach(el => {
       el.textContent = formatRelative(Number(el.dataset.since));
     });
@@ -277,6 +320,8 @@ export class StatusPage {
   }
 
   private render(): void {
+    if (!this.active) return;
+
     // Don't clobber a URL the user is mid-edit.
     const active = document.activeElement as HTMLElement | null;
     if (active && this.host.contains(active) && active.tagName === 'INPUT') return;
@@ -291,6 +336,7 @@ export class StatusPage {
         ${renderCounts(this.session)}
         ${renderStaticSection(this.session)}
         ${renderEndpoints(this.session)}
+        ${renderShare(this.session)}
         ${renderRawTables(this.session)}
       </div>`;
 
@@ -307,6 +353,15 @@ export class StatusPage {
           .applyRealtimeUrl(name, input.value.trim())
           .finally(() => { btn.disabled = false; });
       });
+    });
+
+    const copyBtn = this.host.querySelector<HTMLButtonElement>('#status-copy-link');
+    copyBtn?.addEventListener('click', () => {
+      if (!this.shareUrl) return;
+      void navigator.clipboard
+        .writeText(this.shareUrl())
+        .then(() => notify.success('Link copied'))
+        .catch(() => notify.error('Could not copy to clipboard'));
     });
 
     const staticApply = this.host.querySelector<HTMLButtonElement>('#status-static-apply');

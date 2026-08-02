@@ -1,6 +1,6 @@
 import { GTFSStatic } from '../gtfs-static';
 import { GTFSRealtime } from '../gtfs-rt';
-import type { FeedStatus, FetchStartDetail, ServiceAlert, TripUpdate } from '../gtfs-rt';
+import type { AlertRecord, FeedStatus, FetchStartDetail, TripUpdate } from '../gtfs-rt';
 import type { VehiclePosition } from '../map-controller';
 import { feedProgressIndicator } from './feed-progress-indicator';
 import { notify } from './notification-system';
@@ -33,6 +33,12 @@ export class FeedSession extends EventTarget {
   rtCounts: RealtimeCounts = { vehicles: 0, tripUpdates: 0, alerts: 0 };
   staticError: string | null = null;
   staticLoadedAt: number | null = null;
+
+  // Latest decoded payloads, kept so a focused object can be resolved by id
+  // without waiting for the next poll. Replaced wholesale on each poll.
+  vehicles = new Map<string, VehiclePosition>();
+  alerts = new Map<string, AlertRecord>();
+  tripUpdates: TripUpdate[] = [];
 
   get status(): FeedStatus | null {
     return this.poller?.getStatus() ?? null;
@@ -154,6 +160,9 @@ export class FeedSession extends EventTarget {
   private startPoller(selection: FeedSelection): void {
     this.poller?.stop();
     this.rtCounts = { vehicles: 0, tripUpdates: 0, alerts: 0 };
+    this.vehicles = new Map();
+    this.alerts = new Map();
+    this.tripUpdates = [];
 
     const poller = new GTFSRealtime(resolvedRealtimeUrls(selection.realtime!));
     this.poller = poller;
@@ -175,17 +184,20 @@ export class FeedSession extends EventTarget {
     poller.addEventListener('vehicles', e => {
       const detail = (e as CustomEvent<VehiclePosition[]>).detail;
       this.rtCounts.vehicles = detail.length;
+      this.vehicles = new Map(detail.map(v => [v.id, v]));
       this.dispatchEvent(new CustomEvent<VehiclePosition[]>('vehicles', { detail }));
     });
     poller.addEventListener('tripUpdates', e => {
       const detail = (e as CustomEvent<TripUpdate[]>).detail;
       this.rtCounts.tripUpdates = detail.length;
+      this.tripUpdates = detail;
       this.dispatchEvent(new CustomEvent<TripUpdate[]>('tripUpdates', { detail }));
     });
     poller.addEventListener('alerts', e => {
-      const detail = (e as CustomEvent<ServiceAlert[]>).detail;
+      const detail = (e as CustomEvent<AlertRecord[]>).detail;
       this.rtCounts.alerts = detail.length;
-      this.dispatchEvent(new CustomEvent<ServiceAlert[]>('alerts', { detail }));
+      this.alerts = new Map(detail.map(a => [a.id, a]));
+      this.dispatchEvent(new CustomEvent<AlertRecord[]>('alerts', { detail }));
     });
 
     poller.start();

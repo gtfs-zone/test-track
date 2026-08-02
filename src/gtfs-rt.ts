@@ -6,6 +6,20 @@ import { REALTIME_ENDPOINTS } from './modules/feed-selection';
 export type TripUpdate = transit_realtime.ITripUpdate;
 export type ServiceAlert = transit_realtime.IAlert;
 
+/**
+ * An alert plus the identity it is addressed by.
+ *
+ * GTFS-RT alerts carry no id of their own — only the enclosing `FeedEntity.id`
+ * — so that is what the alert page is keyed on. Some producers regenerate
+ * entity ids between polls, which means a focused alert can vanish even though
+ * the same disruption is still being reported. There is nothing better to key
+ * on; the UI has to tolerate it.
+ */
+export interface AlertRecord {
+  id: string;
+  alert: ServiceAlert;
+}
+
 /** Verbatim FeedHeader fields, for the status page's raw dump. */
 export interface RawFeedHeader {
   gtfsRealtimeVersion: string;
@@ -187,7 +201,11 @@ export class GTFSRealtime extends EventTarget {
         const v = entity.vehicle;
         if (!v?.position) continue;
         positions.push({
-          id: entity.id,
+          // The vehicle's own id is the stabler identity across polls; the
+          // entity id is only a fallback for feeds that omit it.
+          id: v.vehicle?.id || entity.id,
+          entityId: entity.id,
+          label: v.vehicle?.label ?? undefined,
           lat: v.position.latitude,
           lon: v.position.longitude,
           bearing: v.position.bearing ?? undefined,
@@ -200,8 +218,10 @@ export class GTFSRealtime extends EventTarget {
       const updates = feed.entity.flatMap(e => (e.tripUpdate ? [e.tripUpdate] : []));
       this.dispatchEvent(new CustomEvent<TripUpdate[]>('tripUpdates', { detail: updates }));
     } else {
-      const alerts = feed.entity.flatMap(e => (e.alert ? [e.alert] : []));
-      this.dispatchEvent(new CustomEvent<ServiceAlert[]>('alerts', { detail: alerts }));
+      const alerts = feed.entity.flatMap(e =>
+        e.alert ? [{ id: e.id, alert: e.alert }] : [],
+      );
+      this.dispatchEvent(new CustomEvent<AlertRecord[]>('alerts', { detail: alerts }));
     }
   }
 

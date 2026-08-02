@@ -26,3 +26,5 @@ in `../coloring-book` (skipped if that sibling repo isn't present).
 | `src/modules/theme-controller.ts` | `src/modules/theme-controller.ts` | f9c718c | verbatim | Replaces the inline theme toggle that never applied `data-theme` |
 | `src/modules/panel-resizer.ts` | `src/modules/panel-resizer.ts` | f9c718c | modified | Persists `--panel-width` to localStorage; adds `restorePanelWidth()` |
 | `src/modules/bottom-sheet.ts` | `src/modules/bottom-sheet.ts` | f9c718c | modified | Dock and TabManager stripped; re-activates across the 768px breakpoint |
+| `src/types/page-state.ts` | `src/types/page-state.ts` | f9c718c | modified | Five variants only; `vehicle`/`alert` added, `direction_id` on route; sync `StateValidator` |
+| `src/modules/page-state-manager.ts` | `src/modules/page-state-manager.ts` | f9c718c | modified | Breadcrumbs synchronous and injected; feed URLs merged into the hash; singleton dropped |

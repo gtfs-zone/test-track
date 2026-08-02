@@ -1,11 +1,26 @@
 import JSZip from 'jszip';
 import Papa from 'papaparse';
 
+/** Verbatim CSV rows, kept so object pages can dump every column. */
+export type RawRow = Record<string, string>;
+
+/**
+ * Every entity keeps its parsed convenience fields *and* the original CSV row,
+ * so an object page can show a typed summary above a verbatim column table.
+ *
+ * `StopTime` is the one exception: it has no object page, and stop_times.txt is
+ * by far the largest file (hundreds of thousands of rows for a mid-size
+ * agency), so keeping a `raw` copy of each row would roughly double the memory
+ * cost of a feed for nothing.
+ */
 export interface Stop {
   id: string;
   name: string;
   lat: number;
   lon: number;
+  location_type: number;
+  parent_station: string;
+  raw: RawRow;
 }
 
 export interface Route {
@@ -15,17 +30,60 @@ export interface Route {
   color: string;
   text_color: string;
   type: number;
+  agency_id: string;
+  raw: RawRow;
 }
 
 export interface Trip {
   trip_id: string;
   route_id: string;
+  service_id: string;
   shape_id: string;
   headsign: string;
+  direction_id: string;
+  raw: RawRow;
 }
 
-/** Verbatim CSV rows, kept for the status page's raw dumps. */
-export type RawRow = Record<string, string>;
+export interface StopTime {
+  trip_id: string;
+  stop_id: string;
+  stop_sequence: number;
+  arrival_time: string;
+  departure_time: string;
+}
+
+export interface Agency {
+  id: string;
+  name: string;
+  url: string;
+  timezone: string;
+  raw: RawRow;
+}
+
+export interface Calendar {
+  service_id: string;
+  start_date: string;
+  end_date: string;
+  /** Monday-first, indexed 0–6. */
+  days: boolean[];
+  raw: RawRow;
+}
+
+export interface CalendarDate {
+  service_id: string;
+  date: string;
+  /** 1 = service added, 2 = service removed. */
+  exception_type: number;
+  raw: RawRow;
+}
+
+export interface FeedInfo {
+  publisher_name: string;
+  publisher_url: string;
+  lang: string;
+  version: string;
+  raw: RawRow;
+}
 
 export interface LoadHooks {
   /** `total` is null when the server sends no Content-Length. */
@@ -40,6 +98,7 @@ export interface StaticCounts {
   shapes: number;
   agencies: number;
   services: number;
+  stopTimes: number;
 }
 
 function parseCSV(text: string): RawRow[] {
@@ -49,11 +108,22 @@ function parseCSV(text: string): RawRow[] {
   }).data;
 }
 
+const DAY_FIELDS = [
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+  'sunday',
+] as const;
+
 /** Files parsed in order, for per-file progress reporting. */
 const PARSE_ORDER = [
   'agency.txt',
   'feed_info.txt',
   'calendar.txt',
+  'calendar_dates.txt',
   'stops.txt',
   'routes.txt',
   'shapes.txt',
@@ -66,12 +136,20 @@ export class GTFSStatic {
   routes = new Map<string, Route>();
   shapes = new Map<string, [number, number][]>();
   trips = new Map<string, Trip>();
+  agencies: Agency[] = [];
+  feedInfo: FeedInfo[] = [];
+  calendar: Calendar[] = [];
+  calendarDates: CalendarDate[] = [];
+
+  /** Trip stop_times, sorted by `stop_sequence`. Drives the route strip. */
+  stopTimesByTrip = new Map<string, StopTime[]>();
+  tripsByRoute = new Map<string, Trip[]>();
+  /** Derived from stop_times → trips: which routes serve a stop. */
+  routesByStop = new Map<string, Set<string>>();
+  /** Trip ids serving a stop, in first-seen order. */
   stopTrips = new Map<string, string[]>();
 
-  /** Raw rows for the tables the status page dumps verbatim. */
-  agencies: RawRow[] = [];
-  feedInfo: RawRow[] = [];
-  calendar: RawRow[] = [];
+  private stopTimeCount = 0;
 
   async loadFromFile(file: File, hooks: LoadHooks = {}): Promise<void> {
     const zip = await JSZip.loadAsync(file);
@@ -92,14 +170,16 @@ export class GTFSStatic {
       shapes: this.shapes.size,
       agencies: this.agencies.length,
       services: this.calendar.length,
+      stopTimes: this.stopTimeCount,
     };
   }
 
   private async parse(zip: JSZip, hooks: LoadHooks): Promise<void> {
     const handlers: Record<string, (rows: RawRow[]) => void> = {
-      'agency.txt': rows => { this.agencies = rows; },
-      'feed_info.txt': rows => { this.feedInfo = rows; },
-      'calendar.txt': rows => { this.calendar = rows; },
+      'agency.txt': rows => this.ingestAgencies(rows),
+      'feed_info.txt': rows => this.ingestFeedInfo(rows),
+      'calendar.txt': rows => this.ingestCalendar(rows),
+      'calendar_dates.txt': rows => this.ingestCalendarDates(rows),
       'stops.txt': rows => this.ingestStops(rows),
       'routes.txt': rows => this.ingestRoutes(rows),
       'shapes.txt': rows => this.ingestShapes(rows),
@@ -108,7 +188,8 @@ export class GTFSStatic {
     };
 
     // Sequential rather than Promise.all: parsing is CPU-bound anyway, and
-    // serial order is what makes per-file progress meaningful.
+    // serial order is what makes per-file progress meaningful. It also lets
+    // stop_times.txt rely on trips.txt already being indexed.
     let done = 0;
     for (const name of PARSE_ORDER) {
       hooks.onParse?.(name, done, PARSE_ORDER.length);
@@ -119,13 +200,55 @@ export class GTFSStatic {
     }
   }
 
+  private ingestAgencies(rows: RawRow[]): void {
+    this.agencies = rows.map(row => ({
+      id: row.agency_id ?? '',
+      name: row.agency_name ?? '',
+      url: row.agency_url ?? '',
+      timezone: row.agency_timezone ?? '',
+      raw: row,
+    }));
+  }
+
+  private ingestFeedInfo(rows: RawRow[]): void {
+    this.feedInfo = rows.map(row => ({
+      publisher_name: row.feed_publisher_name ?? '',
+      publisher_url: row.feed_publisher_url ?? '',
+      lang: row.feed_lang ?? '',
+      version: row.feed_version ?? '',
+      raw: row,
+    }));
+  }
+
+  private ingestCalendar(rows: RawRow[]): void {
+    this.calendar = rows.map(row => ({
+      service_id: row.service_id,
+      start_date: row.start_date ?? '',
+      end_date: row.end_date ?? '',
+      days: DAY_FIELDS.map(d => row[d] === '1'),
+      raw: row,
+    }));
+  }
+
+  private ingestCalendarDates(rows: RawRow[]): void {
+    this.calendarDates = rows.map(row => ({
+      service_id: row.service_id,
+      date: row.date ?? '',
+      exception_type: parseInt(row.exception_type ?? '1'),
+      raw: row,
+    }));
+  }
+
   private ingestStops(rows: RawRow[]): void {
     for (const row of rows) {
       this.stops.set(row.stop_id, {
         id: row.stop_id,
-        name: row.stop_name,
+        name: row.stop_name ?? '',
         lat: parseFloat(row.stop_lat),
         lon: parseFloat(row.stop_lon),
+        location_type: parseInt(row.location_type || '0'),
+        parent_station: row.parent_station ?? '',
+        raw: row,
       });
     }
   }
@@ -139,6 +262,8 @@ export class GTFSStatic {
         color: row.route_color ? `#${row.route_color}` : '#0066ff',
         text_color: row.route_text_color ? `#${row.route_text_color}` : '#ffffff',
         type: parseInt(row.route_type ?? '3'),
+        agency_id: row.agency_id ?? '',
+        raw: row,
       });
     }
   }
@@ -162,21 +287,58 @@ export class GTFSStatic {
 
   private ingestTrips(rows: RawRow[]): void {
     for (const row of rows) {
-      this.trips.set(row.trip_id, {
+      const trip: Trip = {
         trip_id: row.trip_id,
         route_id: row.route_id,
+        service_id: row.service_id ?? '',
         shape_id: row.shape_id ?? '',
         headsign: row.trip_headsign ?? '',
-      });
+        direction_id: row.direction_id ?? '',
+        raw: row,
+      };
+      this.trips.set(trip.trip_id, trip);
+
+      let forRoute = this.tripsByRoute.get(trip.route_id);
+      if (!forRoute) this.tripsByRoute.set(trip.route_id, (forRoute = []));
+      forRoute.push(trip);
     }
   }
 
   private ingestStopTimes(rows: RawRow[]): void {
     for (const row of rows) {
       const { stop_id, trip_id } = row;
-      if (!this.stopTrips.has(stop_id)) this.stopTrips.set(stop_id, []);
-      const trips = this.stopTrips.get(stop_id)!;
-      if (!trips.includes(trip_id)) trips.push(trip_id);
+
+      // `stop_sequence` is a string in the CSV and must be compared
+      // numerically — '10' < '9' lexically, which would scramble every trip.
+      const stopTime: StopTime = {
+        trip_id,
+        stop_id,
+        stop_sequence: parseInt(row.stop_sequence ?? '0'),
+        arrival_time: row.arrival_time ?? '',
+        departure_time: row.departure_time ?? '',
+      };
+
+      let forTrip = this.stopTimesByTrip.get(trip_id);
+      if (!forTrip) this.stopTimesByTrip.set(trip_id, (forTrip = []));
+      forTrip.push(stopTime);
+
+      let trips = this.stopTrips.get(stop_id);
+      if (!trips) this.stopTrips.set(stop_id, (trips = []));
+      // Rows for one trip arrive contiguously in every feed worth reading, so
+      // checking the tail is enough to dedupe without an O(n) scan per row.
+      if (trips[trips.length - 1] !== trip_id) trips.push(trip_id);
+
+      const routeId = this.trips.get(trip_id)?.route_id;
+      if (routeId) {
+        let routes = this.routesByStop.get(stop_id);
+        if (!routes) this.routesByStop.set(stop_id, (routes = new Set()));
+        routes.add(routeId);
+      }
+    }
+
+    this.stopTimeCount = rows.length;
+    for (const times of this.stopTimesByTrip.values()) {
+      times.sort((a, b) => a.stop_sequence - b.stop_sequence);
     }
   }
 }
