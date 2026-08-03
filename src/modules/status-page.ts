@@ -6,36 +6,20 @@ import type { RealtimeEndpointName } from './feed-selection';
 import { REALTIME_ENDPOINTS, REALTIME_ENDPOINT_LABELS } from './feed-selection';
 import { localClock } from './feed-time';
 import { isReproducible } from './feed-url';
-import { isLocalUrl, normalizeFeedUrl, resolveRealtimeUrl, validateFeedUrl } from './feed-url-resolve';
+import { isLocalUrl, resolveRealtimeUrl } from './feed-url-resolve';
 import { notify } from './notification-system';
 
 /**
  * The right panel's "nothing focused" content: what is loaded, how much of it,
- * when each endpoint was last fetched, and an inline editor for every URL.
+ * and when each endpoint was last fetched.
  *
- * The URL editors are draft-based. Nothing you type is ever sent anywhere, or
- * overwritten by anything, until you press Apply: a poll landing mid-edit
- * repaints the counts and timers around your text without touching it, and a
- * rejected URL stays in the box with the reason underneath so it can be
- * corrected instead of retyped. `StatusPage.drafts` is what makes that true —
- * the panel is rebuilt wholesale on every status change, so the value in the
- * markup has to come from the draft rather than from the session.
+ * Read-only, deliberately. This used to carry a draft-based editor per URL,
+ * with Apply/Revert, per-field errors and caret restoration to survive a poll
+ * landing mid-edit — a lot of machinery to change a URL in a panel that repaints
+ * itself every fifteen seconds. Changing a feed now means reopening the Load
+ * modal, which comes up seeded from the current selection: the same edit, in the
+ * place the feed was chosen, with none of the reconciliation.
  */
-
-/** A URL editor's state for one render pass. */
-interface FieldView {
-  key: string;
-  value: string;
-  dirty: boolean;
-  busy: boolean;
-  error: string | null;
-  /** The CORS checkbox is on, but this URL is local so the proxy is bypassed. */
-  proxyBypassed: boolean;
-  placeholder: string;
-}
-
-/** Renders `FieldView`s; supplied by the StatusPage instance to the render tree. */
-type FieldRenderer = (key: string, committed: string, placeholder: string) => string;
 
 function escHtml(s: string): string {
   return s
@@ -69,41 +53,32 @@ function formatCountdown(target: number): string {
 }
 
 /**
- * One URL editor: the field, and — only once it differs from what is loaded —
- * the controls to commit or discard the change. Apply/Revert stay hidden while
- * the field is clean so the panel is not three rows of buttons at rest.
+ * One URL as configured, plus whatever the selection does to it on the way to
+ * the network: `RT_BASE` resolution for a bare path, the CORS proxy, or neither.
+ * Both are worth stating — "it is fetching a different URL than the one I typed"
+ * is the question this panel exists to answer.
  */
-function renderField(f: FieldView): string {
-  const controls = f.dirty
-    ? `
-      <div class="flex items-center gap-1">
-        <button class="btn btn-xs btn-primary" data-apply="${escHtml(f.key)}" ${f.busy ? 'disabled' : ''}>
-          ${f.busy ? '<span class="loading loading-spinner loading-xs"></span>' : 'Apply'}
-        </button>
-        <button class="btn btn-xs btn-ghost" data-revert="${escHtml(f.key)}" ${f.busy ? 'disabled' : ''}>Revert</button>
-        <span class="badge badge-warning badge-xs">edited</span>
-      </div>`
-    : '';
+function renderUrl(url: string, useCors: boolean, isRealtime: boolean): string {
+  if (!url) return '<p class="text-xs opacity-40">not set</p>';
+
+  const resolved = isRealtime ? resolveRealtimeUrl(url) : url;
+  // A local URL ignores the proxy setting (see `maybeProxy`); say so, but only
+  // when the checkbox is on and therefore looks like it is doing something.
+  const proxyBypassed = useCors && isLocalUrl(resolved);
 
   return `
-    <div class="space-y-1">
-      <input
-        type="text"
-        class="input input-bordered input-xs w-full font-mono${f.error ? ' input-error' : ''}"
-        data-field="${escHtml(f.key)}"
-        value="${escHtml(f.value)}"
-        placeholder="${escHtml(f.placeholder)}"
-        spellcheck="false"
-        autocomplete="off"
-      />
-      ${controls}
-      ${f.error ? `<p class="text-xs text-error break-words">✗ ${escHtml(f.error)}</p>` : ''}
-      ${
-        f.proxyBypassed
-          ? '<p class="text-xs opacity-50">local URL — CORS proxy not applied (it cannot reach this machine)</p>'
-          : ''
-      }
-    </div>`;
+    <p class="text-xs font-mono break-all opacity-70">${escHtml(url)}</p>
+    ${
+      resolved !== url
+        ? `<p class="text-xs font-mono break-all opacity-40">→ ${escHtml(resolved)}</p>`
+        : ''
+    }
+    ${useCors && !proxyBypassed ? '<p class="text-xs opacity-50">via cors.gtfs.zone</p>' : ''}
+    ${
+      proxyBypassed
+        ? '<p class="text-xs opacity-50">local URL — CORS proxy not applied (it cannot reach this machine)</p>'
+        : ''
+    }`;
 }
 
 function statTile(label: string, value: number | string): string {
@@ -139,8 +114,8 @@ function renderCounts(session: FeedSession): string {
 function renderEndpoint(
   ep: EndpointStatus,
   rawUrl: string,
+  useCors: boolean,
   nextPollAt: number | null,
-  field: FieldRenderer,
 ): string {
   const label = REALTIME_ENDPOINT_LABELS[ep.name];
 
@@ -189,7 +164,7 @@ function renderEndpoint(
           : ''
       }
 
-      ${field(`rt:${ep.name}`, rawUrl, 'https://… or /feed/vehicle_positions.pb')}
+      ${renderUrl(rawUrl, useCors, true)}
 
       ${ep.header ? renderHeaderDump(ep) : ''}
       ${renderVehicleIdReport(ep)}
@@ -250,7 +225,7 @@ function renderHeaderDump(ep: EndpointStatus): string {
     </details>`;
 }
 
-function renderEndpoints(session: FeedSession, field: FieldRenderer): string {
+function renderEndpoints(session: FeedSession): string {
   const status = session.status;
   if (!status) return '';
   const rt = session.selection?.realtime;
@@ -259,49 +234,27 @@ function renderEndpoints(session: FeedSession, field: FieldRenderer): string {
     tripUpdates: rt?.tripUpdatesUrl ?? '',
     alerts: rt?.alertsUrl ?? '',
   };
-  const corsToggle = rt
-    ? `<label class="flex items-center gap-2 text-xs cursor-pointer font-normal">
-         <input type="checkbox" id="status-rt-cors" class="checkbox checkbox-xs" ${rt.useCors ? 'checked' : ''} />
-         CORS proxy
-       </label>`
-    : '';
   return `
     <section class="space-y-2">
-      <div class="flex items-center gap-2">
-        <h3 class="font-semibold text-sm flex-1">Realtime endpoints</h3>
-        ${corsToggle}
-      </div>
+      <h3 class="font-semibold text-sm">Realtime endpoints</h3>
       ${REALTIME_ENDPOINTS.map(n =>
-        renderEndpoint(status.endpoints[n], rawUrls[n], status.nextPollAt, field),
+        renderEndpoint(status.endpoints[n], rawUrls[n], rt?.useCors ?? false, status.nextPollAt),
       ).join('')}
     </section>`;
 }
 
-function renderStaticSection(session: FeedSession, field: FieldRenderer): string {
+function renderStaticSection(session: FeedSession): string {
   const src = session.selection?.static;
   if (!src) return '';
 
-  // Mirror the realtime section: the CORS toggle rides in the section header,
-  // not down inside the editor. File sources aren't fetched, so no toggle.
-  const corsToggle =
-    src.kind === 'url'
-      ? `<label class="flex items-center gap-2 text-xs cursor-pointer font-normal">
-           <input type="checkbox" id="status-static-cors" class="checkbox checkbox-xs" ${src.useCors ? 'checked' : ''} />
-           CORS proxy
-         </label>`
-      : '';
-
-  const editor =
+  const source =
     src.kind === 'file'
       ? `<p class="text-xs opacity-60">Loaded from uploaded file <span class="font-mono">${escHtml(src.label)}</span> — not reproducible from a link.</p>`
-      : field('static', src.url, 'https://…/gtfs.zip');
+      : renderUrl(src.url, src.useCors, false);
 
   return `
     <section class="space-y-2">
-      <div class="flex items-center gap-2">
-        <h3 class="font-semibold text-sm flex-1">Static feed</h3>
-        ${corsToggle}
-      </div>
+      <h3 class="font-semibold text-sm">Static feed</h3>
       <div class="rounded-lg border border-base-300 p-3 space-y-2">
         <div class="flex items-center gap-2">
           <p class="text-sm flex-1">${escHtml(src.label)}</p>
@@ -312,7 +265,7 @@ function renderStaticSection(session: FeedSession, field: FieldRenderer): string
           }
         </div>
         ${session.staticError ? `<p class="text-xs text-error break-words">${escHtml(session.staticError)}</p>` : ''}
-        ${editor}
+        ${source}
       </div>
     </section>`;
 }
@@ -562,8 +515,8 @@ function renderEmpty(): string {
     <div class="h-full flex flex-col items-center justify-center text-center gap-2 py-12">
       <p class="text-sm opacity-60">No feed loaded.</p>
       <p class="text-xs opacity-40 max-w-xs">
-        Use the <span class="font-medium">Load</span> menu to pick a static GTFS feed
-        and a realtime feed. Both are required.
+        Press <span class="font-medium">Load</span> to pick a static GTFS feed and a
+        realtime feed. Both are required.
       </p>
     </div>`;
 }
@@ -573,17 +526,6 @@ export class StatusPage {
   private session: FeedSession;
   private tickerId: ReturnType<typeof setInterval> | null = null;
   private renderQueued = false;
-  /**
-   * Uncommitted URL text, keyed `rt:vehicles` / `rt:tripUpdates` / `rt:alerts` /
-   * `static`. A key is present only while the field is being edited; the entry
-   * is dropped once Apply succeeds or Revert is pressed. Everything that renders
-   * a URL reads here first, which is what makes a mid-edit repaint harmless.
-   */
-  private drafts = new Map<string, string>();
-  /** Why the last Apply for a field was rejected, shown under that field. */
-  private fieldErrors = new Map<string, string>();
-  /** Fields with an Apply in flight, so the button can show it. */
-  private applying = new Set<string>();
   /** False while an object page owns the panel; polls must not paint over it. */
   private active = true;
 
@@ -628,9 +570,6 @@ export class StatusPage {
   destroy(): void {
     if (this.tickerId !== null) clearInterval(this.tickerId);
     this.tickerId = null;
-    this.drafts.clear();
-    this.fieldErrors.clear();
-    this.applying.clear();
   }
 
   /** Coalesce the burst of statuschange events a single poll produces. */
@@ -653,54 +592,6 @@ export class StatusPage {
     });
   }
 
-  /** The committed value for a field — what the session actually loaded. */
-  private committed(key: string): string {
-    const sel = this.session.selection;
-    if (key === 'static') return sel?.static?.kind === 'url' ? sel.static.url : '';
-    const name = key.slice(3) as RealtimeEndpointName;
-    const rt = sel?.realtime;
-    if (name === 'vehicles') return rt?.vehiclesUrl ?? '';
-    if (name === 'tripUpdates') return rt?.tripUpdatesUrl ?? '';
-    return rt?.alertsUrl ?? '';
-  }
-
-  /** Whether the CORS proxy is switched on for whichever half this field belongs to. */
-  private corsFor(key: string): boolean {
-    const sel = this.session.selection;
-    if (key === 'static') return sel?.static?.kind === 'url' ? sel.static.useCors : false;
-    return sel?.realtime?.useCors ?? false;
-  }
-
-  /**
-   * Everything about a field's appearance that an `input` event can change.
-   * Compared before and after a keystroke so the panel is rebuilt when the
-   * controls need to appear or an error needs to clear, and left alone — caret
-   * and all — for ordinary typing.
-   */
-  private rowSignature(key: string): string {
-    const draft = this.drafts.get(key);
-    const dirty = draft !== undefined && draft !== this.committed(key);
-    return `${dirty}|${this.fieldErrors.get(key) ?? ''}`;
-  }
-
-  private buildField: FieldRenderer = (key, committed, placeholder) => {
-    const draft = this.drafts.get(key);
-    const value = draft ?? committed;
-    // A local URL ignores the proxy setting (see `maybeProxy`); say so, but only
-    // when the checkbox is actually on and therefore looks like it is doing
-    // something.
-    const resolved = key === 'static' ? value : resolveRealtimeUrl(value);
-    return renderField({
-      key,
-      value,
-      dirty: draft !== undefined && draft !== committed,
-      busy: this.applying.has(key),
-      error: this.fieldErrors.get(key) ?? null,
-      proxyBypassed: Boolean(value) && this.corsFor(key) && isLocalUrl(resolved),
-      placeholder,
-    });
-  };
-
   private render(): void {
     if (!this.active) return;
 
@@ -709,18 +600,6 @@ export class StatusPage {
       return;
     }
 
-    // Drafts keep the *value* safe across the rebuild below; focus and caret are
-    // DOM state that only this can carry over.
-    const focused = document.activeElement as HTMLInputElement | null;
-    const restore =
-      focused && this.host.contains(focused) && focused.dataset.field
-        ? {
-            key: focused.dataset.field,
-            start: focused.selectionStart,
-            end: focused.selectionEnd,
-          }
-        : null;
-
     this.host.innerHTML = `
       <div class="space-y-4">
         ${renderCounts(this.session)}
@@ -728,142 +607,16 @@ export class StatusPage {
         ${renderMapIssues(this.mapIssues?.() ?? null)}
         ${renderStationIssues(this.session)}
         ${renderPaddedColumns(this.session)}
-        ${renderStaticSection(this.session, this.buildField)}
-        ${renderEndpoints(this.session, this.buildField)}
+        ${renderStaticSection(this.session)}
+        ${renderEndpoints(this.session)}
         ${renderShare(this.session)}
         ${renderRawTables(this.session)}
       </div>`;
 
     this.wire();
-
-    if (restore) {
-      const el = this.host.querySelector<HTMLInputElement>(
-        `[data-field="${CSS.escape(restore.key)}"]`,
-      );
-      if (el) {
-        el.focus();
-        if (restore.start !== null) el.setSelectionRange(restore.start, restore.end);
-      }
-    }
-  }
-
-  /**
-   * Commit a field. Validation happens here rather than at fetch time so a typo
-   * is reported against the field immediately instead of coming back as an
-   * opaque network error.
-   *
-   * On failure the draft survives — that is the whole point — and holds the
-   * *normalized* text, so what the field shows is what was actually attempted.
-   */
-  private async applyField(key: string): Promise<void> {
-    const raw = this.drafts.get(key);
-    if (raw === undefined || this.applying.has(key)) return;
-
-    const url = normalizeFeedUrl(raw);
-    this.drafts.set(key, url);
-
-    // An empty realtime URL is meaningful — it switches that endpoint off. An
-    // empty static URL is not: there would be no feed left to render.
-    const invalid =
-      key === 'static' && !url ? 'A static feed URL is required.' : validateFeedUrl(url);
-    if (invalid) {
-      this.fieldErrors.set(key, invalid);
-      this.render();
-      return;
-    }
-
-    // Read the checkbox before the await: the panel is rebuilt underneath us.
-    const useCors = this.corsFor(key);
-
-    this.applying.add(key);
-    this.fieldErrors.delete(key);
-    this.render();
-
-    const result =
-      key === 'static'
-        ? await this.session.applyStaticUrl(url, useCors)
-        : await this.session.applyRealtimeUrl(key.slice(3) as RealtimeEndpointName, url);
-
-    this.applying.delete(key);
-    if (result.ok) {
-      this.drafts.delete(key);
-      this.fieldErrors.delete(key);
-      notify.success(
-        key === 'static' ? 'Static feed reloaded' : `${REALTIME_ENDPOINT_LABELS[key.slice(3) as RealtimeEndpointName]} updated`,
-      );
-    } else {
-      this.fieldErrors.set(key, result.error);
-    }
-    this.render();
-  }
-
-  private revertField(key: string): void {
-    this.drafts.delete(key);
-    this.fieldErrors.delete(key);
-    this.render();
   }
 
   private wire(): void {
-    // Typing only ever touches the draft. Nothing is fetched, and nothing in the
-    // session changes, until Apply (or Enter) — so a poll landing mid-edit is a
-    // non-event and a rejected URL stays on screen to be corrected.
-    this.host.querySelectorAll<HTMLInputElement>('[data-field]').forEach(input => {
-      const key = input.dataset.field!;
-
-      input.addEventListener('input', () => {
-        const before = this.rowSignature(key);
-        this.drafts.set(key, input.value);
-        this.fieldErrors.delete(key);
-        // Only rebuild when the controls or the error state actually change;
-        // every keystroke doing a full repaint would be wasteful even with the
-        // caret restore above.
-        if (this.rowSignature(key) !== before) this.render();
-      });
-
-      input.addEventListener('keydown', e => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          void this.applyField(key);
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          this.revertField(key);
-        }
-      });
-    });
-
-    this.host.querySelectorAll<HTMLButtonElement>('[data-apply]').forEach(btn => {
-      btn.addEventListener('click', () => void this.applyField(btn.dataset.apply!));
-    });
-    this.host.querySelectorAll<HTMLButtonElement>('[data-revert]').forEach(btn => {
-      btn.addEventListener('click', () => this.revertField(btn.dataset.revert!));
-    });
-
-    // Checkboxes have no draft to keep — there is nothing to mistype, so they
-    // apply on the spot.
-    const rtCors = this.host.querySelector<HTMLInputElement>('#status-rt-cors');
-    rtCors?.addEventListener('change', () => {
-      void this.session
-        .applyRealtimeCors(rtCors.checked)
-        .then(() => notify.success('Realtime feed reloaded'))
-        .catch(err =>
-          notify.error(`Realtime reload failed: ${err instanceof Error ? err.message : String(err)}`),
-        );
-    });
-
-    const staticCors = this.host.querySelector<HTMLInputElement>('#status-static-cors');
-    staticCors?.addEventListener('change', () => {
-      const url = this.committed('static');
-      if (!url) return;
-      void this.session.applyStaticUrl(url, staticCors.checked).then(result => {
-        if (result.ok) {
-          notify.success('Static feed reloaded');
-        } else {
-          this.fieldErrors.set('static', result.error);
-          this.render();
-        }
-      });
-    });
-
     const copyBtn = this.host.querySelector<HTMLButtonElement>('#status-copy-link');
     copyBtn?.addEventListener('click', () => {
       if (!this.shareUrl) return;

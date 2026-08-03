@@ -211,21 +211,6 @@ export class GTFSRealtime extends EventTarget {
     this.emitStatusChange();
   }
 
-  /** Point an endpoint somewhere new. Pass '' to disable it. */
-  setEndpointUrl(name: RealtimeEndpointName, url: string): void {
-    const ep = this.status.endpoints[name];
-    ep.url = url;
-    ep.lastError = null;
-    ep.lastErrorAt = null;
-    ep.neverFetched = true;
-    this.emitStatusChange();
-  }
-
-  /** Re-fetch one endpoint immediately, without disturbing the poll chain. */
-  async refreshEndpoint(name: RealtimeEndpointName): Promise<void> {
-    await this.fetchEndpoint(name, true);
-  }
-
   private async pollLoop(): Promise<void> {
     while (this.running) {
       await Promise.allSettled(REALTIME_ENDPOINTS.map(n => this.fetchEndpoint(n)));
@@ -241,16 +226,13 @@ export class GTFSRealtime extends EventTarget {
     }
   }
 
-  private async fetchEndpoint(
-    name: RealtimeEndpointName,
-    forceProminent = false,
-  ): Promise<void> {
+  private async fetchEndpoint(name: RealtimeEndpointName): Promise<void> {
     const ep = this.status.endpoints[name];
     if (!ep.url || ep.inFlight) return;
 
     // Only a first fetch or a retry after an error is worth the loading bar;
     // steady-state polls would make it flash every interval.
-    const prominent = forceProminent || ep.neverFetched || ep.lastError !== null;
+    const prominent = ep.neverFetched || ep.lastError !== null;
     ep.inFlight = true;
     this.emitStatusChange();
     this.dispatchEvent(

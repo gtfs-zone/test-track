@@ -7,19 +7,11 @@ import { adoptFeedTimezone } from './feed-time';
 import { feedProgressIndicator } from './feed-progress-indicator';
 import type { FeedSelection, RealtimeEndpointName, StaticSource } from './feed-selection';
 import {
-  REALTIME_ENDPOINTS,
   REALTIME_ENDPOINT_LABELS,
   isComplete,
-  resolvedRealtimeUrl,
   resolvedRealtimeUrls,
   resolvedStaticUrl,
 } from './feed-selection';
-
-/**
- * The outcome of an inline URL edit. Returned rather than toasted so the caller
- * can put the reason next to the field that caused it.
- */
-export type ApplyResult = { ok: true } | { ok: false; error: string };
 
 /**
  * The remembered poll interval, or the default. Anything not on the offered
@@ -80,86 +72,6 @@ export class FeedSession extends EventTarget {
     this.selection = selection;
     await this.loadStatic(selection.static!);
     this.startPoller(selection);
-    this.emitChange();
-  }
-
-  /**
-   * Re-run the static load with a new URL, leaving the RT poller alone.
-   *
-   * Reports rather than toasts, for the same reason as `applyRealtimeUrl`: the
-   * status page shows the failure against the field that caused it, next to the
-   * text the user typed.
-   */
-  async applyStaticUrl(url: string, useCors: boolean): Promise<ApplyResult> {
-    if (!this.selection) return { ok: false, error: 'No feed loaded.' };
-    const next: StaticSource = { kind: 'url', url, useCors, label: this.selection.static?.label ?? 'Static feed' };
-    try {
-      // `loadStatic` leaves the previously parsed feed in place when it throws,
-      // so a failed edit costs nothing but the error message.
-      await this.loadStatic(next);
-    } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
-    }
-    this.selection.static = next;
-    this.emitChange();
-    return { ok: true };
-  }
-
-  /**
-   * Point one RT endpoint somewhere new and fetch it once.
-   *
-   * The new URL is validated by that fetch before the poller keeps it, so a
-   * typo cannot silently kill a working endpoint — on failure the endpoint is
-   * restored to its previous URL.
-   *
-   * The failure is *returned*, not toasted, and deliberately does not touch the
-   * text field: the caller keeps showing what was typed with the reason beside
-   * it, so a bad URL can be corrected rather than having to be retyped from
-   * scratch.
-   */
-  async applyRealtimeUrl(name: RealtimeEndpointName, url: string): Promise<ApplyResult> {
-    const poller = this.poller;
-    const rt = this.selection?.realtime;
-    if (!poller || !rt) return { ok: false, error: 'No realtime feed loaded.' };
-
-    const previous = poller.getStatus().endpoints[name].url;
-    poller.setEndpointUrl(name, resolvedRealtimeUrl(url, rt.useCors));
-    await poller.refreshEndpoint(name);
-
-    const ep = poller.getStatus().endpoints[name];
-    if (url && ep.lastError) {
-      const error = ep.lastError;
-      poller.setEndpointUrl(name, previous);
-      this.emitChange();
-      return { ok: false, error };
-    }
-
-    // Store the un-proxied, unresolved URL on the selection; the poller holds
-    // the resolved one. Keeping a path-only URL as a path is what lets a shared
-    // link work in both dev and the built site.
-    if (name === 'vehicles') rt.vehiclesUrl = url || undefined;
-    else if (name === 'tripUpdates') rt.tripUpdatesUrl = url || undefined;
-    else rt.alertsUrl = url || undefined;
-    this.emitChange();
-    return { ok: true };
-  }
-
-  /**
-   * Flip the CORS proxy for the whole realtime feed at once and re-fetch every
-   * endpoint with the new setting. RT CORS is a single boolean covering all
-   * three endpoints, so there is nothing per-endpoint to decide here.
-   */
-  async applyRealtimeCors(useCors: boolean): Promise<void> {
-    const poller = this.poller;
-    const rt = this.selection?.realtime;
-    if (!poller || !rt) return;
-
-    rt.useCors = useCors;
-    const urls = resolvedRealtimeUrls(rt);
-    for (const name of REALTIME_ENDPOINTS) {
-      poller.setEndpointUrl(name, urls[name]);
-    }
-    await Promise.all(REALTIME_ENDPOINTS.map(n => poller.refreshEndpoint(n)));
     this.emitChange();
   }
 
