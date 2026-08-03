@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/search-controller.ts
-   @sha ba983ca
+   @sha 5e790a4
    @status verbatim */
 /**
  * The map search box.
@@ -26,6 +26,8 @@ export interface SearchEntry<T> {
   secondary?: string;
   /** Everything worth matching against, joined with spaces. */
   haystack: string;
+  /** Lower sorts first. Entries without one are treated as 0. */
+  priority?: number;
 }
 
 export interface SearchControllerOptions<T> {
@@ -186,9 +188,10 @@ export class SearchController<T> {
     // those slots in rank order — so `info.idx[order[i]]` is the entry index.
     const ranked = info && order ? order.map((o) => info.idx[o]) : (idxs ?? []);
 
-    this.matches = ranked
-      .slice(0, this.opts.limit ?? 20)
-      .map((i) => entries[i]);
+    // Stable sort: entries with equal priority keep uFuzzy's quality order.
+    const matches = ranked.map((i) => entries[i]);
+    matches.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
+    this.matches = matches.slice(0, this.opts.limit ?? 20);
     this.activeIndex = 0;
     this.render(query);
   }

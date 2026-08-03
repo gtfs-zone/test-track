@@ -35,6 +35,8 @@ export function buildSearchEntries(session: FeedSession): SearchEntry<PageState>
       primary: stop.name || stop.id,
       secondary: stop.raw['stop_code'] || stop.id,
       haystack: haystack(stop.name, stop.id, stop.raw['stop_code'], stop.raw['stop_desc']),
+      // Stations outrank routes, which outrank plain stops/vehicles.
+      priority: Number(stop.location_type) === 1 ? 0 : 2,
     });
   }
 
@@ -46,6 +48,7 @@ export function buildSearchEntries(session: FeedSession): SearchEntry<PageState>
       primary,
       secondary: route.long_name && route.long_name !== primary ? route.long_name : route.id,
       haystack: haystack(route.short_name, route.long_name, route.id, route.raw['route_desc']),
+      priority: 1,
     });
   }
 
@@ -65,6 +68,7 @@ export function buildSearchEntries(session: FeedSession): SearchEntry<PageState>
         vehicle.tripId,
         routeId,
       ),
+      priority: 2,
     });
   }
 
