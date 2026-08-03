@@ -4,9 +4,7 @@ import type { VehiclePosition } from './map-controller';
 import type { GTFSStatic } from './gtfs-static';
 import type { AlertRecord } from './gtfs-rt';
 import { showAboutModal } from './modules/about-modal';
-import { showAtlasSearchModal } from './modules/atlas-search';
-import { showExamplesModal } from './modules/examples';
-import { showManualLoadModal } from './modules/manual-load-modal';
+import { showLoadModal } from './modules/load-modal';
 import { notify } from './modules/notification-system';
 import { PanelResizer, restorePanelWidth } from './modules/panel-resizer';
 import { BottomSheetController } from './modules/bottom-sheet';
@@ -141,11 +139,9 @@ document.getElementById('about-btn')!
   .addEventListener('click', () => showAboutModal(__APP_VERSION__));
 
 
-// ─── Load dropdown ────────────────────────────────────────────────────────────
+// ─── Load ─────────────────────────────────────────────────────────────────────
 async function handleLoadResult(selection: FeedSelection | null): Promise<void> {
   if (!selection) return;
-  // Close dropdown by blurring the tabindex element
-  (document.activeElement as HTMLElement | null)?.blur();
   const label = describeSelection(selection);
   try {
     await session.load(selection);
@@ -157,16 +153,10 @@ async function handleLoadResult(selection: FeedSelection | null): Promise<void> 
   }
 }
 
-document.getElementById('load-examples-btn')!.addEventListener('click', async () => {
-  await handleLoadResult(await showExamplesModal());
-});
-
-document.getElementById('load-atlas-btn')!.addEventListener('click', async () => {
-  await handleLoadResult(await showAtlasSearchModal());
-});
-
-document.getElementById('load-manual-btn')!.addEventListener('click', async () => {
-  await handleLoadResult(await showManualLoadModal());
+// Seeded from the current selection, which is what makes reopening the modal
+// the way to edit a loaded feed — the right panel has no editors of its own.
+document.getElementById('load-btn')!.addEventListener('click', async () => {
+  await handleLoadResult(await showLoadModal(session.selection));
 });
 
 // ─── Reload feed button ───────────────────────────────────────────────────────
