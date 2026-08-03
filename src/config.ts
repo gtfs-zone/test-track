@@ -23,6 +23,14 @@ export const CONFIG = {
   STOP_FADE_ZOOM_MIN: 10.5,
   STOP_FADE_ZOOM_MAX: 12.5,
 
+  // Map spotlight — the same fade applied to stations and child nodes, but
+  // pitched lower. Stations are far more spaced out than plain stops, so they
+  // can stay legible well past the zoom where a pile of stops turns to mush.
+  // Must sit below STOP_FADE_ZOOM_MIN or the two bands overlap and stations
+  // fade back out as plain stops fade in.
+  STATION_FADE_ZOOM_MIN: 7.5,
+  STATION_FADE_ZOOM_MAX: 9.5,
+
   // Map spotlight — opacity/width treatment applied when a route (and its
   // stops) is selected. Non-matching routes/stops dim; the matched route's
   // line and casing get a width bump.
