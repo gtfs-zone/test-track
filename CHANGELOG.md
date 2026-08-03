@@ -1,3 +1,15 @@
+## v0.5.0 (2026-08-04)
+
+### Feat
+
+- **load**: one modal for every way of choosing a feed
+- **examples**: add nine verified agency feeds
+- **static**: support a zip nested inside the static feed zip
+
+### Refactor
+
+- **status**: make the right panel read-only
+
 ## v0.4.0 (2026-08-03)
 
 ### Feat
