@@ -1,3 +1,15 @@
+## v0.4.0 (2026-08-03)
+
+### Feat
+
+- **map**: draw focused-route vehicles above the rest
+- **map**: fade stations by zoom on a gentler band than plain stops
+- **map**: vendor route coloring from coloring-book
+- **map**: dim vehicles that are not on the focused route
+- **map**: order route lines by mode, trip count, and focus
+- **search**: prioritize stations, then routes, then stops/vehicles
+- **search**: wire up the map search box
+
 ## v0.3.3 (2026-08-02)
 
 ### Fix
