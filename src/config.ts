@@ -31,6 +31,10 @@ export const CONFIG = {
   SPOTLIGHT_LINE_BUMP: 1.35,
   SPOTLIGHT_CASING_BUMP: 1.3,
 
+  // Map spotlight — line-sort-key applied to the focused route so it paints
+  // above every other route. Far above any natural key (max ~90999).
+  SPOTLIGHT_SORT_KEY: 1_000_000,
+
   // Realtime vehicles — neutral fill for a vehicle whose trip/route cannot be
   // resolved against the static feed.
   VEHICLE_UNMATCHED_COLOR: '#94a3b8',

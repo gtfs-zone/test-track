@@ -11,7 +11,9 @@
      rebuilt as one MultiLineString feature per route with `promoteId: 'route_id'`
      rather than one feature per distinct geometry.
    - Added the realtime `vehicles` stack, which has no upstream equivalent.
-   - Added `rebuild()`, called after a basemap change re-creates the style. */
+   - Added `rebuild()`, called after a basemap change re-creates the style.
+   - Route layers are sorted by a `sortKey` feature property (see
+     `route-sort.ts`); `applySpotlight` lifts the focused route above it. */
 
 import type maplibregl from 'maplibre-gl';
 import type {
@@ -24,6 +26,7 @@ import { CONFIG } from '../config';
 import type { GTFSStatic } from '../gtfs-static';
 import type { VehiclePosition } from '../map-controller';
 import type { ShapeMode } from './basemap-control';
+import { routeSortKey } from './route-sort';
 
 /**
  * Counts of feed data the map could not draw. Surfaced on the status page —
@@ -353,6 +356,20 @@ export class LayerManager {
       'line-width',
       zoomWidth(CASING_WIDTH_STOPS, match, CONFIG.SPOTLIGHT_CASING_BUMP),
     );
+
+    // Lift the spotlighted routes above everything else. line-sort-key is a
+    // layout property, so it cannot read feature state — but the same literal
+    // route_id match used for opacity works here unchanged. Layout changes
+    // force a tile re-layout, which is fine once per selection but must never
+    // be driven from hover.
+    const sortKey = (
+      match
+        ? ['case', match, CONFIG.SPOTLIGHT_SORT_KEY, ['get', 'sortKey']]
+        : ['get', 'sortKey']
+    ) as unknown as ExpressionSpecification;
+    for (const id of ['routes-casing', 'routes-line', 'routes-clickarea']) {
+      if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'line-sort-key', sortKey);
+    }
   }
 
   // ── Geometry lookups, for camera moves ─────────────────────────────────────
@@ -465,7 +482,11 @@ export class LayerManager {
         'line-color': ['get', 'colorDark'],
         'line-width': zoomWidth(CASING_WIDTH_STOPS, null, 1),
       },
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      layout: {
+        'line-cap': 'round',
+        'line-join': 'round',
+        'line-sort-key': ['get', 'sortKey'],
+      },
     });
 
     this.map.addLayer({
@@ -476,7 +497,11 @@ export class LayerManager {
         'line-color': ['get', 'color'],
         'line-width': zoomWidth(ROUTE_WIDTH_STOPS, null, 1),
       },
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      layout: {
+        'line-cap': 'round',
+        'line-join': 'round',
+        'line-sort-key': ['get', 'sortKey'],
+      },
     });
 
     this.map.addLayer({
@@ -484,7 +509,13 @@ export class LayerManager {
       type: 'line',
       source: 'routes',
       paint: { 'line-color': 'transparent', 'line-width': 15, 'line-opacity': 0 },
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
+      // Sorted identically to the drawn layers so a click on overlapping routes
+      // resolves to whichever one visually reads as on top.
+      layout: {
+        'line-cap': 'round',
+        'line-join': 'round',
+        'line-sort-key': ['get', 'sortKey'],
+      },
     });
   }
 
@@ -891,6 +922,8 @@ export class LayerManager {
           route_id: route.id,
           color: route.color,
           colorDark: casingColor(route.color),
+          // Paint order: mode rank blended with trip count. See route-sort.ts.
+          sortKey: routeSortKey(route.type, trips.length),
         },
       });
     }
