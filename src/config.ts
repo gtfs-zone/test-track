@@ -31,6 +31,11 @@ export const CONFIG = {
   SPOTLIGHT_LINE_BUMP: 1.35,
   SPOTLIGHT_CASING_BUMP: 1.3,
 
+  // Map spotlight — opacity for vehicles not running on the focused route.
+  // Higher than the route dim: a vehicle is a small mark and needs more
+  // opacity than a long line to stay legible at the same visual weight.
+  SPOTLIGHT_VEHICLE_DIM: 0.25,
+
   // Map spotlight — line-sort-key applied to the focused route so it paints
   // above every other route. Far above any natural key (max ~90999).
   SPOTLIGHT_SORT_KEY: 1_000_000,

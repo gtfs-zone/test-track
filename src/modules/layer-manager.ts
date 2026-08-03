@@ -231,6 +231,7 @@ export class LayerManager {
       target?.kind === 'route' ? this.stopIdsForRoute(target.id) : [];
     this.applyStopDim();
     this.applySpotlight(target?.kind === 'route' ? [target.id] : null);
+    this.applyVehicleDim(target?.kind === 'route' ? [target.id] : null);
     this.syncFeatureState();
   }
 
@@ -333,6 +334,37 @@ export class LayerManager {
     }
   }
 
+  /**
+   * Dim every vehicle that isn't running on the spotlighted route. Vehicles
+   * carry `route_id` (resolved from the trip when the position omits it), so
+   * the same literal match the route spotlight uses works here unchanged.
+   *
+   * The focus halo is left alone: its radius is 0 unless the feature is
+   * focused, and a route focus never coexists with a vehicle focus.
+   */
+  private applyVehicleDim(routeIds: string[] | null): void {
+    const match =
+      routeIds && routeIds.length > 0
+        ? (['in', ['get', 'route_id'], ['literal', routeIds]] as unknown as ExpressionSpecification)
+        : null;
+    const opacity = (
+      match ? ['case', match, 1, CONFIG.SPOTLIGHT_VEHICLE_DIM] : 1
+    ) as unknown as ExpressionSpecification;
+
+    if (this.map.getLayer('vehicles-casing')) {
+      this.map.setPaintProperty('vehicles-casing', 'circle-opacity', opacity);
+    }
+    if (this.map.getLayer('vehicles-dot')) {
+      this.map.setPaintProperty('vehicles-dot', 'circle-opacity', opacity);
+      this.map.setPaintProperty('vehicles-dot', 'circle-stroke-opacity', opacity);
+    }
+    if (this.map.getLayer('vehicles-arrow')) {
+      // icon-opacity covers the SDF fill and its halo together, so the arrow
+      // fades as one mark rather than leaving a floating dark outline.
+      this.map.setPaintProperty('vehicles-arrow', 'icon-opacity', opacity);
+    }
+  }
+
   private applySpotlight(routeIds: string[] | null): void {
     if (!this.map.getLayer('routes-line')) return;
 
@@ -420,6 +452,7 @@ export class LayerManager {
     // Neither paint overrides nor feature state survive a style swap.
     this.applyStopDim();
     this.applySpotlight(this.focus?.kind === 'route' ? [this.focus.id] : null);
+    this.applyVehicleDim(this.focus?.kind === 'route' ? [this.focus.id] : null);
     this.syncFeatureState();
   }
 
