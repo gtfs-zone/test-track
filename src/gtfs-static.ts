@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import Papa from 'papaparse';
 import { describeHttpError, describeNetworkError } from './modules/feed-selection';
+import { routeColor, routeTextColor } from './utils/route-colors';
 
 /** Verbatim CSV rows, kept so object pages can dump every column. */
 export type RawRow = Record<string, string>;
@@ -411,12 +412,16 @@ export class GTFSStatic {
 
   private ingestRoutes(rows: RawRow[]): void {
     for (const row of rows) {
+      // A feed that omits route_color gets a hue hashed from its route_id, so
+      // colorless routes are still told apart on the map instead of all
+      // rendering in one flat house color. See utils/route-colors.ts.
+      const color = routeColor(row.route_id, row.route_color);
       this.routes.set(row.route_id, {
         id: row.route_id,
         short_name: row.route_short_name ?? '',
         long_name: row.route_long_name ?? '',
-        color: row.route_color ? `#${row.route_color}` : '#0066ff',
-        text_color: row.route_text_color ? `#${row.route_text_color}` : '#ffffff',
+        color,
+        text_color: routeTextColor(color, row.route_text_color),
         type: parseInt(row.route_type ?? '3'),
         agency_id: row.agency_id ?? '',
         raw: row,

@@ -7,9 +7,11 @@
    - Dropped pathways, levels, the Tutte coord embedding, `stops-highlight` /
      `trip-highlight`, the editing affordances, and file-highlight mode.
    - Absorbed the route layer stack from coloring-book's `route-renderer.ts`
-     (casing / line / clickarea, `zoomWidth`, `getCasingColor`, `applySpotlight`),
-     rebuilt as one MultiLineString feature per route with `promoteId: 'route_id'`
-     rather than one feature per distinct geometry.
+     (casing / line / clickarea, `zoomWidth`, `applySpotlight`), rebuilt as one
+     MultiLineString feature per route with `promoteId: 'route_id'` rather than
+     one feature per distinct geometry.
+   - `getCasingColor` is no longer local: both repos now import `casingColor`
+     from the vendored `utils/route-colors.ts`.
    - Added the realtime `vehicles` stack, which has no upstream equivalent.
    - Added `rebuild()`, called after a basemap change re-creates the style.
    - Route layers are sorted by a `sortKey` feature property (see
@@ -27,6 +29,7 @@ import type { GTFSStatic } from '../gtfs-static';
 import type { VehiclePosition } from '../map-controller';
 import type { ShapeMode } from './basemap-control';
 import { routeSortKey } from './route-sort';
+import { casingColor } from '../utils/route-colors';
 
 /**
  * Counts of feed data the map could not draw. Surfaced on the status page —
@@ -127,23 +130,6 @@ function zoomWidth(
     expr.push(zoom, match ? ['case', match, width * bump, width] : width);
   }
   return expr as unknown as ExpressionSpecification;
-}
-
-/**
- * Derive the casing color for a route line: a darker shade of the route color.
- */
-function casingColor(color: string): string {
-  if (/^#[0-9A-Fa-f]{6}$/.test(color)) {
-    const n = parseInt(color.slice(1), 16);
-    const darken = (v: number) => Math.round(v * 0.55);
-    return (
-      '#' +
-      [darken((n >> 16) & 255), darken((n >> 8) & 255), darken(n & 255)]
-        .map(v => v.toString(16).padStart(2, '0'))
-        .join('')
-    );
-  }
-  return '#333333';
 }
 
 type FocusTarget =
