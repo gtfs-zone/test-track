@@ -27,6 +27,15 @@ export interface ExampleFeed {
  * hops that send no usable CORS header, which the browser aborts) and must be
  * rewritten to `raw.githubusercontent.com` or proxied. rt.gtfs.zone,
  * cdn.mbta.com and content.amtrak.com send no CORS headers, so they proxy.
+ *
+ * Several agency feeds below are plain `http://`, which an https page blocks as
+ * mixed content. They are only usable *because* they proxy: `maybeProxy`
+ * produces `https://cors.gtfs.zone/http://…`, and the plain-http hop happens
+ * server-side. An http entry must therefore never ship with `useCors: false`.
+ *
+ * Two of these hosts (ripta.com, opendata.burlington.ca) refuse a bare request
+ * outright but answer the proxy, so "it 403s in curl" is not evidence that an
+ * entry is dead — check it the way the app fetches it.
  */
 export const EXAMPLES: ExampleFeed[] = [
   {
@@ -83,6 +92,185 @@ export const EXAMPLES: ExampleFeed[] = [
         alertsUrl: 'https://cdn.mbta.com/realtime/Alerts.pb',
         useCors: true,
         label: 'MBTA RT',
+      },
+    },
+  },
+  {
+    name: 'SEPTA',
+    // The one entry that exercises the nested-zip syntax: SEPTA ships
+    // google_bus.zip and google_rail.zip inside a single release asset, so the
+    // outer URL alone does not say which feed is meant. No alerts endpoint —
+    // SEPTA publishes Vehicle and Trip only.
+    description: 'Philadelphia — bus feed nested inside the public GTFS release zip',
+    selection: {
+      static: {
+        kind: 'url',
+        url: 'https://github.com/septadev/GTFS/releases/latest/download/gtfs_public.zip#google_bus.zip',
+        useCors: true,
+        label: 'SEPTA',
+      },
+      realtime: {
+        vehiclesUrl: 'https://www3.septa.org/gtfsrt/septa-pa-us/Vehicle/rtVehiclePosition.pb',
+        tripUpdatesUrl: 'https://www3.septa.org/gtfsrt/septa-pa-us/Trip/rtTripUpdates.pb',
+        useCors: true,
+        label: 'SEPTA RT',
+      },
+    },
+  },
+  {
+    name: 'Grand Poitiers',
+    description: 'Poitiers, France — Cadavl-hosted static and realtime',
+    selection: {
+      static: {
+        kind: 'url',
+        url: 'https://gtfs.gptd.cadavl.com/GPTD/GTFS/GTFS_GPTD.zip',
+        useCors: true,
+        label: 'Grand Poitiers',
+      },
+      realtime: {
+        vehiclesUrl: 'https://gtfsrt.gptd.cadavl.com/ProfilGtfsRt2_0RSProducer-GPTD/VehiclePosition.pb',
+        tripUpdatesUrl: 'https://gtfsrt.gptd.cadavl.com/ProfilGtfsRt2_0RSProducer-GPTD/TripUpdate.pb',
+        alertsUrl: 'https://gtfsrt.gptd.cadavl.com/ProfilGtfsRt2_0RSProducer-GPTD/Alert.pb',
+        useCors: true,
+        label: 'Grand Poitiers RT',
+      },
+    },
+  },
+  {
+    name: 'Divia',
+    // The static half is a data.gouv.fr resource id, so the URL names no file
+    // and has no .zip extension — it is one all the same.
+    description: 'Dijon, France — static via data.gouv.fr, realtime via transport.data.gouv.fr',
+    selection: {
+      static: {
+        kind: 'url',
+        url: 'https://www.data.gouv.fr/fr/datasets/r/e0dbd217-15cd-4e28-9459-211a27511a34',
+        useCors: true,
+        label: 'Divia',
+      },
+      realtime: {
+        vehiclesUrl: 'https://proxy.transport.data.gouv.fr/resource/divia-dijon-gtfs-rt-vehicle-position',
+        tripUpdatesUrl: 'https://proxy.transport.data.gouv.fr/resource/divia-dijon-gtfs-rt-trip-update',
+        useCors: true,
+        label: 'Divia RT',
+      },
+    },
+  },
+  {
+    name: 'RIPTA',
+    // ripta.com 403s a bare request and the realtime host is http on a
+    // non-standard port; both are fine through the proxy.
+    description: 'Rhode Island — realtime on port 81',
+    selection: {
+      static: {
+        kind: 'url',
+        url: 'https://ripta.com/RIPTA-GTFS.zip',
+        useCors: true,
+        label: 'RIPTA',
+      },
+      realtime: {
+        vehiclesUrl: 'http://realtime.ripta.com:81/api/vehiclepositions?format=gtfs.proto',
+        tripUpdatesUrl: 'http://realtime.ripta.com:81/api/tripupdates?format=gtfs.proto',
+        alertsUrl: 'http://realtime.ripta.com:81/api/servicealerts?format=gtfs.proto',
+        useCors: true,
+        label: 'RIPTA RT',
+      },
+    },
+  },
+  {
+    name: 'WCTA',
+    description: 'Whatcom County, WA — an Avail InfoPoint deployment',
+    selection: {
+      static: {
+        kind: 'url',
+        url: 'https://wcta.rideralerts.com/InfoPoint/gtfs-zip.ashx',
+        useCors: true,
+        label: 'WCTA',
+      },
+      realtime: {
+        vehiclesUrl: 'https://wcta.rideralerts.com/InfoPoint/gtfs-realtime.ashx?type=vehicleposition',
+        tripUpdatesUrl: 'https://wcta.rideralerts.com/InfoPoint/gtfs-realtime.ashx?type=tripupdate',
+        alertsUrl: 'https://wcta.rideralerts.com/InfoPoint/gtfs-realtime.ashx?type=alert',
+        useCors: true,
+        label: 'WCTA RT',
+      },
+    },
+  },
+  {
+    name: 'LCTA',
+    description: 'Luzerne County, PA — another Avail InfoPoint deployment',
+    selection: {
+      static: {
+        kind: 'url',
+        url: 'https://realtimelctabus.availtec.com/InfoPoint/gtfs-zip.ashx',
+        useCors: true,
+        label: 'LCTA',
+      },
+      realtime: {
+        vehiclesUrl: 'https://realtimelctabus.availtec.com/InfoPoint/GTFS-Realtime.ashx?Type=VehiclePosition',
+        tripUpdatesUrl: 'https://realtimelctabus.availtec.com/InfoPoint/GTFS-Realtime.ashx?Type=TripUpdate',
+        alertsUrl: 'https://realtimelctabus.availtec.com/InfoPoint/GTFS-Realtime.ashx?Type=Alert',
+        useCors: true,
+        label: 'LCTA RT',
+      },
+    },
+  },
+  {
+    name: 'Burlington Transit',
+    // opendata.burlington.ca refuses connections from some networks outright
+    // but answers the proxy; do not read a curl timeout as a dead feed.
+    description: 'Burlington, Ontario — city open-data portal',
+    selection: {
+      static: {
+        kind: 'url',
+        url: 'https://opendata.burlington.ca/gtfs-rt/GTFS_Data.zip',
+        useCors: true,
+        label: 'Burlington Transit',
+      },
+      realtime: {
+        vehiclesUrl: 'https://opendata.burlington.ca/gtfs-rt/GTFS_VehiclePositions.pb',
+        tripUpdatesUrl: 'https://opendata.burlington.ca/gtfs-rt/GTFS_TripUpdates.pb',
+        alertsUrl: 'https://opendata.burlington.ca/gtfs-rt/GTFS_ServiceAlerts.pb',
+        useCors: true,
+        label: 'Burlington Transit RT',
+      },
+    },
+  },
+  {
+    name: 'Big Blue Bus',
+    description: 'Santa Monica, CA — realtime served as .bin, over plain http',
+    selection: {
+      static: {
+        kind: 'url',
+        url: 'http://gtfs.bigbluebus.com/current.zip',
+        useCors: true,
+        label: 'Big Blue Bus',
+      },
+      realtime: {
+        vehiclesUrl: 'http://gtfs.bigbluebus.com/vehiclepositions.bin',
+        tripUpdatesUrl: 'http://gtfs.bigbluebus.com/tripupdates.bin',
+        alertsUrl: 'http://gtfs.bigbluebus.com/alerts.bin',
+        useCors: true,
+        label: 'Big Blue Bus RT',
+      },
+    },
+  },
+  {
+    name: 'London Transit',
+    description: 'London, Ontario — static and realtime on separate http hosts',
+    selection: {
+      static: {
+        kind: 'url',
+        url: 'http://www.londontransit.ca/gtfsfeed/google_transit.zip',
+        useCors: true,
+        label: 'London Transit',
+      },
+      realtime: {
+        vehiclesUrl: 'http://gtfs.ltconline.ca/Vehicle/VehiclePositions.pb',
+        tripUpdatesUrl: 'http://gtfs.ltconline.ca/TripUpdate/TripUpdates.pb',
+        alertsUrl: 'http://gtfs.ltconline.ca/Alert/Alerts.pb',
+        useCors: true,
+        label: 'London Transit RT',
       },
     },
   },
