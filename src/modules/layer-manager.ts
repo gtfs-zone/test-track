@@ -321,9 +321,10 @@ export class LayerManager {
   }
 
   /**
-   * Dim every vehicle that isn't running on the spotlighted route. Vehicles
-   * carry `route_id` (resolved from the trip when the position omits it), so
-   * the same literal match the route spotlight uses works here unchanged.
+   * Dim every vehicle that isn't running on the spotlighted route, and lift the
+   * ones that are above the rest. Vehicles carry `route_id` (resolved from the
+   * trip when the position omits it), so the same literal match the route
+   * spotlight uses works here unchanged.
    *
    * The focus halo is left alone: its radius is 0 unless the feature is
    * focused, and a route focus never coexists with a vehicle focus.
@@ -337,17 +338,31 @@ export class LayerManager {
       match ? ['case', match, 1, CONFIG.SPOTLIGHT_VEHICLE_DIM] : 1
     ) as unknown as ExpressionSpecification;
 
+    // Vehicles have no natural paint order — one bucket of markers all drawn at
+    // once — so the lift is a plain 1-or-0 rather than an offset off a base key.
+    // `icon-allow-overlap` is true on the arrow, which is the case where a
+    // *greater* symbol-sort-key draws on top, matching circle-sort-key.
+    const sortKey = (match ? ['case', match, 1, 0] : 0) as unknown as ExpressionSpecification;
+
     if (this.map.getLayer('vehicles-casing')) {
       this.map.setPaintProperty('vehicles-casing', 'circle-opacity', opacity);
+      this.map.setLayoutProperty('vehicles-casing', 'circle-sort-key', sortKey);
     }
     if (this.map.getLayer('vehicles-dot')) {
       this.map.setPaintProperty('vehicles-dot', 'circle-opacity', opacity);
       this.map.setPaintProperty('vehicles-dot', 'circle-stroke-opacity', opacity);
+      this.map.setLayoutProperty('vehicles-dot', 'circle-sort-key', sortKey);
     }
     if (this.map.getLayer('vehicles-arrow')) {
       // icon-opacity covers the SDF fill and its halo together, so the arrow
       // fades as one mark rather than leaving a floating dark outline.
       this.map.setPaintProperty('vehicles-arrow', 'icon-opacity', opacity);
+      this.map.setLayoutProperty('vehicles-arrow', 'symbol-sort-key', sortKey);
+    }
+    // Sorted with the drawn layers so a click on stacked vehicles resolves to
+    // whichever one visually reads as on top.
+    if (this.map.getLayer('vehicles-clickarea')) {
+      this.map.setLayoutProperty('vehicles-clickarea', 'circle-sort-key', sortKey);
     }
   }
 
