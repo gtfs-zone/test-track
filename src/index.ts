@@ -17,6 +17,8 @@ import { FeedSession } from './modules/feed-session';
 import { StatusPage } from './modules/status-page';
 import { AppState } from './modules/app-state';
 import { PanelRenderer } from './modules/panel-renderer';
+import { SearchController } from './modules/search-controller';
+import { buildSearchEntries } from './modules/search-entries';
 import { ALERT_LEVEL_LABELS, alertLevel, isActiveNow, preferredText } from './modules/alerts';
 import type { PageState } from './types/page-state';
 
@@ -86,6 +88,13 @@ const appState = new AppState(session, {
     mapCtrl.focus(state);
   },
 });
+
+// ─── Map search ───────────────────────────────────────────────────────────────
+// Selecting a result is the same event as clicking the object on the map.
+new SearchController<PageState>({
+  getEntries: () => buildSearchEntries(session),
+  onSelect: state => appState.setFocus(state),
+}).initialize();
 
 statusPage.setShareUrlProvider(() => appState.shareableUrl());
 statusPage.setMapIssuesProvider(() => mapCtrl.issues);
