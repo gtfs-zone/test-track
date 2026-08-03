@@ -1,6 +1,7 @@
 import JSZip from 'jszip';
 import Papa from 'papaparse';
 import { describeHttpError, describeNetworkError } from './modules/feed-selection';
+import { splitInnerZipPath } from './modules/feed-url-resolve';
 import { routeColor, routeTextColor } from './utils/route-colors';
 
 /** Verbatim CSV rows, kept so object pages can dump every column. */
@@ -214,9 +215,20 @@ export class GTFSStatic {
     await this.parse(zip, hooks);
   }
 
+  /**
+   * A URL may name an archive inside the archive — `…/outer.zip#inner.zip` —
+   * for the agencies that publish several datasets in one download. The
+   * fragment is split off here rather than anywhere upstream, so the CORS proxy
+   * concatenation in `maybeProxy` never has to know about it and `fetch` never
+   * sees it.
+   */
   async loadFromUrl(url: string, hooks: LoadHooks = {}): Promise<void> {
-    const buffer = await downloadWithProgress(url, hooks.onDownload);
-    const zip = await JSZip.loadAsync(buffer);
+    const { url: fetchUrl, innerPaths } = splitInnerZipPath(url);
+    const buffer = await downloadWithProgress(fetchUrl, hooks.onDownload);
+    let zip = await JSZip.loadAsync(buffer);
+    for (const inner of innerPaths) {
+      zip = await openInnerZip(zip, inner);
+    }
     await this.parse(zip, hooks);
   }
 
@@ -502,6 +514,24 @@ export class GTFSStatic {
       times.sort((a, b) => a.stop_sequence - b.stop_sequence);
     }
   }
+}
+
+/**
+ * Open one archive nested inside another.
+ *
+ * Reports rather than absorbs: a mistyped inner name would otherwise surface
+ * much later as an empty feed ("0 stops, 0 routes"), which reads as the
+ * agency's fault. Naming what the outer archive actually holds turns that into
+ * a one-line fix.
+ */
+async function openInnerZip(zip: JSZip, innerPath: string): Promise<JSZip> {
+  const entry = zip.file(innerPath);
+  if (!entry) {
+    const zips = Object.keys(zip.files).filter(n => n.toLowerCase().endsWith('.zip'));
+    const found = zips.length ? zips.join(', ') : 'no nested archives at all';
+    throw new Error(`The archive has no entry "${innerPath}" — it contains ${found}.`);
+  }
+  return JSZip.loadAsync(await entry.async('arraybuffer'));
 }
 
 /**

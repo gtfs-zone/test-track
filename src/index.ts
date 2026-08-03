@@ -117,7 +117,11 @@ function showFeedControls(): void {
   reloadBtn.classList.remove('hidden');
   intervalDropdown.classList.remove('hidden');
   // The editor link only works from a URL-backed static feed — file uploads
-  // have no URL to hand off — so it stays hidden otherwise.
+  // have no URL to hand off — so it stays hidden otherwise. A
+  // `…/outer.zip#inner.zip` URL is handed over whole and will fail there:
+  // coloring-book does not understand the fragment. Left deliberately, because
+  // an editor link that visibly fails is clearer than one that silently opens
+  // the wrong dataset.
   const staticSrc = session.selection?.static;
   if (staticSrc?.kind === 'url' && staticSrc.url) {
     editBtn.href = `${CONFIG.EDITOR_BASE}/#load=${encodeURIComponent(staticSrc.url)}`;

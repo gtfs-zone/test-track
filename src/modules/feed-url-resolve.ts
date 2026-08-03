@@ -25,6 +25,25 @@
  */
 export const RT_BASE = import.meta.env.DEV ? 'http://localhost:8000' : 'https://rt.gtfs.zone';
 
+/**
+ * Split `…/outer.zip#inner.zip` into the URL to fetch and the entries to
+ * descend into once it is unzipped.
+ *
+ * Some agencies publish one archive holding several GTFS datasets — SEPTA's
+ * `gtfs_public.zip` contains `google_bus.zip` and `google_rail.zip` — so
+ * naming the outer archive alone is not enough to say which feed you mean.
+ * The fragment is the natural place for that: it is the part of a URL a server
+ * never sees, and it round-trips through the share hash unharmed (a `#` inside
+ * a param value is encoded as `%23`).
+ *
+ * Every `#` is a level, so nesting falls out for free — though one level is
+ * what anyone actually publishes.
+ */
+export function splitInnerZipPath(url: string): { url: string; innerPaths: string[] } {
+  const [base, ...innerPaths] = url.split('#');
+  return { url: base, innerPaths: innerPaths.filter(Boolean) };
+}
+
 /** True for a stored URL that is a bare path rather than an absolute URL. */
 export function isPathOnly(url: string): boolean {
   return url.startsWith('/') && !url.startsWith('//');
