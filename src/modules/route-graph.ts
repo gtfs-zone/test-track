@@ -1,3 +1,6 @@
+/* @vendored-from coloring-book:src/modules/route-graph.ts
+   @sha 9f1f986
+   @status verbatim */
 /**
  * The branch structure of a route strip: which lane each stop sits in, and
  * where lanes split and rejoin.

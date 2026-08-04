@@ -1,3 +1,6 @@
+/* @vendored-from coloring-book:src/modules/route-sequence.ts
+   @sha 9f1f986
+   @status verbatim */
 /**
  * The canonical stop order for one direction of one route, plus the mapping
  * that puts any individual trip back onto it.

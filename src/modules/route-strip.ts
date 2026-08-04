@@ -1,3 +1,6 @@
+/* @vendored-from coloring-book:src/modules/route-strip.ts
+   @sha 9f1f986
+   @status verbatim */
 /**
  * The rail geometry for a route strip: SVG path builders for a branching
  * transit line, plus the two-layer cell that lays them under a stop's dot.

@@ -1,3 +1,6 @@
+/* @vendored-from coloring-book:src/modules/route-source.ts
+   @sha 9f1f986
+   @status verbatim */
 /**
  * Storage-agnostic view of the data `route-sequence.ts` and `route-graph.ts`
  * need. Both modules originate in test-track, which reads from `GTFSStatic`;
