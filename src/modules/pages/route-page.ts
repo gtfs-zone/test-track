@@ -16,11 +16,22 @@ import type { Route } from '../../gtfs-static';
 import type { VehiclePosition } from '../../map-controller';
 import type { PageState } from '../../types/page-state';
 import { alertsForRoute, alertsForRouteStop, feedWideAlerts } from '../alerts';
+import { GTFSStaticRouteSource } from '../gtfs-static-route-source';
 import { routeGraph } from '../route-graph';
 import type { RtIndex, VehicleStopSequence } from '../rt-index';
 import type { Prediction } from '../rt-index';
 import type { RouteSequence, StopStats } from '../route-sequence';
 import { directionsForRoute, routeSequence } from '../route-sequence';
+import {
+  endpointNote,
+  endpointThreshold,
+  gutterWidth,
+  isEndpoint,
+  isMinority,
+  railCell,
+  rowPaths,
+} from '../route-strip';
+import type { RowDot } from '../route-strip';
 import type { RenderContext } from '../render-utils';
 import {
   OCCUPANCY_LABELS,
@@ -41,30 +52,6 @@ import {
   vehicleDisplayName,
 } from '../render-utils';
 import { renderAlertList } from './alert-page';
-
-const RAIL_WIDTH = 9;
-/** The gutter a single-lane route gets — the width the rail column always had. */
-const GUTTER_BASE = 40;
-/** Each extra lane costs this much width. */
-const LANE_WIDTH = 14;
-
-/** Where a row's dot goes, if it has one. */
-type RowDot = { kind: 'none' } | { kind: 'open' | 'solid'; lane: number };
-
-/**
- * A stop is called an endpoint when this share of the direction's trips begin
- * or end there. Any threshold is arbitrary; this one is low enough to catch a
- * genuine branch terminus and high enough to ignore the one train a day that
- * happens to lay up mid-route.
- */
-const ENDPOINT_SHARE = 0.05;
-/**
- * Below this share of trips, a stop is drawn as a deviation from the trunk and
- * labelled with how many trips actually call there. The label is a raw count,
- * not a percentage: "87 of 300 trips" is a fact about the timetable, while
- * "29%" is a number the reader has to unpack before it says anything.
- */
-const MINORITY_SHARE = 0.5;
 
 /** A vehicle that could not be put on the strip, and why not. */
 interface Unplaced {
@@ -157,76 +144,6 @@ function placeVehicles(
 
 // ─── Strip rendering ──────────────────────────────────────────────────────────
 
-/** Centre of lane `l`, in px from the left of the gutter. */
-function laneX(lane: number): number {
-  return GUTTER_BASE / 2 + lane * LANE_WIDTH;
-}
-
-function gutterWidth(laneCount: number): number {
-  return GUTTER_BASE + (laneCount - 1) * LANE_WIDTH;
-}
-
-/**
- * One rail path, drawn twice.
- *
- * `route_color` is whatever the feed says, and `#FFFFFF` on a light theme is a
- * real and common hazard, so a slightly wider neutral stroke goes underneath —
- * the SVG equivalent of the `ring-1 ring-base-content/15` the rail carried when
- * it was a `<span>`.
- *
- * The viewBox is 100 tall against a row whose height is content-driven and
- * unknown here, so the vertical scale is arbitrary. `non-scaling-stroke` keeps
- * the stroke 9px regardless; the curves stretch, which is the intended look.
- */
-function railPath(d: string, color: string): string {
-  return `<path d="${d}" fill="none" stroke="currentColor" class="text-base-content/15" stroke-width="${
-    RAIL_WIDTH + 2
-  }" stroke-linecap="round" vector-effect="non-scaling-stroke"/><path d="${d}" fill="none" stroke="${color}" stroke-width="${RAIL_WIDTH}" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
-}
-
-/** Straight down the whole row, in one lane. */
-function verticalPath(lane: number): string {
-  return `M ${laneX(lane)},0 L ${laneX(lane)},100`;
-}
-
-/** From `lane` at the top of the row into `into` at the row's centre. */
-function mergePath(lane: number, into: number): string {
-  const x0 = laneX(lane);
-  const x1 = laneX(into);
-  return lane === into ? `M ${x1},0 L ${x1},50` : `M ${x0},0 C ${x0},20 ${x1},30 ${x1},50`;
-}
-
-/** From `from` at the row's centre out into `lane` at the bottom. */
-function branchPath(from: number, lane: number): string {
-  const x0 = laneX(from);
-  const x1 = laneX(lane);
-  return lane === from ? `M ${x0},50 L ${x0},100` : `M ${x0},50 C ${x0},80 ${x1},70 ${x1},100`;
-}
-
-/**
- * The rail cell: an SVG of lines, plus the dot as real HTML on top.
- *
- * The dot cannot go in the SVG — the non-uniform vertical scale would render a
- * circle as an ellipse of unpredictable eccentricity.
- */
-function railCell(color: string, laneCount: number, paths: string[], dot: RowDot): string {
-  const width = gutterWidth(laneCount);
-  const dotHtml =
-    dot.kind === 'none'
-      ? ''
-      : `<span class="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full ring-1 ring-base-content/25"
-           style="left:${laneX(dot.lane)}px;background:${
-             dot.kind === 'solid' ? color : 'var(--color-base-100, #fff)'
-           };box-shadow:inset 0 0 0 3px ${color}"></span>`;
-  return `
-    <div class="relative shrink-0" style="width:${width}px" aria-hidden="true">
-      <svg class="absolute inset-0 w-full h-full" viewBox="0 0 ${width} 100" preserveAspectRatio="none">${paths
-        .map(d => railPath(d, color))
-        .join('')}</svg>
-      ${dotHtml}
-    </div>`;
-}
-
 function stripRow(railHtml: string, content: string, laneCount: number): string {
   return `<div class="grid gap-2 items-stretch" style="grid-template-columns:${gutterWidth(
     laneCount,
@@ -292,20 +209,11 @@ function alertPips(ctx: RenderContext, alerts: AlertRecord[]): string {
   );
 }
 
-/**
- * Where trips begin and end, when enough of them do it here to be a fact about
- * the route rather than about one trip. Washington is the case this is for: the
- * strip continues south to Norfolk past it, so nothing about the line's shape
- * says "terminus", but most of the route's trains stop there.
- */
-function endpointNote(stats: StopStats, threshold: number): string {
-  const parts: string[] = [];
-  if (stats.endsHere >= threshold) parts.push(`${stats.endsHere} end`);
-  if (stats.startsHere >= threshold) parts.push(`${stats.startsHere} start`);
-  if (parts.length === 0) return '';
-  return `<span class="text-xs opacity-60 tabular-nums shrink-0">${escHtml(
-    parts.join(' · '),
-  )}</span>`;
+function endpointNoteHtml(stats: StopStats, threshold: number): string {
+  const note = endpointNote(stats, threshold);
+  return note
+    ? `<span class="text-xs opacity-60 tabular-nums shrink-0">${escHtml(note)}</span>`
+    : '';
 }
 
 function renderStrip(
@@ -332,50 +240,12 @@ function renderStrip(
 
   const graph = routeGraph(sequence);
 
-  /**
-   * A vehicle chip's row carries the lanes that are live across it, so a chip no
-   * longer breaks the rail.
-   *
-   * Past the end of the strip there is nothing live, only the neighbouring
-   * stop's own lane, and the rail has to stop inside the chip's row rather than
-   * run out of it — otherwise the strip ends in a bare stub with a flat cut
-   * instead of a rounded terminus. `last` says this chip is the outermost of a
-   * run, so only it gets the half-length capped segment; chips between it and
-   * the stop still need the full height.
-   */
-  const gapPaths = (index: number, side: 'above' | 'below', last: boolean): string[] => {
-    const row = graph.rows[index];
-    const live = side === 'above' ? [...row.merges, ...row.through] : row.exiting;
-    if (live.length > 0) return live.map(verticalPath);
-    if (!last) return [verticalPath(row.lane)];
-    // The outermost row of a terminus. Above the first stop the rail runs from
-    // this row's centre down; below the last stop, from the top to the centre.
-    return [side === 'above' ? branchPath(row.lane, row.lane) : mergePath(row.lane, row.lane)];
-  };
-
-  /**
-   * A stop row's lines. `leadIn`/`leadOut` extend the row's own lane to the row
-   * edge at a terminus that has a chip row beyond it, so the chip keeps the cap
-   * and the rail between the two stays joined.
-   */
-  const stopPaths = (index: number, leadIn: boolean, leadOut: boolean): string[] => {
-    const row = graph.rows[index];
-    const paths = [
-      ...row.through.map(verticalPath),
-      ...row.merges.map(lane => mergePath(lane, row.lane)),
-      ...row.branches.map(lane => branchPath(row.lane, lane)),
-    ];
-    if (leadIn && row.merges.length === 0) paths.push(mergePath(row.lane, row.lane));
-    if (leadOut && row.branches.length === 0) paths.push(branchPath(row.lane, row.lane));
-    return paths;
-  };
-
   // Rows are collected first so the terminal caps can be put on whichever rows
   // actually end up at the ends — a vehicle above the first stop pushes the cap
   // down onto its own row.
   const rows: Array<{ dot: RowDot; paths: string[]; content: string }> = [];
 
-  const endpointThreshold = Math.max(1, sequence.totalTrips * ENDPOINT_SHARE);
+  const threshold = endpointThreshold(sequence.totalTrips);
 
   sequence.stops.forEach((stop, index) => {
     const chipsBefore = before.get(index) ?? [];
@@ -383,7 +253,7 @@ function renderStrip(
     chipsBefore.forEach((p, n) => {
       rows.push({
         dot: { kind: 'none' },
-        paths: gapPaths(index, 'above', n === 0),
+        paths: rowPaths(graph, index, { kind: 'gap', side: 'above', last: n === 0 }),
         content: vehicleChip(ctx, p.vehicle, p.current),
       });
     });
@@ -398,14 +268,16 @@ function renderStrip(
     const stopAlerts = alertsForRouteStop(ctx.session, route.id, alertIds);
 
     const stats = sequence.stopStats[index];
-    const endpoint =
-      stats.startsHere >= endpointThreshold || stats.endsHere >= endpointThreshold;
-    const share = sequence.totalTrips > 0 ? stats.serves / sequence.totalTrips : 1;
-    const minority = share < MINORITY_SHARE;
+    const endpoint = isEndpoint(stats, threshold);
+    const minority = isMinority(stats, sequence.totalTrips);
 
     rows.push({
       dot: { kind: endpoint ? 'solid' : 'open', lane: graph.rows[index].lane },
-      paths: stopPaths(index, chipsBefore.length > 0, chipsAt.length > 0),
+      paths: rowPaths(graph, index, {
+        kind: 'stop',
+        leadIn: chipsBefore.length > 0,
+        leadOut: chipsAt.length > 0,
+      }),
       content: `<div class="flex items-center gap-2" title="${escHtml(
         `Served by ${stats.serves} of ${sequence.totalTrips} trips`,
       )}">
@@ -418,7 +290,7 @@ function renderStrip(
             ? `<span class="opacity-50 text-xs ml-1">(visit ${stop.occurrence + 1})</span>`
             : ''
         }</span>
-        ${endpointNote(stats, endpointThreshold)}
+        ${endpointNoteHtml(stats, threshold)}
         ${
           minority
             ? `<span class="text-xs opacity-50 tabular-nums shrink-0">${escHtml(
@@ -434,7 +306,11 @@ function renderStrip(
     chipsAt.forEach((p, n) => {
       rows.push({
         dot: { kind: 'none' },
-        paths: gapPaths(index, 'below', n === chipsAt.length - 1),
+        paths: rowPaths(graph, index, {
+          kind: 'gap',
+          side: 'below',
+          last: n === chipsAt.length - 1,
+        }),
         content: vehicleChip(ctx, p.vehicle, p.current),
       });
     });
@@ -517,12 +393,13 @@ export function renderRoutePage(
   const route = feed?.routes.get(state.route_id);
   if (!feed || !route) return missing(`Route ${state.route_id}`);
 
-  const directions = directionsForRoute(feed, route.id);
+  const source = new GTFSStaticRouteSource(feed);
+  const directions = directionsForRoute(source, route.id);
   const active =
     directions.find(d => d.direction_id === state.direction_id)?.direction_id ??
     directions[0]?.direction_id ??
     '';
-  const sequence = routeSequence(feed, route.id, active);
+  const sequence = routeSequence(source, route.id, active);
   const { placed, unplaced } = placeVehicles(ctx, rt, sequence, route.id, active);
 
   const agency = feed.agencies.find(a => a.id === route.agency_id) ?? feed.agencies[0];

@@ -20,7 +20,7 @@
  * single column, exactly as it looks today.
  */
 
-import type { RouteSequence } from './route-sequence';
+import type { RouteSequence } from './route-sequence.js';
 
 /**
  * More lanes than this and the gutter costs more width than the branching is
@@ -58,7 +58,9 @@ const cache = new WeakMap<RouteSequence, RouteGraph>();
 /** The lane layout for a strip. Memoised per `RouteSequence`. */
 export function routeGraph(sequence: RouteSequence): RouteGraph {
   const hit = cache.get(sequence);
-  if (hit) return hit;
+  if (hit) {
+    return hit;
+  }
   const graph = build(sequence);
   cache.set(sequence, graph);
   return graph;
@@ -77,10 +79,15 @@ function edgesOf(sequence: RouteSequence): Map<number, Set<number>> {
     for (let k = 0; k + 1 < positions.length; k++) {
       const from = positions[k];
       const to = positions[k + 1];
-      if (to <= from) continue;
+      if (to <= from) {
+        continue;
+      }
       const targets = out.get(from);
-      if (targets) targets.add(to);
-      else out.set(from, new Set([to]));
+      if (targets) {
+        targets.add(to);
+      } else {
+        out.set(from, new Set([to]));
+      }
     }
   }
   return out;
@@ -96,22 +103,30 @@ function edgesOf(sequence: RouteSequence): Map<number, Set<number>> {
 function hasAlternatePath(
   edges: Map<number, Set<number>>,
   from: number,
-  to: number,
+  to: number
 ): boolean {
   const stack: number[] = [];
   const seen = new Set<number>();
 
   for (const next of edges.get(from) ?? []) {
-    if (next !== to && next < to) stack.push(next);
+    if (next !== to && next < to) {
+      stack.push(next);
+    }
   }
 
   while (stack.length > 0) {
     const at = stack.pop() as number;
-    if (at === to) return true;
-    if (seen.has(at)) continue;
+    if (at === to) {
+      return true;
+    }
+    if (seen.has(at)) {
+      continue;
+    }
     seen.add(at);
     for (const next of edges.get(at) ?? []) {
-      if (next <= to && !seen.has(next)) stack.push(next);
+      if (next <= to && !seen.has(next)) {
+        stack.push(next);
+      }
     }
   }
   return false;
@@ -122,14 +137,23 @@ function hasAlternatePath(
  * line. A skip whose stops can be walked through some other way is an express
  * rejoining the line it left, and gets nothing.
  */
-function structuralEdges(edges: Map<number, Set<number>>): Map<number, number[]> {
+function structuralEdges(
+  edges: Map<number, Set<number>>
+): Map<number, number[]> {
   const kept = new Map<number, number[]>();
   for (const [from, targets] of edges) {
     const survivors: number[] = [];
     for (const to of targets) {
-      if (to === from + 1 || !hasAlternatePath(edges, from, to)) survivors.push(to);
+      if (to === from + 1 || !hasAlternatePath(edges, from, to)) {
+        survivors.push(to);
+      }
     }
-    if (survivors.length > 0) kept.set(from, survivors.sort((a, b) => a - b));
+    if (survivors.length > 0) {
+      kept.set(
+        from,
+        survivors.sort((a, b) => a - b)
+      );
+    }
   }
   return kept;
 }
@@ -182,7 +206,9 @@ function build(sequence: RouteSequence): RouteGraph {
     const lane = merges.length > 0 ? merges[0] : reserve(i);
     // `reserve` claimed the lane for this row; the row is here now, so release
     // it and let the outgoing edges below claim it again.
-    if (merges.length === 0) lanes[lane] = null;
+    if (merges.length === 0) {
+      lanes[lane] = null;
+    }
 
     const branches: number[] = [];
     /** Lanes this row claimed for the first time, as opposed to converged on. */
@@ -192,7 +218,9 @@ function build(sequence: RouteSequence): RouteGraph {
       if (existing >= 0) {
         // Something above already reserved a lane for this target; converge on
         // it rather than running two lanes into the same row.
-        if (!branches.includes(existing)) branches.push(existing);
+        if (!branches.includes(existing)) {
+          branches.push(existing);
+        }
         continue;
       }
       // The nearest target continues straight down in this row's own lane.
@@ -204,7 +232,9 @@ function build(sequence: RouteSequence): RouteGraph {
         target = reserve(to);
       }
       claimed.add(target);
-      if (!branches.includes(target)) branches.push(target);
+      if (!branches.includes(target)) {
+        branches.push(target);
+      }
     }
 
     // A lane this row converged into is *also* carrying whatever reserved it
@@ -214,10 +244,17 @@ function build(sequence: RouteSequence): RouteGraph {
     // the one row where New Bedford's leg rejoins it.
     const through: number[] = [];
     for (let l = 0; l < lanes.length; l++) {
-      if (lanes[l] !== null && l !== lane && !claimed.has(l)) through.push(l);
+      if (lanes[l] !== null && l !== lane && !claimed.has(l)) {
+        through.push(l);
+      }
     }
 
-    laneCount = Math.max(laneCount, lane + 1, ...branches.map(l => l + 1), ...through.map(l => l + 1));
+    laneCount = Math.max(
+      laneCount,
+      lane + 1,
+      ...branches.map((l) => l + 1),
+      ...through.map((l) => l + 1)
+    );
     rows.push({
       lane,
       through,
