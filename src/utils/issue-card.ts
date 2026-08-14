@@ -11,6 +11,10 @@
  * A warning card listing data-quality problems as label/count rows with an
  * optional explanatory note. Renders nothing when every count is zero, so a
  * clean feed does not leave an empty card as furniture.
+ *
+ * Vendored into ../test-track, whose status page renders the same card. Keep it
+ * generic: no GTFS or coloring-book types, escaping only. Changing the markup
+ * here means re-vendoring there.
  */
 
 import { escHtml } from '../modules/render-utils';
