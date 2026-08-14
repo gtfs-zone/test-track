@@ -30,6 +30,7 @@ import {
   isMinority,
   railCell,
   rowPaths,
+  STRIP_ROW_CLASS,
 } from '../route-strip';
 import type { RowDot } from '../route-strip';
 import type { RenderContext } from '../render-utils';
@@ -144,10 +145,21 @@ function placeVehicles(
 
 // ─── Strip rendering ──────────────────────────────────────────────────────────
 
-function stripRow(railHtml: string, content: string, laneCount: number): string {
-  return `<div class="grid gap-2 items-stretch" style="grid-template-columns:${gutterWidth(
-    laneCount,
-  )}px 1fr">
+/**
+ * `stopId` marks the row as a stop row rather than a vehicle-chip gap row, so
+ * hovering it scales that stop's dot. The stop name is already a link, so the
+ * dot itself stays decoration here.
+ */
+function stripRow(
+  railHtml: string,
+  content: string,
+  laneCount: number,
+  stopId?: string,
+): string {
+  const rowAttrs = stopId ? ` data-stop-id="${escHtml(stopId)}"` : '';
+  return `<div class="grid gap-2 items-stretch ${
+    stopId ? STRIP_ROW_CLASS : ''
+  }" style="grid-template-columns:${gutterWidth(laneCount)}px 1fr"${rowAttrs}>
     ${railHtml}
     <div class="py-1 min-h-8 flex flex-col justify-center">${content}</div>
   </div>`;
@@ -243,7 +255,12 @@ function renderStrip(
   // Rows are collected first so the terminal caps can be put on whichever rows
   // actually end up at the ends — a vehicle above the first stop pushes the cap
   // down onto its own row.
-  const rows: Array<{ dot: RowDot; paths: string[]; content: string }> = [];
+  const rows: Array<{
+    dot: RowDot;
+    paths: string[];
+    content: string;
+    stopId?: string;
+  }> = [];
 
   const threshold = endpointThreshold(sequence.totalTrips);
 
@@ -272,6 +289,7 @@ function renderStrip(
     const minority = isMinority(stats, sequence.totalTrips);
 
     rows.push({
+      stopId: stop.stop_id,
       dot: { kind: endpoint ? 'solid' : 'open', lane: graph.rows[index].lane },
       paths: rowPaths(graph, index, {
         kind: 'stop',
@@ -322,6 +340,7 @@ function renderStrip(
         railCell(route.color, graph.laneCount, row.paths, row.dot),
         row.content,
         graph.laneCount,
+        row.stopId,
       ),
     )
     .join('')}</div>`;

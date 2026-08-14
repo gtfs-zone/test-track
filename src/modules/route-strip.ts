@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/route-strip.ts
-   @sha 9f1f986
+   @sha f7a054d
    @status verbatim */
 /**
  * The rail geometry for a route strip: SVG path builders for a branching
@@ -12,12 +12,28 @@
  *
  * Pure string builders only - no DOM, no app context. Callers own the grid
  * wrapper and everything to the right of the rail.
+ *
+ * Stop highlighting lives here too, so both apps get the same behaviour: the
+ * caller puts `STRIP_ROW_CLASS` + `data-stop-id` on each stop row, and the row
+ * hover scales the dot. Passing `stop_id` to `railCell` additionally makes the
+ * dot a button, which each app wires to whatever "focus this stop" means there.
  */
 
 import type { RouteGraph } from './route-graph.js';
 import type { StopStats } from './route-sequence.js';
 
 export const RAIL_WIDTH = 9;
+
+/**
+ * Goes on whatever element wraps a single stop row, together with a
+ * `data-stop-id`. It is the hover scope the dot's `group-hover/strip:` styles
+ * key off, and the delegated hover/click target apps bind to.
+ */
+export const STRIP_ROW_CLASS = 'strip-stop-row group/strip';
+
+/** Goes on the dot itself, so an app can find it from its row. */
+export const STRIP_DOT_CLASS = 'strip-stop-dot';
+
 /** The gutter a single-lane route gets - the width the rail column always had. */
 export const GUTTER_BASE = 40;
 /** Each extra lane costs this much width. */
@@ -76,29 +92,66 @@ export function branchPath(from: number, lane: number): string {
     : `M ${x0},50 C ${x0},80 ${x1},70 ${x1},100`;
 }
 
+/** Minimal attribute escaping, so this module stays app-independent. */
+function escAttrValue(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+export interface RailCellOptions {
+  /**
+   * Makes the dot a real button carrying `data-stop-id`, for apps that want
+   * clicking the marker to do something. Omitted, the dot is decoration.
+   */
+  stop_id?: string;
+  /** Tooltip on the interactive dot. */
+  title?: string;
+}
+
 /**
  * The rail cell: an SVG of lines, plus the dot as real HTML on top.
  *
  * The dot cannot go in the SVG - the non-uniform vertical scale would render a
  * circle as an ellipse of unpredictable eccentricity.
+ *
+ * The dot grows when its row is hovered, via `group-hover/strip:`. That needs
+ * the row wrapper to carry `STRIP_ROW_CLASS`; without it the dot just never
+ * reacts, which is the correct fallback for a caller that has no rows.
  */
 export function railCell(
   color: string,
   laneCount: number,
   paths: string[],
-  dot: RowDot
+  dot: RowDot,
+  options: RailCellOptions = {}
 ): string {
   const width = gutterWidth(laneCount);
-  const dotHtml =
-    dot.kind === 'none'
-      ? ''
-      : `<span class="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full ring-1 ring-base-content/25"
-           style="left:${laneX(dot.lane)}px;background:${
-             dot.kind === 'solid' ? color : 'var(--color-base-100, #fff)'
-           };box-shadow:inset 0 0 0 3px ${color}"></span>`;
+  const interactive = dot.kind !== 'none' && options.stop_id !== undefined;
+  // Keep every utility whitespace-separated from an interpolation: Tailwind's
+  // scanner treats `$` as a class character, so `...scale-125${x}` is extracted
+  // as `...scale-125$` and silently generates nothing.
+  const dotClass = `${STRIP_DOT_CLASS} ${
+    interactive ? 'cursor-pointer' : ''
+  } absolute top-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full ring-1 ring-base-content/25 transition-transform group-hover/strip:scale-125`;
+  let dotHtml = '';
+  if (dot.kind !== 'none') {
+    const dotStyle = `left:${laneX(dot.lane)}px;background:${
+      dot.kind === 'solid' ? color : 'var(--color-base-100, #fff)'
+    };box-shadow:inset 0 0 0 3px ${color}`;
+    dotHtml = interactive
+      ? `<button type="button" class="${dotClass}" style="${dotStyle}"
+           data-stop-id="${escAttrValue(options.stop_id!)}"
+           title="${escAttrValue(options.title ?? '')}"></button>`
+      : `<span class="${dotClass}" style="${dotStyle}"></span>`;
+  }
   return `
-    <div class="relative shrink-0" style="width:${width}px" aria-hidden="true">
-      <svg class="absolute inset-0 w-full h-full" viewBox="0 0 ${width} 100" preserveAspectRatio="none">${paths
+    <div class="relative shrink-0 h-full" style="width:${width}px"${
+      interactive ? '' : ' aria-hidden="true"'
+    }>
+      <svg class="absolute inset-0 w-full h-full" viewBox="0 0 ${width} 100" preserveAspectRatio="none" aria-hidden="true">${paths
         .map((d) => railPath(d, color))
         .join('')}</svg>
       ${dotHtml}
@@ -195,6 +248,11 @@ export function isEndpoint(stats: StopStats, threshold: number): boolean {
  * Where trips begin and end, when enough of them do it here to be a fact
  * about the route rather than about one trip. Empty when neither count meets
  * the threshold.
+ *
+ * Unused in coloring-book's timetable stop column, which has no room for the
+ * note; test-track's route page renders it, and Phase 10's route-page diagram
+ * will too. It lives here because this module is the canonical source both
+ * repos vendor from.
  */
 export function endpointNote(stats: StopStats, threshold: number): string {
   const parts: string[] = [];
