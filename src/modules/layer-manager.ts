@@ -15,7 +15,9 @@
    - Added the realtime `vehicles` stack, which has no upstream equivalent.
    - Added `rebuild()`, called after a basemap change re-creates the style.
    - Route layers are sorted by a `sortKey` feature property (see
-     `route-sort.ts`); `applySpotlight` lifts the focused route above it. */
+     `route-sort.ts`); `applySpotlight` lifts the focused route above it.
+   - Stop paint comes from the vendored `stop-layer-style.ts`; the accent it is
+     given is a hardcoded red, not a resolved theme color. */
 
 import type maplibregl from 'maplibre-gl';
 import type {
@@ -30,6 +32,17 @@ import type { VehiclePosition } from '../map-controller';
 import type { ShapeMode } from './basemap-control';
 import { routeSortKey } from './route-sort';
 import { casingColor } from '../utils/route-colors';
+import {
+  STOP_FOCUS_HALO_LAYER,
+  STOP_FOCUS_RING_LAYER,
+  STOP_FOCUS_TOP_LAYER,
+  focusHaloPaint,
+  focusRingPaint,
+  focusTopPaint,
+  stationDotPaint,
+  stopsBackgroundPaint,
+  type StopStyleOptions,
+} from './stop-layer-style';
 
 /**
  * Counts of feed data the map could not draw. Surfaced on the status page —
@@ -57,7 +70,10 @@ const LAYER_ORDER = [
   'routes-casing',
   'routes-line',
   'routes-clickarea',
+  'stops-focus-halo',
+  'stops-focus-ring',
   'stops-background',
+  'stops-focus-top',
   'stops-station-dot',
   'stops-clickarea',
   'vehicles-halo',
@@ -82,12 +98,17 @@ const STOPS_FILTER: FilterSpecification = [
   ['==', ['get', 'location_type'], 1],
 ] as FilterSpecification;
 
-const STOP_RADIUS = 5.5;
 const STOP_CLICK_RADIUS = 15;
-const STOP_STROKE_COLOR = '#37474f';
-const STOP_STROKE_WIDTH = 2;
-const STOP_FILL_COLOR = '#ffffff';
 const FOCUS_ACCENT = '#e74c3c';
+
+/** Plain-stop colors and sizes the shared paint builders read. */
+const STOP_STYLE: StopStyleOptions = {
+  accent: FOCUS_ACCENT,
+  backgroundColor: '#ffffff',
+  strokeColor: '#37474f',
+  strokeWidth: 2,
+  radius: 5.5,
+};
 /** Hard-contrast edge for vehicles, so a route-colored marker reads on top of
  *  its own route line. Reads on light basemaps; on dark ones the dot keeps its
  *  white inner stroke and the arrow its route-colored fill. */
@@ -638,94 +659,44 @@ export class LayerManager {
   }
 
   /**
-   * Per-location-type circle radius wrapped in the focused feature-state case,
-   * evaluated at one zoom stop. `scale` is the multiplier relative to z16;
-   * focused stops render ~1.7x larger, hovered ones ~1.35x so the two never
-   * read as the same thing.
+   * Stop paint comes from the shared `stop-layer-style.ts`. Order matters: the
+   * halo and ring sit under the circles, the focus redraw sits over them so a
+   * neighbouring stop cannot paint over the selection, and the station dot goes
+   * last so a focused station keeps its center dot.
    */
-  private stopRadiusAt(scale: number): ExpressionSpecification {
-    const byType = (mult: number) => [
-      'case',
-      ['==', ['get', 'location_type'], 1],
-      8 * scale * mult,
-      ['==', ['get', 'location_type'], 2],
-      4.5 * scale * mult,
-      ['==', ['get', 'location_type'], 3],
-      4.5 * scale * mult,
-      ['==', ['get', 'location_type'], 4],
-      5 * scale * mult,
-      STOP_RADIUS * scale * mult,
-    ];
-    return [
-      'case',
-      FOCUSED,
-      byType(1.7),
-      HOVERED,
-      byType(1.35),
-      byType(1),
-    ] as unknown as ExpressionSpecification;
-  }
-
   private addStopLayers(): void {
     if (this.map.getLayer('stops-background')) return;
 
-    const fade = this.stopFadeOpacity(null);
+    this.map.addLayer({
+      id: STOP_FOCUS_HALO_LAYER,
+      type: 'circle',
+      source: 'stops',
+      filter: STOPS_FILTER,
+      paint: focusHaloPaint(FOCUS_ACCENT),
+    });
+
+    this.map.addLayer({
+      id: STOP_FOCUS_RING_LAYER,
+      type: 'circle',
+      source: 'stops',
+      filter: STOPS_FILTER,
+      paint: focusRingPaint(FOCUS_ACCENT),
+    });
 
     this.map.addLayer({
       id: 'stops-background',
       type: 'circle',
       source: 'stops',
       filter: STOPS_FILTER,
-      paint: {
-        'circle-radius': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          11,
-          this.stopRadiusAt(0.45),
-          13.5,
-          this.stopRadiusAt(0.7),
-          16,
-          this.stopRadiusAt(1),
-          19,
-          this.stopRadiusAt(1.5),
-        ],
-        'circle-color': [
-          'case',
-          ['==', ['get', 'location_type'], 1],
-          '#ffffff', // Station: white (black inner dot drawn by stops-station-dot)
-          ['==', ['get', 'location_type'], 2],
-          '#f59e0b', // Entrance: amber
-          ['==', ['get', 'location_type'], 3],
-          '#8b5cf6', // Generic node: purple
-          ['==', ['get', 'location_type'], 4],
-          '#10b981', // Boarding area: green
-          STOP_FILL_COLOR,
-        ],
-        'circle-stroke-color': [
-          'case',
-          FOCUSED,
-          FOCUS_ACCENT,
-          HOVERED,
-          FOCUS_ACCENT,
-          ['==', ['get', 'location_type'], 1],
-          '#111111',
-          STOP_STROKE_COLOR,
-        ],
-        'circle-stroke-width': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          11,
-          ['case', FOCUSED, 2.5, HOVERED, 2, 1.2],
-          16,
-          ['case', FOCUSED, 3.5, HOVERED, 2.8, STOP_STROKE_WIDTH],
-          19,
-          ['case', FOCUSED, 4.5, HOVERED, 3.6, STOP_STROKE_WIDTH + 0.8],
-        ],
-        'circle-opacity': fade,
-        'circle-stroke-opacity': fade,
-      },
+      paint: stopsBackgroundPaint(STOP_STYLE, this.stopFadeOpacity(null)),
+    });
+
+    this.map.addLayer({
+      id: STOP_FOCUS_TOP_LAYER,
+      type: 'circle',
+      source: 'stops',
+      filter: STOPS_FILTER,
+      paint: focusTopPaint(STOP_STYLE),
     });
 
     this.map.addLayer({
@@ -733,22 +704,7 @@ export class LayerManager {
       type: 'circle',
       source: 'stops',
       filter: ['==', ['get', 'location_type'], 1] as unknown as FilterSpecification,
-      paint: {
-        'circle-radius': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          11,
-          ['case', FOCUSED, 2.2, 1.3],
-          16,
-          ['case', FOCUSED, 4.5, 2.6],
-          19,
-          ['case', FOCUSED, 6, 3.8],
-        ],
-        'circle-color': '#111111',
-        'circle-opacity': this.stationFadeOpacity(null),
-        'circle-stroke-width': 0,
-      },
+      paint: stationDotPaint(this.stationFadeOpacity(null)),
     });
 
     // The hit radius mirrors the visible layer's fade: it collapses to 0 where
