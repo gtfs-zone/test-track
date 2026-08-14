@@ -24,6 +24,8 @@ export interface PanelRendererHooks {
   navigate: (state: PageState) => void;
   /** The full hash for a page, so links are real links. */
   href: (state: PageState) => string;
+  /** Light a stop on the map while its route-strip row is hovered. */
+  hoverStop: (stop_id: string | null) => void;
 }
 
 function renderBreadcrumbs(ctx: RenderContext, items: BreadcrumbItem[]): string {
@@ -50,6 +52,7 @@ export class PanelRenderer {
   private state: PageState = { type: 'home' };
   private breadcrumbs: BreadcrumbItem[] = [];
   private active = false;
+  private hoveredStopId: string | null = null;
 
   /** Invalidated on every payload event; rebuilt lazily on the next render. */
   private index: RtIndex | null = null;
@@ -74,6 +77,10 @@ export class PanelRenderer {
     // Delegated so the handlers survive every re-render.
     this.host.addEventListener('click', e => this.onClick(e));
     this.host.addEventListener('toggle', e => this.onToggle(e), true);
+    // pointerover/out bubble, unlike pointerenter/leave, so they can be
+    // delegated to the panel host the same way.
+    this.host.addEventListener('pointerover', e => this.onPointerOver(e));
+    this.host.addEventListener('pointerout', e => this.onPointerOut(e));
 
     this.tickerId = setInterval(() => this.tick(), 1000);
   }
@@ -85,6 +92,7 @@ export class PanelRenderer {
 
   /** Take over the panel and render `state`. */
   show(state: PageState, breadcrumbs: BreadcrumbItem[]): void {
+    this.clearHoveredStop();
     this.state = state;
     this.breadcrumbs = breadcrumbs;
     this.active = true;
@@ -95,7 +103,18 @@ export class PanelRenderer {
 
   /** Hand the panel back to the status page. */
   hide(): void {
+    this.clearHoveredStop();
     this.active = false;
+  }
+
+  /**
+   * Drop the hover light. A page change replaces the rows under the pointer,
+   * so the `pointerout` that would normally clear it never arrives.
+   */
+  private clearHoveredStop(): void {
+    if (this.hoveredStopId === null) return;
+    this.hoveredStopId = null;
+    this.hooks.hoverStop(null);
   }
 
   private onClick(e: Event): void {
@@ -106,6 +125,30 @@ export class PanelRenderer {
     if (mouse.metaKey || mouse.ctrlKey || mouse.shiftKey || mouse.button !== 0) return;
     e.preventDefault();
     this.hooks.navigate(JSON.parse(target.dataset.nav!) as PageState);
+  }
+
+  /** The stop_id of the strip row an event happened inside, if any. */
+  private rowStopId(e: Event): string | null {
+    const row = (e.target as HTMLElement | null)?.closest<HTMLElement>('.strip-stop-row');
+    return row?.dataset.stopId ?? null;
+  }
+
+  private onPointerOver(e: Event): void {
+    const stopId = this.rowStopId(e);
+    if (!stopId || stopId === this.hoveredStopId) return;
+    this.hoveredStopId = stopId;
+    this.hooks.hoverStop(stopId);
+  }
+
+  private onPointerOut(e: Event): void {
+    const stopId = this.rowStopId(e);
+    if (!stopId || stopId !== this.hoveredStopId) return;
+    // Moving between two children of the same row fires an out/over pair for
+    // that row; only a pointer that actually left every row clears the light.
+    const next = (e as PointerEvent).relatedTarget;
+    if (next instanceof Element && next.closest('.strip-stop-row')) return;
+    this.hoveredStopId = null;
+    this.hooks.hoverStop(null);
   }
 
   private onToggle(e: Event): void {

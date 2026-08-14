@@ -297,6 +297,16 @@ export class MapController {
     this.whenLoaded(() => this.applyFocus(state));
   }
 
+  /**
+   * Light up a stop the pointer is over elsewhere in the app (a route strip
+   * row). Purely visual: no camera move, no focus change, no spotlight. Not
+   * wrapped in `whenLoaded` - a hover queued behind style load would fire long
+   * after the pointer left.
+   */
+  hoverStop(stop_id: string | null): void {
+    this.layers?.setHoveredStop(stop_id);
+  }
+
   private applyFocus(state: PageState): void {
     // Any focus that is not this same vehicle leaves follow mode.
     if (state.type !== 'vehicle') this.following = null;

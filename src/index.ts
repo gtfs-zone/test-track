@@ -65,6 +65,7 @@ const statusPage = new StatusPage(panelContent, session);
 const panelRenderer = new PanelRenderer(panelContent, session, {
   navigate: state => appState.setFocus(state),
   href: state => appState.hrefFor(state),
+  hoverStop: stopId => mapCtrl.hoverStop(stopId),
 });
 panelRenderer.initialize();
 

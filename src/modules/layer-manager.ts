@@ -105,14 +105,19 @@ const CASING_WIDTH_STOPS: Array<[number, number]> = [
 ];
 
 const FOCUSED: ExpressionSpecification = ['boolean', ['feature-state', 'focused'], false];
+/** Set while the stop's row is hovered in the panel's route strip. */
+const HOVERED: ExpressionSpecification = ['boolean', ['feature-state', 'hovered'], false];
 
 /**
  * A stop is "special" when it must stay visible and clickable at any zoom:
- * either focused (clicked) or on the currently spotlighted route.
+ * either focused (clicked), hovered from the panel, or on the currently
+ * spotlighted route. Hover counts so pointing at a strip row still shows you
+ * the stop when the map is zoomed out past where plain stops have faded.
  */
 const SPECIAL_STOP = [
   'any',
   FOCUSED,
+  HOVERED,
   ['boolean', ['feature-state', 'onRoute'], false],
 ] as unknown as ExpressionSpecification;
 
@@ -152,6 +157,8 @@ export class LayerManager {
   private latestVehicles: VehiclePosition[] = [];
 
   private focus: FocusTarget = null;
+  /** The stop whose strip row is hovered in the panel, if any. */
+  private hoveredStopId: string | null = null;
   /** Stops that *should* carry the `onRoute` feature-state on the map. */
   private wantedRouteStopIds: string[] = [];
   /** Armed while feature state is waiting for a source to finish loading. */
@@ -184,6 +191,7 @@ export class LayerManager {
     // separately, but the map's own spotlight and feature state have to go now
     // either way. setFocus(null) wipes every source's feature state, so a stale
     // `focused`/`onRoute` cannot survive into the new feed.
+    this.hoveredStopId = null;
     this.setFocus(null);
   }
 
@@ -222,6 +230,21 @@ export class LayerManager {
   }
 
   /**
+   * Light the stop whose row is hovered in the panel's route strip. Its own
+   * feature state, so hovering never disturbs the selection, and a stop that is
+   * both still reads as focused.
+   *
+   * Resolved through `drawnAncestor` for the same reason `setFocus` does it: a
+   * platform is never drawn, so a hover on one has to land on its station.
+   */
+  setHoveredStop(stop_id: string | null): void {
+    const resolved = stop_id === null ? null : this.drawnAncestor(stop_id);
+    if (this.hoveredStopId === resolved) return;
+    this.hoveredStopId = resolved;
+    this.syncFeatureState();
+  }
+
+  /**
    * Push the wanted feature state onto the sources.
    *
    * Every pass first wipes *all* feature state on each source with
@@ -252,6 +275,11 @@ export class LayerManager {
     if (this.sourceReady('stops')) {
       for (const id of this.wantedRouteStopIds) {
         this.setState('stop', id, { onRoute: true });
+      }
+      // Hover is transient: if the source isn't ready the pointer has almost
+      // certainly moved on, so it never arms the retry.
+      if (this.hoveredStopId !== null) {
+        this.setState('stop', this.hoveredStopId, { hovered: true });
       }
     } else if (this.wantedRouteStopIds.length > 0) {
       settled = false;
@@ -612,7 +640,8 @@ export class LayerManager {
   /**
    * Per-location-type circle radius wrapped in the focused feature-state case,
    * evaluated at one zoom stop. `scale` is the multiplier relative to z16;
-   * focused stops render ~1.7x larger.
+   * focused stops render ~1.7x larger, hovered ones ~1.35x so the two never
+   * read as the same thing.
    */
   private stopRadiusAt(scale: number): ExpressionSpecification {
     const byType = (mult: number) => [
@@ -627,7 +656,14 @@ export class LayerManager {
       5 * scale * mult,
       STOP_RADIUS * scale * mult,
     ];
-    return ['case', FOCUSED, byType(1.7), byType(1)] as unknown as ExpressionSpecification;
+    return [
+      'case',
+      FOCUSED,
+      byType(1.7),
+      HOVERED,
+      byType(1.35),
+      byType(1),
+    ] as unknown as ExpressionSpecification;
   }
 
   private addStopLayers(): void {
@@ -670,6 +706,8 @@ export class LayerManager {
           'case',
           FOCUSED,
           FOCUS_ACCENT,
+          HOVERED,
+          FOCUS_ACCENT,
           ['==', ['get', 'location_type'], 1],
           '#111111',
           STOP_STROKE_COLOR,
@@ -679,11 +717,11 @@ export class LayerManager {
           ['linear'],
           ['zoom'],
           11,
-          ['case', FOCUSED, 2.5, 1.2],
+          ['case', FOCUSED, 2.5, HOVERED, 2, 1.2],
           16,
-          ['case', FOCUSED, 3.5, STOP_STROKE_WIDTH],
+          ['case', FOCUSED, 3.5, HOVERED, 2.8, STOP_STROKE_WIDTH],
           19,
-          ['case', FOCUSED, 4.5, STOP_STROKE_WIDTH + 0.8],
+          ['case', FOCUSED, 4.5, HOVERED, 3.6, STOP_STROKE_WIDTH + 0.8],
         ],
         'circle-opacity': fade,
         'circle-stroke-opacity': fade,
