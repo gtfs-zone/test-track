@@ -8,6 +8,7 @@ import { localClock } from './feed-time';
 import { isReproducible } from './feed-url';
 import { isLocalUrl, resolveRealtimeUrl } from './feed-url-resolve';
 import { notify } from './notification-system';
+import { renderIssueCard } from '../utils/issue-card';
 
 /**
  * The right panel's "nothing focused" content: what is loaded, how much of it,
@@ -326,45 +327,28 @@ function renderFeedGaps(gaps: FeedGaps | null): string {
  */
 function renderMapIssues(issues: MapDataIssues | null): string {
   if (!issues) return '';
-  const rows: Array<[string, number, string]> = [
-    ['Stops dropped (no stop_id)', issues.stopsMissingId, 'Cannot be drawn or linked.'],
-    [
-      'Stops dropped (no coordinates)',
-      issues.stopsMissingCoords,
-      'stop_lat / stop_lon missing or unparseable.',
-    ],
-    [
-      'Vehicles with no matching route',
-      issues.vehiclesUnmatched,
-      'Drawn in the neutral color instead of a route color.',
-    ],
-    [
-      'Vehicles collapsed onto one map feature',
-      issues.vehiclesDuplicateKeys,
-      'Should be 0 — a non-zero count means the vehicle key derivation is broken.',
-    ],
-  ];
-  if (rows.every(([, count]) => count === 0)) return '';
-
-  return `
-    <section class="space-y-2">
-      <h3 class="font-semibold text-sm">Map data issues</h3>
-      <div class="rounded-lg border border-warning/40 p-3 space-y-2">
-        ${rows
-          .filter(([, count]) => count > 0)
-          .map(
-            ([label, count, note]) => `
-          <div>
-            <div class="flex justify-between gap-2 text-xs">
-              <span>${escHtml(label)}</span>
-              <span class="tabular-nums font-semibold">${count}</span>
-            </div>
-            <p class="text-xs opacity-50">${escHtml(note)}</p>
-          </div>`,
-          )
-          .join('')}
-      </div>
-    </section>`;
+  return renderIssueCard('Map data issues', [
+    {
+      label: 'Stops dropped (no stop_id)',
+      count: issues.stopsMissingId,
+      note: 'Cannot be drawn or linked.',
+    },
+    {
+      label: 'Stops dropped (no coordinates)',
+      count: issues.stopsMissingCoords,
+      note: 'stop_lat / stop_lon missing or unparseable.',
+    },
+    {
+      label: 'Vehicles with no matching route',
+      count: issues.vehiclesUnmatched,
+      note: 'Drawn in the neutral color instead of a route color.',
+    },
+    {
+      label: 'Vehicles collapsed onto one map feature',
+      count: issues.vehiclesDuplicateKeys,
+      note: 'Should be 0 — a non-zero count means the vehicle key derivation is broken.',
+    },
+  ]);
 }
 
 /**
@@ -375,40 +359,23 @@ function renderMapIssues(issues: MapDataIssues | null): string {
 function renderStationIssues(session: FeedSession): string {
   const issues = session.staticFeed?.stationIssues;
   if (!issues) return '';
-  const rows: Array<[string, number, string]> = [
-    [
-      'parent_station points at a missing stop',
-      issues.danglingParent,
-      'The referenced parent is not in stops.txt.',
-    ],
-    [
-      'parent_station points at the wrong type',
-      issues.nonStationParent,
-      'A platform/entrance/node should reference a station; a boarding area a platform.',
-    ],
-    ['Stops caught in a parent_station cycle', issues.cyclicStops, 'Traversal is cut to avoid hanging.'],
-  ];
-  if (rows.every(([, count]) => count === 0)) return '';
-
-  return `
-    <section class="space-y-2">
-      <h3 class="font-semibold text-sm">Station hierarchy issues</h3>
-      <div class="rounded-lg border border-warning/40 p-3 space-y-2">
-        ${rows
-          .filter(([, count]) => count > 0)
-          .map(
-            ([label, count, note]) => `
-          <div>
-            <div class="flex justify-between gap-2 text-xs">
-              <span>${escHtml(label)}</span>
-              <span class="tabular-nums font-semibold">${count}</span>
-            </div>
-            <p class="text-xs opacity-50">${escHtml(note)}</p>
-          </div>`,
-          )
-          .join('')}
-      </div>
-    </section>`;
+  return renderIssueCard('Station hierarchy issues', [
+    {
+      label: 'parent_station points at a missing stop',
+      count: issues.danglingParent,
+      note: 'The referenced parent is not in stops.txt.',
+    },
+    {
+      label: 'parent_station points at the wrong type',
+      count: issues.nonStationParent,
+      note: 'A platform/entrance/node should reference a station; a boarding area a platform.',
+    },
+    {
+      label: 'Stops caught in a parent_station cycle',
+      count: issues.cyclicStops,
+      note: 'Traversal is cut to avoid hanging.',
+    },
+  ]);
 }
 
 /**
@@ -420,6 +387,10 @@ function renderStationIssues(session: FeedSession): string {
  * Rows are counted, not distinct values — "3544 rows" is a fact; "3544 stops"
  * would invite the reader to wonder whether any were merged. A clean feed (which
  * is nearly all of them) renders nothing, so this never becomes furniture.
+ *
+ * Kept bespoke rather than folded into `renderIssueCard`: the label and the note
+ * both carry inline `font-mono` markup for the file and column names, which an
+ * escaping helper cannot pass through.
  */
 function renderPaddedColumns(session: FeedSession): string {
   const padded = session.staticFeed?.paddedColumns;
