@@ -1,3 +1,15 @@
+## v0.6.0 (2026-08-15)
+
+### Feat
+
+- **map**: adopt shared stop focus halo styles
+- **map**: light a stop while its route-strip row is hovered
+- **route-page**: scale a stop's dot when its strip row is hovered
+
+### Refactor
+
+- **status**: source the issue card from coloring-book
+
 ## v0.5.2 (2026-08-05)
 
 ### Refactor
