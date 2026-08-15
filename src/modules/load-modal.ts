@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/load-modal.ts
-   @sha 200966a
+   @sha 9491e81
    @status verbatim */
 /**
  * The one way into a feed.
@@ -426,7 +426,7 @@ export async function showLoadModal(
     current?.static?.kind === 'file' ? current.static.file : undefined;
 
   const rtSection = `
-      <section class="rounded-lg border border-base-300 p-3 space-y-2">
+      <section class="shrink-0 rounded-lg border border-base-300 p-3 space-y-2">
         <div class="flex items-center justify-between gap-2">
           <h4 class="font-medium text-sm truncate">
             Realtime GTFS-RT <span id="load-rt-label" class="font-normal opacity-60"></span>
@@ -438,9 +438,16 @@ export async function showLoadModal(
         ${rtField('load-alerts-url', 'Service Alerts', 'https://…/alerts.pb')}
       </section>`;
 
+  // A fixed-height column, not a stack that grows with its contents. The slots
+  // are as tall as they are — the realtime app has four URL fields where the
+  // editor has one — so a content-sized modal is a different height in each
+  // app, and tall enough in the realtime one to make the modal body scroll
+  // *behind* the result list's own scrollbar. Pinning the height and letting
+  // the results absorb the slack means there is exactly one scrollbar on the
+  // screen, always the same one, in both apps.
   const body = `
-    <div class="space-y-3 min-w-0">
-      <section class="rounded-lg border border-base-300 p-3 space-y-2">
+    <div class="flex h-full min-h-0 min-w-0 flex-col gap-3">
+      <section class="shrink-0 rounded-lg border border-base-300 p-3 space-y-2">
         <div class="flex items-center justify-between gap-2">
           <h4 class="font-medium text-sm truncate">
             Static GTFS <span id="load-static-label" class="font-normal opacity-60"></span>
@@ -462,10 +469,10 @@ export async function showLoadModal(
 
       ${realtime ? rtSection : ''}
 
-      ${notes.map((n) => `<p class="text-xs text-warning">${escHtml(n)}</p>`).join('')}
+      ${notes.map((n) => `<p class="shrink-0 text-xs text-warning">${escHtml(n)}</p>`).join('')}
 
-      <input type="text" id="load-search" class="input input-bordered input-sm w-full" placeholder="Search by agency, operator, source, or URL…" autofocus />
-      <div id="load-results" class="space-y-0.5 overflow-y-auto overflow-x-hidden max-h-96"></div>
+      <input type="text" id="load-search" class="input input-bordered input-sm w-full shrink-0" placeholder="Search by agency, operator, source, or URL…" autofocus />
+      <div id="load-results" class="min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden"></div>
     </div>
   `;
 
@@ -513,7 +520,11 @@ export async function showLoadModal(
   await showModal({
     title: 'Load Feed',
     body,
-    boxClassName: 'max-w-3xl',
+    // An explicit height, not just a cap: `h-full` on the body only resolves
+    // against a definite one, and that is what lets the result list flex. Width
+    // is deliberately not set here, so both apps take it from their own
+    // `showModal` default and the modal is the same size in each.
+    boxClassName: 'h-[80vh]',
     actionBarContent:
       '<p id="load-hint" class="text-xs opacity-60 min-w-0 truncate"></p>',
     escapeAction: 1,

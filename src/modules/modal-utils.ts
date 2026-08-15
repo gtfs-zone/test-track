@@ -38,7 +38,7 @@ export async function showModal(options: {
     const modal = document.createElement('div');
     modal.className = 'modal modal-open';
     modal.innerHTML = `
-      <div class="modal-box relative max-h-[80vh] flex flex-col ${options.boxClassName ?? ''}">
+      <div class="modal-box relative max-h-[80vh] max-w-4xl w-11/12 flex flex-col ${options.boxClassName ?? ''}">
         ${options.escapeAction !== undefined ? '<button class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2" data-dismiss>✕</button>' : ''}
         <h3 class="font-bold text-lg">${options.title}</h3>
         <div class="flex-1 overflow-y-auto py-4">${options.body}</div>
