@@ -1,13 +1,15 @@
+/* @vendored-from coloring-book:src/modules/load-modal.ts
+   @sha 200966a
+   @status verbatim */
 /**
  * The one way into a feed.
  *
- * Everything that used to be three modals behind a dropdown — curated
- * examples, TransitLand search, hand-typed URLs — is one screen here, because
- * they were never really different tasks: you are always choosing a static
- * source and a realtime source, and the only thing that varies is where the
- * URLs come from.
+ * Everything that used to be several modals behind a dropdown — curated
+ * examples, TransitLand search, hand-typed URLs, file upload — is one screen
+ * here, because they were never really different tasks: you are always choosing
+ * a feed source, and the only thing that varies is where the URLs come from.
  *
- * So the two slots at the top are plain URL fields, and every result row is a
+ * So the slots at the top are plain URL fields, and every result row is a
  * shortcut that fills them in. That single change is what makes the rest work:
  * "load an example and then fix one of its URLs" needs no separate mode, and
  * neither does "come back and edit what is loaded" — the modal opens seeded
@@ -17,6 +19,12 @@
  * Rows carry their URLs on the face of them. Two agencies with the same name
  * are otherwise indistinguishable, and it is worth knowing what you are about
  * to fetch before you fetch it.
+ *
+ * `options.realtime` is the one axis the two apps sharing this file disagree
+ * on. With it off the realtime section, its URL fields, and every realtime-only
+ * atlas row are simply not emitted, and a static source alone is a complete
+ * selection. Everything else — the search, the grouping, upload, CORS, seeding
+ * — is identical, which is the whole reason this is one file.
  */
 
 import UFuzzy from '@leeoniya/ufuzzy';
@@ -25,13 +33,19 @@ import type { CatalogFeed } from './feed-catalog';
 import { describeLiveness, loadCatalog, realtimePaths } from './feed-catalog';
 import type { FeedSelection } from './feed-selection';
 import { describeMissing, isComplete } from './feed-selection';
-import { normalizeFeedUrl, validateFeedUrl } from './feed-url-resolve';
+import {
+  isLocalUrl,
+  normalizeFeedUrl,
+  RT_BASE,
+  validateFeedUrl,
+} from './feed-url-resolve';
+import type { ModalAction } from './modal-utils';
 import { renderUploadIcon, showModal } from './modal-utils';
 
 /**
  * Where a row came from, in the order the groups are shown. Feeds this stack
  * serves are first because they are the ones we can vouch for; the atlas is
- * last because it is four thousand rows of unverified metadata.
+ * last because it is thousands of rows of unverified metadata.
  */
 type Group = 'verified' | 'example' | 'atlas';
 
@@ -73,14 +87,23 @@ interface AtlasRow {
   alertsUrl?: string;
 }
 
+export interface LoadModalOptions {
+  /** Show the realtime section and require an RT endpoint. Default true. */
+  realtime?: boolean;
+  /** Extra buttons in the action bar, e.g. "New Empty Feed". */
+  extraActions?: ModalAction[];
+}
+
 /** The unfiltered list is thousands of rows; cap what is painted. */
 const DISPLAY_CAP = 200;
 
 let cachedAtlas: Promise<AtlasRow[]> | null = null;
 
 function loadAtlasRows(): Promise<AtlasRow[]> {
-  cachedAtlas ??= fetch('/atlas-feeds.json').then(res => {
-    if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`.trim());
+  cachedAtlas ??= fetch('/atlas-feeds.json').then((res) => {
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status} ${res.statusText}`.trim());
+    }
     return res.json() as Promise<AtlasRow[]>;
   });
   return cachedAtlas;
@@ -100,16 +123,20 @@ function reason(err: unknown): string {
 
 // ─── Sources ──────────────────────────────────────────────────────────────────
 
-function catalogRow(feed: CatalogFeed): FeedRow {
-  const live = describeLiveness(feed);
+function catalogRow(feed: CatalogFeed, realtime: boolean): FeedRow {
+  const live = realtime ? describeLiveness(feed) : '';
   return {
     rowId: `verified:${feed.feed_name}`,
     group: 'verified',
-    provides: 'pair',
+    provides: realtime ? 'pair' : 'static',
     name: feed.feed_name,
-    subtitle: live ? `serving ${live}` : 'no live data right now',
+    subtitle: realtime
+      ? live
+        ? `serving ${live}`
+        : 'no live data right now'
+      : '',
     staticUrl: feed.static_url || undefined,
-    ...realtimePaths(feed),
+    ...(realtime ? realtimePaths(feed) : {}),
     // The static half is somebody else's CDN, so it needs the proxy. The
     // realtime half does not: this list only exists because rt.gtfs.zone
     // answered a cross-origin request from here, which is the same permission
@@ -119,14 +146,18 @@ function catalogRow(feed: CatalogFeed): FeedRow {
   };
 }
 
-function exampleRows(): FeedRow[] {
+function exampleRows(realtime: boolean): FeedRow[] {
   return EXAMPLES.map((ex, i) => {
-    const rt = ex.selection.realtime;
+    const rt = realtime ? ex.selection.realtime : null;
     const src = ex.selection.static;
     return {
       rowId: `example:${i}`,
       group: 'example' as const,
-      provides: 'pair' as const,
+      provides: (src && rt
+        ? 'pair'
+        : src
+          ? 'static'
+          : 'rt') as FeedRow['provides'],
       name: ex.name,
       subtitle: ex.description ?? '',
       staticUrl: src?.kind === 'url' ? src.url : undefined,
@@ -163,23 +194,43 @@ function atlasRow(row: AtlasRow): FeedRow {
  * Neither remote source is allowed to keep the modal shut: the examples are
  * compiled in, so there is always something to load even with no network.
  */
-async function loadRows(): Promise<{ rows: FeedRow[]; notes: string[] }> {
-  const [catalog, atlas] = await Promise.allSettled([loadCatalog(), loadAtlasRows()]);
+async function loadRows(
+  realtime: boolean
+): Promise<{ rows: FeedRow[]; notes: string[] }> {
+  const [catalog, atlas] = await Promise.allSettled([
+    loadCatalog(),
+    loadAtlasRows(),
+  ]);
 
   const notes: string[] = [];
   const rows: FeedRow[] = [];
 
   if (catalog.status === 'fulfilled') {
-    // A feed with nothing in any endpoint is a feed with nothing to show.
-    rows.push(...catalog.value.filter(hasLiveData).map(catalogRow));
+    rows.push(
+      ...catalog.value
+        .filter((f) => hasUsableData(f, realtime))
+        .map((f) => catalogRow(f, realtime))
+    );
+  } else if (isLocalUrl(RT_BASE)) {
+    // A dev machine with no feed server running is the overwhelmingly common
+    // reason this fails locally, and it is not something the user can act on.
+    // It is not an outage, so it does not get an outage banner.
+    console.warn(
+      '[LoadModal] feed catalog unreachable at',
+      RT_BASE,
+      catalog.reason
+    );
   } else {
     notes.push(`Feed catalog unavailable — ${reason(catalog.reason)}`);
   }
 
-  rows.push(...exampleRows());
+  rows.push(...exampleRows(realtime));
 
   if (atlas.status === 'fulfilled') {
-    rows.push(...atlas.value.map(atlasRow));
+    const usable = realtime
+      ? atlas.value
+      : atlas.value.filter((r) => r.kind === 'static');
+    rows.push(...usable.map(atlasRow));
   } else {
     notes.push(`TransitLand atlas unavailable — ${reason(atlas.reason)}`);
   }
@@ -187,47 +238,72 @@ async function loadRows(): Promise<{ rows: FeedRow[]; notes: string[] }> {
   return { rows, notes };
 }
 
-function hasLiveData(feed: CatalogFeed): boolean {
+/**
+ * A feed with nothing in any endpoint is a feed with nothing to show — but only
+ * when realtime is what you came for. Without it, a static URL is the whole
+ * point and the liveness flags are irrelevant.
+ */
+function hasUsableData(feed: CatalogFeed, realtime: boolean): boolean {
+  if (!realtime) {
+    return Boolean(feed.static_url);
+  }
   return feed.has_vehicles || feed.has_trip_updates || feed.has_alerts;
 }
 
 // ─── Rendering ────────────────────────────────────────────────────────────────
 
 function urlLine(label: string, url: string | undefined): string {
-  if (!url) return '';
+  if (!url) {
+    return '';
+  }
   return `<p class="text-[11px] font-mono opacity-50 truncate" title="${escHtml(url)}">
     <span class="opacity-70">${label}</span> ${escHtml(url)}
   </p>`;
 }
 
-function badges(row: FeedRow): string {
+function badges(row: FeedRow, realtime: boolean): string {
+  // With one kind of source there is nothing to tell apart, so the badges are
+  // pure noise.
+  if (!realtime) {
+    return '';
+  }
   const parts: string[] = [];
-  if (row.provides !== 'rt') parts.push('<span class="badge badge-xs badge-neutral">Static</span>');
-  if (row.provides !== 'static') parts.push('<span class="badge badge-xs badge-primary">RT</span>');
+  if (row.provides !== 'rt') {
+    parts.push('<span class="badge badge-xs badge-neutral">Static</span>');
+  }
+  if (row.provides !== 'static') {
+    parts.push('<span class="badge badge-xs badge-primary">RT</span>');
+  }
   return parts.join('');
 }
 
-function renderRow(row: FeedRow, inUse: boolean): string {
-  const classes = inUse ? 'bg-primary/10 ring-1 ring-primary/40' : 'hover:bg-base-200';
+function renderRow(row: FeedRow, inUse: boolean, realtime: boolean): string {
+  const classes = inUse
+    ? 'bg-primary/10 ring-1 ring-primary/40'
+    : 'hover:bg-base-200';
   return `
     <button type="button" class="w-full text-left px-3 py-2 rounded-lg flex items-start gap-2 ${classes}" data-row-id="${escHtml(row.rowId)}">
       <div class="flex-1 min-w-0">
         <p class="text-sm font-medium truncate">${escHtml(row.name)}</p>
         ${row.subtitle ? `<p class="text-xs opacity-60 truncate">${escHtml(row.subtitle)}</p>` : ''}
-        ${urlLine('static', row.staticUrl)}
-        ${urlLine('vp', row.vehiclesUrl)}
-        ${urlLine('tu', row.tripUpdatesUrl)}
-        ${urlLine('al', row.alertsUrl)}
+        ${urlLine(realtime ? 'static' : '', row.staticUrl)}
+        ${realtime ? urlLine('vp', row.vehiclesUrl) : ''}
+        ${realtime ? urlLine('tu', row.tripUpdatesUrl) : ''}
+        ${realtime ? urlLine('al', row.alertsUrl) : ''}
       </div>
       <div class="flex gap-1 shrink-0 pt-0.5 items-center">
         ${inUse ? '<span class="text-xs opacity-60">in use</span>' : ''}
-        ${badges(row)}
+        ${badges(row, realtime)}
       </div>
     </button>`;
 }
 
 /** The visible rows, with a heading wherever the group changes. */
-function renderRows(rows: FeedRow[], inUse: Set<string>): string {
+function renderRows(
+  rows: FeedRow[],
+  inUse: Set<string>,
+  realtime: boolean
+): string {
   if (rows.length === 0) {
     return '<p class="text-sm opacity-40 text-center py-8">No results.</p>';
   }
@@ -237,10 +313,10 @@ function renderRows(rows: FeedRow[], inUse: Set<string>): string {
     if (row.group !== group) {
       group = row.group;
       out.push(
-        `<p class="text-xs uppercase tracking-wide opacity-50 px-3 pt-3 pb-1">${GROUP_LABELS[group]}</p>`,
+        `<p class="text-xs uppercase tracking-wide opacity-50 px-3 pt-3 pb-1">${GROUP_LABELS[group]}</p>`
       );
     }
-    out.push(renderRow(row, inUse.has(row.rowId)));
+    out.push(renderRow(row, inUse.has(row.rowId), realtime));
   }
   return out.join('');
 }
@@ -250,10 +326,10 @@ const CORS_TOOLTIP =
 
 function corsToggle(id: string): string {
   return `
-    <label class="flex items-center gap-2 text-xs cursor-pointer font-normal">
+    <label class="flex items-center gap-2 text-xs cursor-pointer font-normal shrink-0">
       <input type="checkbox" id="${id}" class="checkbox checkbox-xs" checked />
       CORS proxy
-      <span class="tooltip" data-tip="${CORS_TOOLTIP}">
+      <span class="tooltip tooltip-left" data-tip="${CORS_TOOLTIP}">
         <span class="cursor-help opacity-60">?</span>
       </span>
     </label>`;
@@ -263,37 +339,27 @@ function rtField(id: string, label: string, placeholder: string): string {
   return `
     <label class="flex items-center gap-2">
       <span class="text-xs opacity-60 w-28 shrink-0">${label}</span>
-      <input type="text" id="${id}" class="input input-bordered input-xs flex-1 font-mono" placeholder="${placeholder}" spellcheck="false" autocomplete="off" />
+      <input type="text" id="${id}" class="input input-bordered input-xs flex-1 min-w-0 font-mono" placeholder="${placeholder}" spellcheck="false" autocomplete="off" />
     </label>`;
 }
 
 // ─── The modal ────────────────────────────────────────────────────────────────
 
-/** Every URL field, so validation can name the one that is wrong. */
-const URL_FIELDS: Array<[id: string, label: string]> = [
-  ['load-static-url', 'Static GTFS'],
+const STATIC_FIELD: [id: string, label: string] = [
+  'load-static-url',
+  'Static GTFS',
+];
+
+const RT_FIELDS: Array<[id: string, label: string]> = [
   ['load-vehicles-url', 'Vehicle Positions'],
   ['load-trip-updates-url', 'Trip Updates'],
   ['load-alerts-url', 'Service Alerts'],
 ];
 
+const RT_FIELD_IDS = RT_FIELDS.map(([id]) => id);
+
 function input(id: string): HTMLInputElement {
   return document.getElementById(id) as HTMLInputElement;
-}
-
-/**
- * The first URL problem in the form, or '' when there is none. Reported through
- * the same hint line as the missing-feed message, so the Load button is never
- * enabled on a URL that cannot be fetched.
- */
-function describeBadUrl(): string {
-  for (const [id, label] of URL_FIELDS) {
-    const raw = input(id).value.trim();
-    if (!raw) continue;
-    const problem = validateFeedUrl(raw);
-    if (problem) return `${label}: ${problem}`;
-  }
-  return '';
 }
 
 const CUSTOM_STATIC = 'Custom static feed';
@@ -301,16 +367,48 @@ const CUSTOM_RT = 'Custom realtime feed';
 
 export async function showLoadModal(
   current: FeedSelection | null,
+  options: LoadModalOptions = {}
 ): Promise<FeedSelection | null> {
-  const { rows, notes } = await loadRows();
+  const realtime = options.realtime ?? true;
+
+  /** Every URL field on screen, so validation can name the one that is wrong. */
+  const urlFields = realtime ? [STATIC_FIELD, ...RT_FIELDS] : [STATIC_FIELD];
+
+  /**
+   * The first URL problem in the form, or '' when there is none. Reported
+   * through the same hint line as the missing-feed message, so the Load button
+   * is never enabled on a URL that cannot be fetched.
+   */
+  const describeBadUrl = (): string => {
+    for (const [id, label] of urlFields) {
+      const raw = input(id).value.trim();
+      if (!raw) {
+        continue;
+      }
+      const problem = validateFeedUrl(raw);
+      if (problem) {
+        return `${label}: ${problem}`;
+      }
+    }
+    return '';
+  };
+
+  const { rows, notes } = await loadRows(realtime);
 
   const uf = new UFuzzy();
   // Rows are already in group order, so a filtered view only has to keep that
   // order stable rather than re-derive it.
-  const haystack = rows.map(r =>
-    [r.name, r.subtitle, r.staticUrl, r.vehiclesUrl, r.tripUpdatesUrl, r.alertsUrl]
+  const haystack = rows.map((r) =>
+    [
+      r.name,
+      r.subtitle,
+      r.staticUrl,
+      r.vehiclesUrl,
+      r.tripUpdatesUrl,
+      r.alertsUrl,
+    ]
       .filter(Boolean)
-      .join(' '),
+      .join(' ')
   );
   const groupRank = new Map(GROUP_ORDER.map((g, i) => [g, i]));
 
@@ -327,28 +425,7 @@ export async function showLoadModal(
   let staticFile: File | undefined =
     current?.static?.kind === 'file' ? current.static.file : undefined;
 
-  const body = `
-    <div class="space-y-3">
-      <section class="rounded-lg border border-base-300 p-3 space-y-2">
-        <div class="flex items-center justify-between gap-2">
-          <h4 class="font-medium text-sm truncate">
-            Static GTFS <span id="load-static-label" class="font-normal opacity-60"></span>
-          </h4>
-          ${corsToggle('load-static-cors')}
-        </div>
-        <div class="flex gap-2">
-          <input type="text" id="load-static-url" class="input input-bordered input-xs flex-1 font-mono" placeholder="https://…/gtfs.zip  (append #inner.zip for a nested feed)" spellcheck="false" autocomplete="off" />
-          <button type="button" id="load-upload-btn" class="btn btn-xs btn-outline gap-1">
-            ${renderUploadIcon('h-3.5 w-3.5')} Upload ZIP
-          </button>
-          <input type="file" id="load-file-input" accept=".zip" class="hidden" />
-        </div>
-        <div id="load-file-row" class="hidden items-center gap-2">
-          <p id="load-file-name" class="text-xs opacity-60"></p>
-          <button type="button" id="load-file-clear" class="btn btn-ghost btn-xs">Clear</button>
-        </div>
-      </section>
-
+  const rtSection = `
       <section class="rounded-lg border border-base-300 p-3 space-y-2">
         <div class="flex items-center justify-between gap-2">
           <h4 class="font-medium text-sm truncate">
@@ -359,14 +436,36 @@ export async function showLoadModal(
         ${rtField('load-vehicles-url', 'Vehicle Positions', 'https://…/vehicle_positions.pb')}
         ${rtField('load-trip-updates-url', 'Trip Updates', 'https://…/trip_updates.pb')}
         ${rtField('load-alerts-url', 'Service Alerts', 'https://…/alerts.pb')}
+      </section>`;
+
+  const body = `
+    <div class="space-y-3 min-w-0">
+      <section class="rounded-lg border border-base-300 p-3 space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <h4 class="font-medium text-sm truncate">
+            Static GTFS <span id="load-static-label" class="font-normal opacity-60"></span>
+          </h4>
+          ${corsToggle('load-static-cors')}
+        </div>
+        <div class="flex gap-2">
+          <input type="text" id="load-static-url" class="input input-bordered input-xs flex-1 min-w-0 font-mono" placeholder="https://…/gtfs.zip  (append #inner.zip for a nested feed)" spellcheck="false" autocomplete="off" />
+          <button type="button" id="load-upload-btn" class="btn btn-xs btn-outline gap-1 shrink-0">
+            ${renderUploadIcon('h-3.5 w-3.5')} Upload ZIP
+          </button>
+          <input type="file" id="load-file-input" accept=".zip" class="hidden" />
+        </div>
+        <div id="load-file-row" class="hidden items-center gap-2">
+          <p id="load-file-name" class="text-xs opacity-60 truncate"></p>
+          <button type="button" id="load-file-clear" class="btn btn-ghost btn-xs shrink-0">Clear</button>
+        </div>
       </section>
 
-      ${notes
-        .map(n => `<p class="text-xs text-warning">${escHtml(n)}</p>`)
-        .join('')}
+      ${realtime ? rtSection : ''}
+
+      ${notes.map((n) => `<p class="text-xs text-warning">${escHtml(n)}</p>`).join('')}
 
       <input type="text" id="load-search" class="input input-bordered input-sm w-full" placeholder="Search by agency, operator, source, or URL…" autofocus />
-      <div id="load-results" class="space-y-0.5 overflow-y-auto max-h-96"></div>
+      <div id="load-results" class="space-y-0.5 overflow-y-auto overflow-x-hidden max-h-96"></div>
     </div>
   `;
 
@@ -376,9 +475,6 @@ export async function showLoadModal(
     const checked = (id: string) => input(id).checked;
 
     const staticUrl = val('load-static-url');
-    const vehiclesUrl = val('load-vehicles-url');
-    const tripUpdatesUrl = val('load-trip-updates-url');
-    const alertsUrl = val('load-alerts-url');
 
     let staticSource: FeedSelection['static'] = null;
     if (staticFile) {
@@ -392,6 +488,13 @@ export async function showLoadModal(
       };
     }
 
+    if (!realtime) {
+      return { static: staticSource, realtime: null };
+    }
+
+    const vehiclesUrl = val('load-vehicles-url');
+    const tripUpdatesUrl = val('load-trip-updates-url');
+    const alertsUrl = val('load-alerts-url');
     const hasRt = Boolean(vehiclesUrl || tripUpdatesUrl || alertsUrl);
     return {
       static: staticSource,
@@ -411,7 +514,8 @@ export async function showLoadModal(
     title: 'Load Feed',
     body,
     boxClassName: 'max-w-3xl',
-    actionBarContent: '<p id="load-hint" class="text-xs opacity-60"></p>',
+    actionBarContent:
+      '<p id="load-hint" class="text-xs opacity-60 min-w-0 truncate"></p>',
     escapeAction: 1,
     // Deliberately no `enterAction`: the search box is the field most likely to
     // have focus, and Enter there meaning "load" would fire on a half-typed
@@ -422,18 +526,21 @@ export async function showLoadModal(
         className: 'btn-primary',
         onClick: () => {
           const sel = readForm();
-          if (describeBadUrl() || !isComplete(sel)) return true;
+          if (describeBadUrl() || !isComplete(sel, realtime)) {
+            return true;
+          }
           result = sel;
           return;
         },
       },
       { label: 'Cancel', onClick: () => {} },
+      ...(options.extraActions ?? []),
     ],
     onMount: () => {
       const searchInput = input('load-search');
       const resultsEl = document.getElementById('load-results')!;
       const staticLabelEl = document.getElementById('load-static-label')!;
-      const rtLabelEl = document.getElementById('load-rt-label')!;
+      const rtLabelEl = document.getElementById('load-rt-label');
       const fileInput = input('load-file-input');
       const fileRow = document.getElementById('load-file-row')!;
       const fileNameEl = document.getElementById('load-file-name')!;
@@ -443,8 +550,10 @@ export async function showLoadModal(
         .querySelector<HTMLButtonElement>('button[data-idx="0"]')!;
 
       const renderResults = () => {
-        const inUse = new Set([staticRowId, rtRowId].filter(Boolean) as string[]);
-        resultsEl.innerHTML = renderRows(visible, inUse);
+        const inUse = new Set(
+          [staticRowId, rtRowId].filter(Boolean) as string[]
+        );
+        resultsEl.innerHTML = renderRows(visible, inUse, realtime);
       };
 
       /**
@@ -457,21 +566,30 @@ export async function showLoadModal(
         fileRow.classList.toggle('flex', Boolean(staticFile));
         input('load-static-url').disabled = Boolean(staticFile);
         input('load-static-cors').disabled = Boolean(staticFile);
-        if (staticFile) input('load-static-url').value = '';
+        if (staticFile) {
+          input('load-static-url').value = '';
+        }
       };
 
       const revalidate = () => {
-        staticLabelEl.textContent = staticFile ? `— ${staticFile.name}` : `— ${staticLabel}`;
-        rtLabelEl.textContent = `— ${rtLabel}`;
-        const problem = describeBadUrl() || describeMissing(readForm());
+        staticLabelEl.textContent = staticFile
+          ? `— ${staticFile.name}`
+          : `— ${staticLabel}`;
+        if (rtLabelEl) {
+          rtLabelEl.textContent = `— ${rtLabel}`;
+        }
+        const problem =
+          describeBadUrl() || describeMissing(readForm(), realtime);
         loadBtn.disabled = problem !== '';
         hintEl.textContent = problem;
       };
 
       /** Fill whichever slots a row supplies, and leave the other one alone. */
       const applyRow = (rowId: string) => {
-        const row = rows.find(r => r.rowId === rowId);
-        if (!row) return;
+        const row = rows.find((r) => r.rowId === rowId);
+        if (!row) {
+          return;
+        }
 
         if (row.provides !== 'rt') {
           staticFile = undefined;
@@ -482,7 +600,7 @@ export async function showLoadModal(
           staticLabel = row.name;
           staticRowId = row.rowId;
         }
-        if (row.provides !== 'static') {
+        if (realtime && row.provides !== 'static') {
           input('load-vehicles-url').value = row.vehiclesUrl ?? '';
           input('load-trip-updates-url').value = row.tripUpdatesUrl ?? '';
           input('load-alerts-url').value = row.alertsUrl ?? '';
@@ -499,13 +617,17 @@ export async function showLoadModal(
        * longer that agency's, so neither is the name.
        */
       const detachStatic = () => {
-        if (staticRowId === null) return;
+        if (staticRowId === null) {
+          return;
+        }
         staticRowId = null;
         staticLabel = CUSTOM_STATIC;
         renderResults();
       };
       const detachRt = () => {
-        if (rtRowId === null) return;
+        if (rtRowId === null) {
+          return;
+        }
         rtRowId = null;
         rtLabel = CUSTOM_RT;
         renderResults();
@@ -521,7 +643,7 @@ export async function showLoadModal(
           // we can vouch for at the top of any query. Stable, so match order
           // still decides within a group.
           visible = idxs
-            .map(i => rows[i])
+            .map((i) => rows[i])
             .sort((a, b) => groupRank.get(a.group)! - groupRank.get(b.group)!)
             .slice(0, DISPLAY_CAP);
         }
@@ -529,37 +651,47 @@ export async function showLoadModal(
       };
 
       // Delegated, so re-rendering the list never re-wires handlers.
-      resultsEl.addEventListener('click', e => {
-        const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-row-id]');
-        if (btn?.dataset.rowId) applyRow(btn.dataset.rowId);
+      resultsEl.addEventListener('click', (e) => {
+        const btn = (e.target as HTMLElement).closest<HTMLElement>(
+          '[data-row-id]'
+        );
+        if (btn?.dataset.rowId) {
+          applyRow(btn.dataset.rowId);
+        }
       });
 
       input('load-static-url').addEventListener('input', () => {
         detachStatic();
         revalidate();
       });
-      ['load-vehicles-url', 'load-trip-updates-url', 'load-alerts-url'].forEach(id => {
-        input(id).addEventListener('input', () => {
-          detachRt();
-          revalidate();
+      if (realtime) {
+        RT_FIELD_IDS.forEach((id) => {
+          input(id).addEventListener('input', () => {
+            detachRt();
+            revalidate();
+          });
         });
-      });
+      }
 
-      document.getElementById('load-upload-btn')!.addEventListener('click', () => {
-        fileInput.click();
-      });
+      document
+        .getElementById('load-upload-btn')!
+        .addEventListener('click', () => {
+          fileInput.click();
+        });
       fileInput.addEventListener('change', () => {
         staticFile = fileInput.files?.[0];
         detachStatic();
         showFile();
         revalidate();
       });
-      document.getElementById('load-file-clear')!.addEventListener('click', () => {
-        staticFile = undefined;
-        fileInput.value = '';
-        showFile();
-        revalidate();
-      });
+      document
+        .getElementById('load-file-clear')!
+        .addEventListener('click', () => {
+          staticFile = undefined;
+          fileInput.value = '';
+          showFile();
+          revalidate();
+        });
 
       searchInput.addEventListener('input', filterAndRender);
 
@@ -568,9 +700,10 @@ export async function showLoadModal(
         input('load-static-url').value = current.static.url;
         input('load-static-cors').checked = current.static.useCors;
       }
-      if (current?.realtime) {
+      if (realtime && current?.realtime) {
         input('load-vehicles-url').value = current.realtime.vehiclesUrl ?? '';
-        input('load-trip-updates-url').value = current.realtime.tripUpdatesUrl ?? '';
+        input('load-trip-updates-url').value =
+          current.realtime.tripUpdatesUrl ?? '';
         input('load-alerts-url').value = current.realtime.alertsUrl ?? '';
         input('load-rt-cors').checked = current.realtime.useCors;
       }

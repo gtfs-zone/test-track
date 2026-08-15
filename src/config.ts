@@ -71,4 +71,13 @@ export const CONFIG = {
   // purpose: dev editor URLs change often, so a shared/edit link should always
   // point at the stable public editor. It loads a static GTFS via `#load=<url>`.
   EDITOR_BASE: 'https://edit.gtfs.zone',
+
+  // Where the feed catalog and any path-only realtime URL resolve to. Dev is
+  // the music-student stack's cafe-car (`docker-compose.yml`, service `api`);
+  // prod is the deployed feed server. Fetching it directly rather than through
+  // a vite proxy means cafe-car's `CORS_ALLOWED_ORIGINS` has to name the dev
+  // server's origin — it allows localhost:8080-8089, which covers vite's whole
+  // drift range. Lives here rather than in the vendored `feed-url-resolve.ts`
+  // because coloring-book has no local feed server and wants prod always.
+  RT_BASE: import.meta.env.DEV ? 'http://localhost:8000' : 'https://rt.gtfs.zone',
 } as const;

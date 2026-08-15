@@ -10,6 +10,11 @@
  * Output is one row per *source kind*: a `static` row when the feed has
  * `static_current`, an `rt` row when it has any realtime URL. The UI pins one of
  * each, so they must be separately selectable.
+ *
+ * `--static-only` drops the rt rows. An app with no realtime would otherwise
+ * ship several hundred KB of endpoints it can never load, and this is the only
+ * difference between the two apps' copies of this file — so it is a flag rather
+ * than a fork.
  */
 import fs from 'fs/promises';
 import path from 'path';
@@ -25,6 +30,8 @@ const LOCAL_ATLAS_PATH = path.join(__dirname, '..', '..', 'transitland-atlas');
 
 /** GBFS is bikeshare discovery, not something this app can load. */
 const USABLE_SPECS = new Set(['gtfs', 'gtfs-rt']);
+
+const STATIC_ONLY = process.argv.includes('--static-only');
 
 interface DmfrUrls {
   static_current?: string;
@@ -198,7 +205,7 @@ function buildRows(docs: SourceDoc[]): AtlasRow[] {
       if (staticUrl) {
         push({ ...base, rowId: `${feed.id}:static`, kind: 'static', staticUrl });
       }
-      if (vehiclesUrl || tripUpdatesUrl || alertsUrl) {
+      if (!STATIC_ONLY && (vehiclesUrl || tripUpdatesUrl || alertsUrl)) {
         push({
           ...base,
           rowId: `${feed.id}:rt`,

@@ -1,3 +1,6 @@
+/* @vendored-from coloring-book:src/modules/feed-selection.ts
+   @sha 200966a
+   @status verbatim */
 /**
  * Feed selection model.
  *
@@ -44,11 +47,13 @@ export function describeHttpError(
   url: string,
   status: number,
   statusText: string,
-  body: string,
+  body: string
 ): string {
   const head = `HTTP ${status} ${statusText}`.trim();
   const trimmed = body.trim();
-  if (isProxied(url) && trimmed) return `${head} — proxy said: ${trimmed.slice(0, 300)}`;
+  if (isProxied(url) && trimmed) {
+    return `${head} — proxy said: ${trimmed.slice(0, 300)}`;
+  }
   return head;
 }
 
@@ -94,31 +99,61 @@ export const REALTIME_ENDPOINT_LABELS: Record<RealtimeEndpointName, string> = {
  * than leaving the checkbox looking effective.
  */
 export function maybeProxy(url: string, useCors: boolean): string {
-  if (!useCors || !url || url.startsWith(CORS_PROXY)) return url;
-  if (isLocalUrl(url)) return url;
+  if (!useCors || !url || url.startsWith(CORS_PROXY)) {
+    return url;
+  }
+  if (isLocalUrl(url)) {
+    return url;
+  }
   return CORS_PROXY + url;
 }
 
 /** True when the RT source names at least one endpoint. */
 export function hasAnyRealtimeUrl(rt: RealtimeSource | null): boolean {
-  if (!rt) return false;
+  if (!rt) {
+    return false;
+  }
   return Boolean(rt.vehiclesUrl || rt.tripUpdatesUrl || rt.alertsUrl);
 }
 
-/** Both halves chosen, and the RT half actually points somewhere. */
-export function isComplete(sel: FeedSelection): boolean {
-  if (!sel.static) return false;
-  if (sel.static.kind === 'url' && !sel.static.url) return false;
-  return hasAnyRealtimeUrl(sel.realtime);
+/**
+ * Both halves chosen, and the RT half actually points somewhere.
+ *
+ * `requireRealtime` is what separates the two apps sharing this file: a live
+ * map is useless without a realtime endpoint, but a schedule editor only ever
+ * needs the static feed. Defaults to the stricter rule so the realtime app
+ * reads unchanged.
+ */
+export function isComplete(
+  sel: FeedSelection,
+  requireRealtime = true
+): boolean {
+  if (!sel.static) {
+    return false;
+  }
+  if (sel.static.kind === 'url' && !sel.static.url) {
+    return false;
+  }
+  return !requireRealtime || hasAnyRealtimeUrl(sel.realtime);
 }
 
 /** Human-readable reason a selection is not yet loadable; '' when complete. */
-export function describeMissing(sel: FeedSelection): string {
-  const needStatic = !sel.static || (sel.static.kind === 'url' && !sel.static.url);
-  const needRt = !hasAnyRealtimeUrl(sel.realtime);
-  if (needStatic && needRt) return 'Choose a static feed and a realtime feed';
-  if (needStatic) return 'Choose a static feed';
-  if (needRt) return 'Choose a realtime feed';
+export function describeMissing(
+  sel: FeedSelection,
+  requireRealtime = true
+): string {
+  const needStatic =
+    !sel.static || (sel.static.kind === 'url' && !sel.static.url);
+  const needRt = requireRealtime && !hasAnyRealtimeUrl(sel.realtime);
+  if (needStatic && needRt) {
+    return 'Choose a static feed and a realtime feed';
+  }
+  if (needStatic) {
+    return 'Choose a static feed';
+  }
+  if (needRt) {
+    return 'Choose a realtime feed';
+  }
   return '';
 }
 
@@ -140,7 +175,7 @@ export function resolvedStaticUrl(src: StaticSource): string {
  * the proxy.
  */
 export function resolvedRealtimeUrls(
-  rt: RealtimeSource,
+  rt: RealtimeSource
 ): Record<RealtimeEndpointName, string> {
   return {
     vehicles: resolvedRealtimeUrl(rt.vehiclesUrl ?? '', rt.useCors),
@@ -157,7 +192,9 @@ export function resolvedRealtimeUrl(url: string, useCors: boolean): string {
 /** A short description of the whole selection, for toasts and titles. */
 export function describeSelection(sel: FeedSelection): string {
   const parts: string[] = [];
-  if (sel.static) parts.push(sel.static.label);
+  if (sel.static) {
+    parts.push(sel.static.label);
+  }
   if (sel.realtime && sel.realtime.label !== sel.static?.label) {
     parts.push(sel.realtime.label);
   }

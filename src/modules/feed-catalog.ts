@@ -1,3 +1,6 @@
+/* @vendored-from coloring-book:src/modules/feed-catalog.ts
+   @sha 200966a
+   @status verbatim */
 /**
  * The feeds this stack serves, from cafe-car's public `GET /feeds`.
  *
@@ -6,8 +9,8 @@
  * can say whether each one is currently carrying anything, which is the
  * difference between "a feed exists" and "there is something to look at".
  *
- * Resolved against `RT_BASE`, so dev talks to the local cafe-car and the built
- * site talks to rt.gtfs.zone.
+ * Resolved against `RT_BASE`, so each app talks to whichever feed server its
+ * own `CONFIG` names.
  */
 
 import { RT_BASE } from './feed-url-resolve';
@@ -38,7 +41,9 @@ export function loadCatalog(): Promise<CatalogFeed[]> {
 
 async function fetchCatalog(): Promise<CatalogFeed[]> {
   const res = await fetch(`${RT_BASE}/feeds`);
-  if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`.trim());
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} ${res.statusText}`.trim());
+  }
   return (await res.json()) as CatalogFeed[];
 }
 

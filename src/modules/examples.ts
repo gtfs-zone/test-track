@@ -1,3 +1,6 @@
+/* @vendored-from coloring-book:src/modules/examples.ts
+   @sha 200966a
+   @status verbatim */
 import type { FeedSelection } from './feed-selection';
 
 export interface ExampleFeed {
@@ -7,8 +10,11 @@ export interface ExampleFeed {
 }
 
 /**
- * Curated, ready-to-load pairs. Every entry names both a static source and a
- * realtime source, so picking one satisfies the load requirement in one click.
+ * Curated, ready-to-load feeds. Most entries name both a static source and a
+ * realtime source, so picking one satisfies the realtime app's load requirement
+ * in one click. An entry may leave `realtime` null when the agency publishes no
+ * GTFS-RT at all: it is still a complete choice for the schedule editor, and in
+ * the realtime app it fills the static slot and leaves the other for you.
  *
  * Feeds served by our own stack use **path-only** realtime URLs. Those resolve
  * against `RT_BASE` at fetch time (`feed-url-resolve.ts`): the local cafe-car in
@@ -39,7 +45,8 @@ export interface ExampleFeed {
 export const EXAMPLES: ExampleFeed[] = [
   {
     name: 'Amtrak',
-    description: 'National rail — static from Amtrak, realtime via rt.gtfs.zone',
+    description:
+      'National rail — static from Amtrak, realtime via rt.gtfs.zone',
     selection: {
       static: {
         kind: 'url',
@@ -58,7 +65,8 @@ export const EXAMPLES: ExampleFeed[] = [
   },
   {
     name: 'Columbia County',
-    description: 'Columbia County Public Transportation, NY — realtime via rt.gtfs.zone',
+    description:
+      'Columbia County Public Transportation, NY — realtime via rt.gtfs.zone',
     selection: {
       static: {
         kind: 'url',
@@ -77,7 +85,8 @@ export const EXAMPLES: ExampleFeed[] = [
   },
   {
     name: 'MBTA',
-    description: 'Boston — three separate realtime .pb files straight from the agency',
+    description:
+      'Boston — three separate realtime .pb files straight from the agency',
     selection: {
       static: {
         kind: 'url',
@@ -100,7 +109,8 @@ export const EXAMPLES: ExampleFeed[] = [
     // google_bus.zip and google_rail.zip inside a single release asset, so the
     // outer URL alone does not say which feed is meant. No alerts endpoint —
     // SEPTA publishes Vehicle and Trip only.
-    description: 'Philadelphia — bus feed nested inside the public GTFS release zip',
+    description:
+      'Philadelphia — bus feed nested inside the public GTFS release zip',
     selection: {
       static: {
         kind: 'url',
@@ -109,8 +119,10 @@ export const EXAMPLES: ExampleFeed[] = [
         label: 'SEPTA',
       },
       realtime: {
-        vehiclesUrl: 'https://www3.septa.org/gtfsrt/septa-pa-us/Vehicle/rtVehiclePosition.pb',
-        tripUpdatesUrl: 'https://www3.septa.org/gtfsrt/septa-pa-us/Trip/rtTripUpdates.pb',
+        vehiclesUrl:
+          'https://www3.septa.org/gtfsrt/septa-pa-us/Vehicle/rtVehiclePosition.pb',
+        tripUpdatesUrl:
+          'https://www3.septa.org/gtfsrt/septa-pa-us/Trip/rtTripUpdates.pb',
         useCors: true,
         label: 'SEPTA RT',
       },
@@ -127,9 +139,12 @@ export const EXAMPLES: ExampleFeed[] = [
         label: 'Grand Poitiers',
       },
       realtime: {
-        vehiclesUrl: 'https://gtfsrt.gptd.cadavl.com/ProfilGtfsRt2_0RSProducer-GPTD/VehiclePosition.pb',
-        tripUpdatesUrl: 'https://gtfsrt.gptd.cadavl.com/ProfilGtfsRt2_0RSProducer-GPTD/TripUpdate.pb',
-        alertsUrl: 'https://gtfsrt.gptd.cadavl.com/ProfilGtfsRt2_0RSProducer-GPTD/Alert.pb',
+        vehiclesUrl:
+          'https://gtfsrt.gptd.cadavl.com/ProfilGtfsRt2_0RSProducer-GPTD/VehiclePosition.pb',
+        tripUpdatesUrl:
+          'https://gtfsrt.gptd.cadavl.com/ProfilGtfsRt2_0RSProducer-GPTD/TripUpdate.pb',
+        alertsUrl:
+          'https://gtfsrt.gptd.cadavl.com/ProfilGtfsRt2_0RSProducer-GPTD/Alert.pb',
         useCors: true,
         label: 'Grand Poitiers RT',
       },
@@ -139,7 +154,8 @@ export const EXAMPLES: ExampleFeed[] = [
     name: 'Divia',
     // The static half is a data.gouv.fr resource id, so the URL names no file
     // and has no .zip extension — it is one all the same.
-    description: 'Dijon, France — static via data.gouv.fr, realtime via transport.data.gouv.fr',
+    description:
+      'Dijon, France — static via data.gouv.fr, realtime via transport.data.gouv.fr',
     selection: {
       static: {
         kind: 'url',
@@ -148,8 +164,10 @@ export const EXAMPLES: ExampleFeed[] = [
         label: 'Divia',
       },
       realtime: {
-        vehiclesUrl: 'https://proxy.transport.data.gouv.fr/resource/divia-dijon-gtfs-rt-vehicle-position',
-        tripUpdatesUrl: 'https://proxy.transport.data.gouv.fr/resource/divia-dijon-gtfs-rt-trip-update',
+        vehiclesUrl:
+          'https://proxy.transport.data.gouv.fr/resource/divia-dijon-gtfs-rt-vehicle-position',
+        tripUpdatesUrl:
+          'https://proxy.transport.data.gouv.fr/resource/divia-dijon-gtfs-rt-trip-update',
         useCors: true,
         label: 'Divia RT',
       },
@@ -168,9 +186,12 @@ export const EXAMPLES: ExampleFeed[] = [
         label: 'RIPTA',
       },
       realtime: {
-        vehiclesUrl: 'http://realtime.ripta.com:81/api/vehiclepositions?format=gtfs.proto',
-        tripUpdatesUrl: 'http://realtime.ripta.com:81/api/tripupdates?format=gtfs.proto',
-        alertsUrl: 'http://realtime.ripta.com:81/api/servicealerts?format=gtfs.proto',
+        vehiclesUrl:
+          'http://realtime.ripta.com:81/api/vehiclepositions?format=gtfs.proto',
+        tripUpdatesUrl:
+          'http://realtime.ripta.com:81/api/tripupdates?format=gtfs.proto',
+        alertsUrl:
+          'http://realtime.ripta.com:81/api/servicealerts?format=gtfs.proto',
         useCors: true,
         label: 'RIPTA RT',
       },
@@ -187,9 +208,12 @@ export const EXAMPLES: ExampleFeed[] = [
         label: 'WCTA',
       },
       realtime: {
-        vehiclesUrl: 'https://wcta.rideralerts.com/InfoPoint/gtfs-realtime.ashx?type=vehicleposition',
-        tripUpdatesUrl: 'https://wcta.rideralerts.com/InfoPoint/gtfs-realtime.ashx?type=tripupdate',
-        alertsUrl: 'https://wcta.rideralerts.com/InfoPoint/gtfs-realtime.ashx?type=alert',
+        vehiclesUrl:
+          'https://wcta.rideralerts.com/InfoPoint/gtfs-realtime.ashx?type=vehicleposition',
+        tripUpdatesUrl:
+          'https://wcta.rideralerts.com/InfoPoint/gtfs-realtime.ashx?type=tripupdate',
+        alertsUrl:
+          'https://wcta.rideralerts.com/InfoPoint/gtfs-realtime.ashx?type=alert',
         useCors: true,
         label: 'WCTA RT',
       },
@@ -206,9 +230,12 @@ export const EXAMPLES: ExampleFeed[] = [
         label: 'LCTA',
       },
       realtime: {
-        vehiclesUrl: 'https://realtimelctabus.availtec.com/InfoPoint/GTFS-Realtime.ashx?Type=VehiclePosition',
-        tripUpdatesUrl: 'https://realtimelctabus.availtec.com/InfoPoint/GTFS-Realtime.ashx?Type=TripUpdate',
-        alertsUrl: 'https://realtimelctabus.availtec.com/InfoPoint/GTFS-Realtime.ashx?Type=Alert',
+        vehiclesUrl:
+          'https://realtimelctabus.availtec.com/InfoPoint/GTFS-Realtime.ashx?Type=VehiclePosition',
+        tripUpdatesUrl:
+          'https://realtimelctabus.availtec.com/InfoPoint/GTFS-Realtime.ashx?Type=TripUpdate',
+        alertsUrl:
+          'https://realtimelctabus.availtec.com/InfoPoint/GTFS-Realtime.ashx?Type=Alert',
         useCors: true,
         label: 'LCTA RT',
       },
@@ -227,9 +254,12 @@ export const EXAMPLES: ExampleFeed[] = [
         label: 'Burlington Transit',
       },
       realtime: {
-        vehiclesUrl: 'https://opendata.burlington.ca/gtfs-rt/GTFS_VehiclePositions.pb',
-        tripUpdatesUrl: 'https://opendata.burlington.ca/gtfs-rt/GTFS_TripUpdates.pb',
-        alertsUrl: 'https://opendata.burlington.ca/gtfs-rt/GTFS_ServiceAlerts.pb',
+        vehiclesUrl:
+          'https://opendata.burlington.ca/gtfs-rt/GTFS_VehiclePositions.pb',
+        tripUpdatesUrl:
+          'https://opendata.burlington.ca/gtfs-rt/GTFS_TripUpdates.pb',
+        alertsUrl:
+          'https://opendata.burlington.ca/gtfs-rt/GTFS_ServiceAlerts.pb',
         useCors: true,
         label: 'Burlington Transit RT',
       },
@@ -271,6 +301,20 @@ export const EXAMPLES: ExampleFeed[] = [
         useCors: true,
         label: 'London Transit RT',
       },
+    },
+  },
+  {
+    name: 'West Bus Service',
+    // Static only: the operator publishes no GTFS-RT.
+    description: 'Vermont — small hand-maintained feed, static only',
+    selection: {
+      static: {
+        kind: 'url',
+        url: 'https://westbusservice.com/west_gtfs.zip',
+        useCors: true,
+        label: 'West Bus Service',
+      },
+      realtime: null,
     },
   },
 ];

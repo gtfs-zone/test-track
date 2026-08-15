@@ -1,29 +1,32 @@
+/* @vendored-from coloring-book:src/modules/feed-url-resolve.ts
+   @sha 200966a
+   @status verbatim */
 /**
  * Turning what someone typed into a URL that can actually be fetched.
  *
  * Three jobs, deliberately kept apart from `feed-selection.ts` so the proxy
  * rules there stay readable:
  *
- * 1. `RT_BASE` — a realtime URL may be stored as a bare path (`/amtrak/
+ * 1. `RT_BASE` — a feed URL may be stored as a bare path (`/amtrak/
  *    vehicle_positions.pb`). That form is environment-agnostic, so a shared link
- *    works for whoever opens it: against the local cafe-car in dev, against
- *    rt.gtfs.zone in the built site. Resolution happens at fetch time only; the
+ *    works for whoever opens it. Resolution happens at fetch time only; the
  *    selection and the hash keep the path.
  * 2. `normalizeFeedUrl` — accept the shapes people actually type.
  * 3. `isLocalUrl` — the CORS proxy lives on the public internet and cannot reach
  *    the user's own machine, so a local URL must never be routed through it.
  */
 
+import { CONFIG } from '../config';
+
 /**
  * Where a path-only realtime URL points.
  *
- * Dev is the music-student stack's cafe-car (`docker-compose.yml`, service
- * `api`); prod is the deployed feed server. Fetching it directly rather than
- * through a vite proxy means cafe-car's `CORS_ALLOWED_ORIGINS` has to name the
- * dev server's origin — it allows localhost:8080-8089, which covers vite's
- * whole drift range.
+ * Each app decides this in its own `CONFIG`, because they do not agree: an app
+ * with a local feed server wants localhost in dev, one without wants the
+ * deployed server always. Re-exported here so every consumer still reads it
+ * from one place.
  */
-export const RT_BASE = import.meta.env.DEV ? 'http://localhost:8000' : 'https://rt.gtfs.zone';
+export const RT_BASE: string = CONFIG.RT_BASE;
 
 /**
  * Split `…/outer.zip#inner.zip` into the URL to fetch and the entries to
@@ -39,7 +42,10 @@ export const RT_BASE = import.meta.env.DEV ? 'http://localhost:8000' : 'https://
  * Every `#` is a level, so nesting falls out for free — though one level is
  * what anyone actually publishes.
  */
-export function splitInnerZipPath(url: string): { url: string; innerPaths: string[] } {
+export function splitInnerZipPath(url: string): {
+  url: string;
+  innerPaths: string[];
+} {
   const [base, ...innerPaths] = url.split('#');
   return { url: base, innerPaths: innerPaths.filter(Boolean) };
 }
@@ -60,12 +66,24 @@ export function resolveRealtimeUrl(url: string): string {
  */
 function isLocalHost(hostname: string): boolean {
   const h = hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local')) return true;
-  if (h === '::1' || h === '0.0.0.0') return true;
-  if (/^127\./.test(h)) return true;
-  if (/^10\./.test(h)) return true;
-  if (/^192\.168\./.test(h)) return true;
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
+  if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local')) {
+    return true;
+  }
+  if (h === '::1' || h === '0.0.0.0') {
+    return true;
+  }
+  if (/^127\./.test(h)) {
+    return true;
+  }
+  if (/^10\./.test(h)) {
+    return true;
+  }
+  if (/^192\.168\./.test(h)) {
+    return true;
+  }
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) {
+    return true;
+  }
   return false;
 }
 
@@ -79,8 +97,12 @@ function isLocalHost(hostname: string): boolean {
  * local and does need the proxy.
  */
 export function isLocalUrl(url: string): boolean {
-  if (!url) return false;
-  if (isPathOnly(url)) return true;
+  if (!url) {
+    return false;
+  }
+  if (isPathOnly(url)) {
+    return true;
+  }
   try {
     return isLocalHost(new URL(url).hostname);
   } catch {
@@ -109,10 +131,18 @@ function looksLikeHostPort(raw: string): boolean {
  */
 export function normalizeFeedUrl(raw: string): string {
   const url = raw.trim();
-  if (!url) return '';
-  if (isPathOnly(url)) return url;
-  if (url.startsWith('//')) return `https:${url}`;
-  if (SCHEME_RE.test(url) && !looksLikeHostPort(url)) return url;
+  if (!url) {
+    return '';
+  }
+  if (isPathOnly(url)) {
+    return url;
+  }
+  if (url.startsWith('//')) {
+    return `https:${url}`;
+  }
+  if (SCHEME_RE.test(url) && !looksLikeHostPort(url)) {
+    return url;
+  }
 
   const host = url.split(/[/?#]/, 1)[0].split(':')[0];
   return `${isLocalHost(host) ? 'http' : 'https'}://${url}`;
@@ -125,8 +155,12 @@ export function normalizeFeedUrl(raw: string): string {
  */
 export function validateFeedUrl(raw: string): string | null {
   const url = normalizeFeedUrl(raw);
-  if (!url) return null;
-  if (isPathOnly(url)) return null;
+  if (!url) {
+    return null;
+  }
+  if (isPathOnly(url)) {
+    return null;
+  }
 
   let parsed: URL;
   try {
@@ -137,7 +171,9 @@ export function validateFeedUrl(raw: string): string | null {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
     return `Unsupported scheme "${parsed.protocol.replace(':', '')}" — use http or https.`;
   }
-  if (!parsed.hostname) return 'URL is missing a host.';
+  if (!parsed.hostname) {
+    return 'URL is missing a host.';
+  }
 
   // A plain-http subresource on an https page is blocked as mixed content.
   // Browsers exempt localhost, so the local stack is fine over http.
