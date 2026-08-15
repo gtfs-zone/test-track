@@ -1,3 +1,14 @@
+## v0.6.1 (2026-08-15)
+
+### Fix
+
+- **modal**: match coloring-book's modal width and re-vendor load-modal
+
+### Refactor
+
+- **icons**: replace glyph characters with svg icons
+- **load**: vendor the unified load modal from coloring-book
+
 ## v0.6.0 (2026-08-15)
 
 ### Feat
