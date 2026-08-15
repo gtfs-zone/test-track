@@ -71,7 +71,7 @@ function renderUrl(url: string, useCors: boolean, isRealtime: boolean): string {
     <p class="text-xs font-mono break-all opacity-70">${escHtml(url)}</p>
     ${
       resolved !== url
-        ? `<p class="text-xs font-mono break-all opacity-40">→ ${escHtml(resolved)}</p>`
+        ? `<p class="text-xs font-mono break-all opacity-40">-&gt; ${escHtml(resolved)}</p>`
         : ''
     }
     ${useCors && !proxyBypassed ? '<p class="text-xs opacity-50">via cors.gtfs.zone</p>' : ''}

@@ -119,7 +119,7 @@ function renderActivePeriods(alert: ServiceAlert): string {
       else if (p.end !== undefined) note = `active, ends in ${formatDuration(p.end - now)}`;
       else note = 'active';
       return `<li class="flex justify-between gap-2">
-        <span>${escHtml(start)} → ${escHtml(end)}</span>
+        <span>${escHtml(start)} -&gt; ${escHtml(end)}</span>
         <span class="opacity-60 shrink-0">${escHtml(note)}</span>
       </li>`;
     })

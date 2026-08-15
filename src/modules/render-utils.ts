@@ -31,16 +31,22 @@ export function escHtml(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
-/** A link that navigates the panel rather than reloading the page. */
+/**
+ * A link that navigates the panel rather than reloading the page.
+ *
+ * `iconHtml` is emitted raw before the label, for callers that need an svg icon
+ * inside the anchor. The label itself is always escaped.
+ */
 export function entityLink(
   ctx: RenderContext,
   state: PageState,
   label: string,
   className = 'link link-hover',
+  iconHtml = '',
 ): string {
   return `<a href="${escHtml(ctx.href(state))}" data-nav="${escHtml(
     JSON.stringify(state),
-  )}" class="${className}">${escHtml(label)}</a>`;
+  )}" class="${className}">${iconHtml}${escHtml(label)}</a>`;
 }
 
 /**

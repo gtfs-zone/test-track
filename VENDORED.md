@@ -21,7 +21,7 @@ in `../coloring-book` (skipped if that sibling repo isn't present).
 | Local path | Source path | SHA | Status | Note |
 |---|---|---|---|---|
 | `src/styles/main.css` | `src/styles/main.css` | f9c718c | modified | Editor-only rules dropped, no mobile dock, daisyUI v4 color refs translated to v5 |
-| `src/modules/notification-system.ts` | `src/modules/notification-system.ts` | f9c718c | verbatim | Toast system; `notify` singleton needs `.initialize()` |
+| `src/modules/notification-system.ts` | `src/modules/notification-system.ts` | 51e8536 | verbatim | Toast system; `notify` singleton needs `.initialize()`. Imports `renderCloseIcon` from the local `modal-utils.ts` |
 | `src/modules/feed-progress-indicator.ts` | `src/modules/feed-progress-indicator.ts` | f9c718c | verbatim | Top loading bar; singleton touches `document.body` at import time |
 | `src/modules/theme-controller.ts` | `src/modules/theme-controller.ts` | f9c718c | verbatim | Replaces the inline theme toggle that never applied `data-theme` |
 | `src/modules/panel-resizer.ts` | `src/modules/panel-resizer.ts` | f9c718c | modified | Persists `--panel-width` to localStorage; adds `restorePanelWidth()` |

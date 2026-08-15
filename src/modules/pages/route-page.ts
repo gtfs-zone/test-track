@@ -16,6 +16,7 @@ import type { Route } from '../../gtfs-static';
 import type { VehiclePosition } from '../../map-controller';
 import type { PageState } from '../../types/page-state';
 import { alertsForRoute, alertsForRouteStop, feedWideAlerts } from '../alerts';
+import { renderTriangleIcon, renderWarningIcon } from '../modal-utils';
 import { GTFSStaticRouteSource } from '../gtfs-static-route-source';
 import { routeGraph } from '../route-graph';
 import type { RtIndex, VehicleStopSequence } from '../rt-index';
@@ -201,7 +202,7 @@ function vehicleChip(
           OCCUPANCY_LABELS[vehicle.occupancyStatus] ?? String(vehicle.occupancyStatus),
         )}</span>`;
   return `<div class="text-xs flex items-center gap-1 flex-wrap">
-    <span class="badge badge-xs badge-neutral">▶</span>
+    <span class="badge badge-xs badge-neutral">${renderTriangleIcon('h-2 w-2')}</span>
     ${entityLink(ctx, { type: 'vehicle', vehicle_id: vehicle.key }, label, 'link link-hover font-medium')}
     ${status ? `<span class="opacity-40">·</span>${status}` : ''}
     ${occupancy ? `<span class="opacity-40">·</span>${occupancy}` : ''}
@@ -216,8 +217,9 @@ function alertPips(ctx: RenderContext, alerts: AlertRecord[]): string {
   return entityLink(
     ctx,
     { type: 'alert', alert_id: first.id },
-    `⚠ ${label}`,
-    'badge badge-warning badge-xs shrink-0',
+    label,
+    'badge badge-warning badge-xs shrink-0 gap-1',
+    renderWarningIcon('h-3 w-3'),
   );
 }
 
