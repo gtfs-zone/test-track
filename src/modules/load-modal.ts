@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/load-modal.ts
-   @sha 9491e81
+   @sha 27587a0
    @status verbatim */
 /**
  * The one way into a feed.
@@ -345,15 +345,17 @@ function rtField(id: string, label: string, placeholder: string): string {
 
 // ─── The modal ────────────────────────────────────────────────────────────────
 
-const STATIC_FIELD: [id: string, label: string] = [
+/** A URL field, its label, and the proxy checkbox that governs it. */
+const STATIC_FIELD: [id: string, label: string, corsId: string] = [
   'load-static-url',
   'Static GTFS',
+  'load-static-cors',
 ];
 
-const RT_FIELDS: Array<[id: string, label: string]> = [
-  ['load-vehicles-url', 'Vehicle Positions'],
-  ['load-trip-updates-url', 'Trip Updates'],
-  ['load-alerts-url', 'Service Alerts'],
+const RT_FIELDS: Array<[id: string, label: string, corsId: string]> = [
+  ['load-vehicles-url', 'Vehicle Positions', 'load-rt-cors'],
+  ['load-trip-updates-url', 'Trip Updates', 'load-rt-cors'],
+  ['load-alerts-url', 'Service Alerts', 'load-rt-cors'],
 ];
 
 const RT_FIELD_IDS = RT_FIELDS.map(([id]) => id);
@@ -380,12 +382,12 @@ export async function showLoadModal(
    * is never enabled on a URL that cannot be fetched.
    */
   const describeBadUrl = (): string => {
-    for (const [id, label] of urlFields) {
+    for (const [id, label, corsId] of urlFields) {
       const raw = input(id).value.trim();
       if (!raw) {
         continue;
       }
-      const problem = validateFeedUrl(raw);
+      const problem = validateFeedUrl(raw, input(corsId).checked);
       if (problem) {
         return `${label}: ${problem}`;
       }
@@ -682,6 +684,13 @@ export async function showLoadModal(
             revalidate();
           });
         });
+      }
+
+      // The proxy checkbox is an input to URL validation, not just to the
+      // result, so an http URL flips between fine and blocked as it is toggled.
+      input('load-static-cors').addEventListener('change', revalidate);
+      if (realtime) {
+        input('load-rt-cors').addEventListener('change', revalidate);
       }
 
       document

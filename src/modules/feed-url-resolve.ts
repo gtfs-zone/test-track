@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/feed-url-resolve.ts
-   @sha 200966a
+   @sha 27587a0
    @status verbatim */
 /**
  * Turning what someone typed into a URL that can actually be fetched.
@@ -152,8 +152,14 @@ export function normalizeFeedUrl(raw: string): string {
  * Why this URL cannot be used, or null when it is fine. Checked before any fetch
  * so a typo is reported against the field instead of arriving as an opaque
  * network error a poll cycle later.
+ *
+ * `useCors` is the source's proxy setting, and it decides the mixed-content rule
+ * below: through the proxy the browser only ever requests
+ * `https://cors.gtfs.zone/…` and the plain-http hop happens server-side, so an
+ * http feed is perfectly usable. Several curated examples are http for exactly
+ * that reason.
  */
-export function validateFeedUrl(raw: string): string | null {
+export function validateFeedUrl(raw: string, useCors = false): string | null {
   const url = normalizeFeedUrl(raw);
   if (!url) {
     return null;
@@ -176,9 +182,11 @@ export function validateFeedUrl(raw: string): string | null {
   }
 
   // A plain-http subresource on an https page is blocked as mixed content.
-  // Browsers exempt localhost, so the local stack is fine over http.
+  // Browsers exempt localhost, so the local stack is fine over http, and the
+  // proxy sidesteps it entirely.
   if (
     parsed.protocol === 'http:' &&
+    !useCors &&
     typeof location !== 'undefined' &&
     location.protocol === 'https:' &&
     !isLocalHost(parsed.hostname)
