@@ -322,7 +322,7 @@ function renderRows(
 }
 
 const CORS_TOOLTIP =
-  "Routes requests through cors.gtfs.zone when the feed server doesn't send CORS headers.";
+  "Routes requests through cors.kcfam.us when the feed server doesn't send CORS headers.";
 
 function corsToggle(id: string): string {
   return `

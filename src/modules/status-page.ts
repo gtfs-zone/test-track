@@ -74,7 +74,7 @@ function renderUrl(url: string, useCors: boolean, isRealtime: boolean): string {
         ? `<p class="text-xs font-mono break-all opacity-40">-&gt; ${escHtml(resolved)}</p>`
         : ''
     }
-    ${useCors && !proxyBypassed ? '<p class="text-xs opacity-50">via cors.gtfs.zone</p>' : ''}
+    ${useCors && !proxyBypassed ? '<p class="text-xs opacity-50">via cors.kcfam.us</p>' : ''}
     ${
       proxyBypassed
         ? '<p class="text-xs opacity-50">local URL — CORS proxy not applied (it cannot reach this machine)</p>'

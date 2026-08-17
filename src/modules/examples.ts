@@ -35,7 +35,7 @@ export interface ExampleFeed {
  *
  * Several agency feeds below are plain `http://`, which an https page blocks as
  * mixed content. They are only usable *because* they proxy: `maybeProxy`
- * produces `https://cors.gtfs.zone/http://…`, and the plain-http hop happens
+ * produces `https://cors.kcfam.us/http://…`, and the plain-http hop happens
  * server-side. An http entry must therefore never ship with `useCors: false`.
  *
  * Two of these hosts (ripta.com, opendata.burlington.ca) refuse a bare request

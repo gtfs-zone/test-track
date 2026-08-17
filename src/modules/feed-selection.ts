@@ -16,7 +16,7 @@
 
 import { isLocalUrl, resolveRealtimeUrl } from './feed-url-resolve';
 
-const CORS_PROXY = 'https://cors.gtfs.zone/';
+const CORS_PROXY = 'https://cors.kcfam.us/';
 
 /** True when a URL is already routed through the CORS proxy. */
 export function isProxied(url: string): boolean {
@@ -92,8 +92,8 @@ export const REALTIME_ENDPOINT_LABELS: Record<RealtimeEndpointName, string> = {
  * Route a URL through the CORS proxy, unless it is already proxied — or unless
  * it is local.
  *
- * cors.gtfs.zone runs on the public internet and cannot open a connection to the
- * user's own machine, so `https://cors.gtfs.zone/http://localhost:8000/…` is not
+ * cors.kcfam.us runs on the public internet and cannot open a connection to the
+ * user's own machine, so `https://cors.kcfam.us/http://localhost:8000/…` is not
  * a choice the checkbox is entitled to make: it is a guaranteed failure. A local
  * URL therefore ignores `useCors` entirely, and the status page says so rather
  * than leaving the checkbox looking effective.

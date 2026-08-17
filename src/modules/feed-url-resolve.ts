@@ -155,7 +155,7 @@ export function normalizeFeedUrl(raw: string): string {
  *
  * `useCors` is the source's proxy setting, and it decides the mixed-content rule
  * below: through the proxy the browser only ever requests
- * `https://cors.gtfs.zone/…` and the plain-http hop happens server-side, so an
+ * `https://cors.kcfam.us/…` and the plain-http hop happens server-side, so an
  * http feed is perfectly usable. Several curated examples are http for exactly
  * that reason.
  */
