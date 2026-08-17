@@ -1,0 +1,5 @@
+# Only dist/ and nginx.conf belong in the build context; everything else just
+# slows the upload to the daemon down.
+*
+!dist
+!nginx.conf

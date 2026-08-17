@@ -1,19 +1,34 @@
-
 name: Build and Deploy
+
+# On a v* tag: build the site, bake it into an image, push it to the Forgejo
+# container registry, then record the resulting digest in deploy-gtfs-rt.
+# ArgoCD watches that repo and rolls the new image out; nothing here talks to
+# the cluster directly.
+#
+# Secrets (org-level on gtfs.zone, shared by all three site repos):
+#   REGISTRY_TOKEN  Forgejo token with write:package, used as the registry password
+#   DEPLOY_TOKEN    Forgejo token with write access to gtfs.zone/deploy-gtfs-rt
+#   CI_USER         Forgejo username both tokens belong to
 
 on:
   push:
     tags:
       - 'v*'
 
+env:
+  IMAGE: git.kcfam.us/gtfs.zone/test-track
+  SITE_DIR: sites
+
 jobs:
   build:
     runs-on: alpine-3.23
 
     steps:
+      # docker-cli talks to the host daemon over the socket the runner mounts
+      # into every job container; kustomize is needed for the deploy-repo bump.
       - name: Install dependencies
         run: |
-          apk add --no-cache nodejs npm git curl tar
+          apk add --no-cache nodejs npm git docker-cli kustomize
           npm install -g pnpm@11.20.0
 
       - name: Checkout
@@ -22,13 +37,52 @@ jobs:
           fetch-depth: 0
           github-server-url: https://git.kcfam.us
 
+      - name: Install node modules
+        run: pnpm install --frozen-lockfile
+
       - name: Build
-        run: pnpm install --frozen-lockfile && pnpm build
+        run: pnpm build
 
-      - name: Deploy
+      # Precompressed siblings for nginx's gzip_static. Brotli would be better
+      # still, but the official nginx image ships no brotli module.
+      - name: Precompress assets
         run: |
-          echo "Copying build to /sites/viz.rt.gtfs.zone"
-          mkdir -p /sites/viz.rt.gtfs.zone
-          rm -rf /sites/viz.rt.gtfs.zone/*
-          cp -vr dist/. /sites/viz.rt.gtfs.zone/
+          find dist -type f \
+            \( -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.json' -o -name '*.svg' \) \
+            -size +1k -exec gzip -9 -k -f {} +
 
+      - name: Build and push image
+        env:
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+          CI_USER: ${{ secrets.CI_USER }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          echo "$REGISTRY_TOKEN" | docker login git.kcfam.us -u "$CI_USER" --password-stdin
+          docker build -t "$IMAGE:$TAG" .
+          docker push "$IMAGE:$TAG"
+          # Deploy by digest, not by tag: the tag is a moving reference, the
+          # digest is exactly what was tested here.
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:$TAG" | cut -d@ -f2)
+          echo "DIGEST=$DIGEST" >> "$GITHUB_ENV"
+
+      - name: Record digest in deploy-gtfs-rt
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
+          CI_USER: ${{ secrets.CI_USER }}
+        run: |
+          git clone --depth 1 \
+            "https://${CI_USER}:${DEPLOY_TOKEN}@git.kcfam.us/gtfs.zone/deploy-gtfs-rt.git" /tmp/deploy
+          cd "/tmp/deploy/${SITE_DIR}"
+          kustomize edit set image "${IMAGE}=${IMAGE}@${DIGEST}"
+          cd /tmp/deploy
+          git config user.name "forgejo-actions"
+          git config user.email "actions@git.kcfam.us"
+          git add "${SITE_DIR}/kustomization.yaml"
+          git commit -m "deploy(viz.rt.gtfs.zone): test-track ${GITHUB_REF_NAME}"
+          # Concurrent site releases race on the same file; rebase and retry
+          # rather than failing the release.
+          for i in 1 2 3; do
+            git pull --rebase && git push && exit 0
+            sleep 5
+          done
+          exit 1
