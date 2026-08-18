@@ -5,10 +5,14 @@ name: Build and Deploy
 # ArgoCD watches that repo and rolls the new image out; nothing here talks to
 # the cluster directly.
 #
-# Secrets (org-level on gtfs.zone, shared by all three site repos):
-#   REGISTRY_TOKEN  Forgejo token with write:package, used as the registry password
-#   DEPLOY_TOKEN    Forgejo token with write access to gtfs.zone/deploy-gtfs-rt
-#   CI_USER         Forgejo username both tokens belong to
+# Requires:
+#   Variables (Settings → Variables → Actions):
+#     REGISTRY_DOMAIN  - hostname of the container registry, e.g. git.kcfam.us
+#     DEPLOY_USER      - username to authenticate with the registry, e.g. maxtkc
+#   Secrets (Settings → Secrets → Actions):
+#     DEPLOY_TOKEN     - access token with write:package and write:repository
+#                        scope; write:repository is what lets the digest commit
+#                        land in deploy-gtfs-rt
 
 on:
   push:
@@ -16,7 +20,6 @@ on:
       - 'v*'
 
 env:
-  IMAGE: git.kcfam.us/gtfs.zone/test-track
   SITE_DIR: sites
 
 jobs:
@@ -28,14 +31,14 @@ jobs:
       # into every job container; kustomize is needed for the deploy-repo bump.
       - name: Install dependencies
         run: |
-          apk add --no-cache nodejs npm git docker-cli kustomize
+          apk add --no-cache nodejs npm git docker-cli docker-cli-buildx kustomize
           npm install -g pnpm@11.20.0
 
       - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          github-server-url: https://git.kcfam.us
+          github-server-url: https://${{ vars.REGISTRY_DOMAIN }}
 
       - name: Install node modules
         run: pnpm install --frozen-lockfile
@@ -51,34 +54,36 @@ jobs:
             \( -name '*.html' -o -name '*.css' -o -name '*.js' -o -name '*.json' -o -name '*.svg' \) \
             -size +1k -exec gzip -9 -k -f {} +
 
+      - name: Login to registry
+        run: |
+          echo "${{ secrets.DEPLOY_TOKEN }}" | \
+            docker login ${{ vars.REGISTRY_DOMAIN }} -u ${{ vars.DEPLOY_USER }} --password-stdin
+
       - name: Build and push image
         env:
-          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
-          CI_USER: ${{ secrets.CI_USER }}
+          DOCKER_BUILDKIT: "1"
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          echo "$REGISTRY_TOKEN" | docker login git.kcfam.us -u "$CI_USER" --password-stdin
-          docker build -t "$IMAGE:$TAG" .
-          docker push "$IMAGE:$TAG"
+          IMAGE=${{ vars.REGISTRY_DOMAIN }}/${{ github.repository }}
+          docker build -t "$IMAGE:${{ github.ref_name }}" .
+          docker push "$IMAGE:${{ github.ref_name }}"
           # Deploy by digest, not by tag: the tag is a moving reference, the
-          # digest is exactly what was tested here.
-          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:$TAG" | cut -d@ -f2)
+          # digest is exactly what was built here.
+          DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' "$IMAGE:${{ github.ref_name }}" | cut -d@ -f2)
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
           echo "DIGEST=$DIGEST" >> "$GITHUB_ENV"
 
       - name: Record digest in deploy-gtfs-rt
-        env:
-          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}
-          CI_USER: ${{ secrets.CI_USER }}
         run: |
           git clone --depth 1 \
-            "https://${CI_USER}:${DEPLOY_TOKEN}@git.kcfam.us/gtfs.zone/deploy-gtfs-rt.git" /tmp/deploy
+            "https://${{ vars.DEPLOY_USER }}:${{ secrets.DEPLOY_TOKEN }}@${{ vars.REGISTRY_DOMAIN }}/gtfs.zone/deploy-gtfs-rt.git" \
+            /tmp/deploy
           cd "/tmp/deploy/${SITE_DIR}"
           kustomize edit set image "${IMAGE}=${IMAGE}@${DIGEST}"
           cd /tmp/deploy
           git config user.name "forgejo-actions"
-          git config user.email "actions@git.kcfam.us"
+          git config user.email "actions@${{ vars.REGISTRY_DOMAIN }}"
           git add "${SITE_DIR}/kustomization.yaml"
-          git commit -m "deploy(viz.rt.gtfs.zone): test-track ${GITHUB_REF_NAME}"
+          git commit -m "deploy(viz.rt.gtfs.zone): test-track ${{ github.ref_name }}"
           # Concurrent site releases race on the same file; rebase and retry
           # rather than failing the release.
           for i in 1 2 3; do
