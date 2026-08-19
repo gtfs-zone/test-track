@@ -353,20 +353,20 @@ worth very little.
 entries, and add a `newIssue` link plus reuse of `CONTACT_EMAIL` in
 `src/content/links.ts` so the footer names where to file a bug.
 
-- [ ] Write `about-links.ts` in coloring-book and restructure its
+- [x] Write `about-links.ts` in coloring-book and restructure its
       `showAboutModal` onto it
-- [ ] Commit, vendor `about-links.ts` into test-track (`verbatim`, new
+- [x] Commit, vendor `about-links.ts` into test-track (`verbatim`, new
       `VENDORED.md` row), restructure test-track's `showAboutModal`
-- [ ] Expand test-track's blurb: what a GTFS-RT feed is, what the map shows,
+- [x] Expand test-track's blurb: what a GTFS-RT feed is, what the map shows,
       that nothing is uploaded anywhere
-- [ ] Add `robots.txt` + `sitemap.xml` to `test-track/public/` and
+- [x] Add `robots.txt` + `sitemap.xml` to `test-track/public/` and
       `coloring-book/public/`
-- [ ] Add description and Open Graph meta tags to both `index.html` heads
-- [ ] landing-zone: cross-domain `<loc>` entries for both apps in
+- [x] Add description and Open Graph meta tags to both `index.html` heads
+- [x] landing-zone: cross-domain `<loc>` entries for both apps in
       `public/sitemap.xml`
-- [ ] landing-zone: `newIssue` in `links.ts`, surfaced in the footer next to the
+- [x] landing-zone: `newIssue` in `links.ts`, surfaced in the footer next to the
       existing contact address
-- [ ] Build all three repos
+- [x] Build all three repos
 
 **Gotchas.** Cross-domain sitemap entries are only honored when every listed
 host is verified in Search Console, which the user confirms is the case; the
@@ -378,3 +378,29 @@ out to require a login. landing-zone's vite plugin will fail the build if a new
 external anchor is added without the new-tab attributes, so add links through
 `links.ts` and let the plugin stamp them. Vite copies `public/` verbatim, so
 `sitemap.xml` needs no build wiring in any of the three repos.
+
+**What the restructure actually turned up.**
+
+- `git.kcfam.us` answers `/issues/new` with a 303 to the login page for anonymous
+  visitors, while `/issues` is public. Per the gotcha the mailto goes first in
+  the Feedback list and the issue link is labelled as needing an account. The
+  same ordering is used in landing-zone.
+- `about-links.ts` grew a `renderBlurb` beyond the four functions the plan
+  sketched, so the whole modal is one `join` over block renderers and neither
+  app hand-writes a `<p>`. `AboutApp.name` doubles as the modal title, so the
+  title cannot drift from the blurb.
+- coloring-book's prettier pre-commit hook reflows the file on commit, so the
+  vendored copy has to be taken from the committed blob
+  (`git show <sha>:<path>`), not from the working tree, or `vendor:check` reports
+  DRIFT immediately. `vendor-check.ts`'s `stripBanner` also eats only the banner
+  and its own newline, so the banner must be followed directly by the body with
+  no blank line.
+- landing-zone's `footerLinks` and `copy.ts` are not consumed by anything;
+  `page.html` is the real markup. Both were updated so the parallel tables stay
+  honest, and the anchors were added to `page.html` for the change to actually
+  render. The vite plugin stamped the new-tab attributes on both new anchors.
+- The apps keep their `index.html` under `src/`, not the repo root, and
+  `publicDir` is `../public`; the built `dist/` picks up `robots.txt` and
+  `sitemap.xml` with no build wiring, as expected.
+- Open Graph images point at each app's `logo.svg`. SVG is not honored as an
+  `og:image` by most scrapers, so a raster preview card is worth a follow-up.
