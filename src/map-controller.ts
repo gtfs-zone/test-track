@@ -225,7 +225,7 @@ export class MapController {
   loadStaticFeed(feed: GTFSStatic): void {
     this.whenLoaded(() => {
       this.layers.setStaticFeed(feed);
-      this.fitFeedIfElsewhere();
+      this.fitFeed();
     });
   }
 
@@ -257,21 +257,17 @@ export class MapController {
   }
 
   /**
-   * Frame a newly loaded feed, unless the camera is already looking at it —
-   * reloading the same feed to compare a tweak shouldn't throw away the view.
+   * Frame the loaded feed. Every static load refits, reloads included: the old
+   * "camera is already inside the bbox" bail-out skipped the fit whenever the
+   * stored view happened to sit in the new feed's box, and the only thing that
+   * framed the feed after that was a click-in/click-out returning focus to home.
+   *
+   * Instant, with no duration: on the boot path a deep link's focus ease runs
+   * right after this and would visibly interrupt an animated fit.
    */
-  private fitFeedIfElsewhere(): void {
+  private fitFeed(): void {
     const bounds = this.layers.stopsBounds();
     if (!bounds) return;
-
-    const center = this.map.getCenter();
-    const inside =
-      center.lng >= bounds[0][0] &&
-      center.lng <= bounds[1][0] &&
-      center.lat >= bounds[0][1] &&
-      center.lat <= bounds[1][1];
-    if (inside && this.map.getZoom() >= 8) return;
-
     this.map.fitBounds(bounds, { padding: this.padding() });
   }
 
