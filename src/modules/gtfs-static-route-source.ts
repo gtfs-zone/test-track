@@ -3,6 +3,7 @@
  * mutated, so this needs no invalidation and no adapter-side caching.
  */
 import type { GTFSStatic } from '../gtfs-static';
+import type { StopTimeRef } from '../types/gtfs-flex';
 import type { RouteSource, RouteSourceTrip, RouteSourceStopTime } from './route-source';
 
 export class GTFSStaticRouteSource implements RouteSource {
@@ -12,8 +13,14 @@ export class GTFSStaticRouteSource implements RouteSource {
     return this.feed.tripsByRoute.get(route_id) ?? [];
   }
 
+  // test-track ingests no flex tables, so every stop_time is a plain stop ref.
   stopTimesForTrip(trip_id: string): RouteSourceStopTime[] {
-    return this.feed.stopTimesByTrip.get(trip_id) ?? [];
+    const times = this.feed.stopTimesByTrip.get(trip_id);
+    if (!times) return [];
+    return times.map((time) => ({
+      ref: time.stop_id ? { kind: 'stop', id: time.stop_id } : null,
+      stop_sequence: time.stop_sequence,
+    }));
   }
 
   stationRoot(stop_id: string): string {
@@ -22,5 +29,19 @@ export class GTFSStaticRouteSource implements RouteSource {
 
   stopName(stop_id: string): string | undefined {
     return this.feed.stops.get(stop_id)?.name;
+  }
+
+  // No location_groups.txt or locations.geojson in the ingest, so a non-stop
+  // ref can never reach here.
+  locationGroupName(): undefined {
+    return undefined;
+  }
+
+  zoneName(): undefined {
+    return undefined;
+  }
+
+  refName(ref: StopTimeRef): string | undefined {
+    return ref.kind === 'stop' ? this.stopName(ref.id) : undefined;
   }
 }

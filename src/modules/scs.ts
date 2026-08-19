@@ -1,12 +1,12 @@
 /* @vendored-from coloring-book:src/modules/scs.ts
-   @sha 3f42194
+   @sha a4b5ee1
    @status verbatim */
 /**
  * Shortest Common Supersequence (SCS) module.
  *
  * The exact SCS of k sequences is NP-hard in k, and a naive k-way DP memoises
  * on a position tuple, so its state space is the product of all k input
- * lengths — unusable for real inputs. We instead fold pairwise: each fold is
+ * lengths, unusable for real inputs. We instead fold pairwise: each fold is
  * the exact two-sequence SCS, computed with an iterative O(n·m) table and
  * backpointers (no recursion, no memo-size guard, bounded memory). Folding is
  * not guaranteed to yield the globally shortest supersequence, but the result
@@ -15,88 +15,6 @@
  */
 
 export type Sequence<T> = T[];
-
-/**
- * Represents how an element from an input sequence aligns to the supersequence
- */
-export interface SequenceAlignment<T> {
-  sequenceIndex: number; // Which input sequence this is (0, 1, 2, ...)
-  inputPosition: number; // Position in the original input sequence
-  supersequencePosition: number; // Position in the optimal supersequence
-  element: T; // The actual element
-}
-
-/**
- * Result from enhanced SCS computation
- */
-export interface SCSResult<T> {
-  supersequence: Sequence<T>;
-  alignments: SequenceAlignment<T>[];
-}
-
-/**
- * Helper class to work with SCS results
- */
-export class SCSResultHelper<T> {
-  constructor(private result: SCSResult<T>) {}
-
-  /**
-   * Get alignments for a specific input sequence
-   */
-  getAlignmentForSequence(sequenceIndex: number): SequenceAlignment<T>[] {
-    return this.result.alignments.filter(
-      (a) => a.sequenceIndex === sequenceIndex
-    );
-  }
-
-  /**
-   * Get position mapping for a specific sequence (inputPos -> superPos)
-   */
-  getPositionMapping(sequenceIndex: number): Map<number, number> {
-    const map = new Map<number, number>();
-    this.getAlignmentForSequence(sequenceIndex).forEach((alignment) => {
-      map.set(alignment.inputPosition, alignment.supersequencePosition);
-    });
-    return map;
-  }
-
-  /**
-   * Get reverse position mapping (superPos -> inputPos)
-   */
-  getReversePositionMapping(sequenceIndex: number): Map<number, number> {
-    const map = new Map<number, number>();
-    this.getAlignmentForSequence(sequenceIndex).forEach((alignment) => {
-      map.set(alignment.supersequencePosition, alignment.inputPosition);
-    });
-    return map;
-  }
-
-  /**
-   * Check if a sequence has an element at a specific supersequence position
-   */
-  hasElementAt(sequenceIndex: number, supersequencePosition: number): boolean {
-    return this.result.alignments.some(
-      (a) =>
-        a.sequenceIndex === sequenceIndex &&
-        a.supersequencePosition === supersequencePosition
-    );
-  }
-
-  /**
-   * Get the element from a sequence at a specific supersequence position
-   */
-  getElementAt(
-    sequenceIndex: number,
-    supersequencePosition: number
-  ): T | undefined {
-    const alignment = this.result.alignments.find(
-      (a) =>
-        a.sequenceIndex === sequenceIndex &&
-        a.supersequencePosition === supersequencePosition
-    );
-    return alignment?.element;
-  }
-}
 
 /**
  * Common supersequence of many sequences, built by pairwise folding of the
@@ -164,7 +82,7 @@ function elementKey<T>(element: T): string {
  * Iterative bottom-up DP: `dp[i][j]` is the SCS length of the first `i`
  * elements of `a` and the first `j` of `b`. The supersequence is recovered by
  * walking the table back from `(n, m)`. O(n·m) time and memory, with no
- * recursion and no fallback path — the failure mode of the old k-way memo is
+ * recursion and no fallback path, the failure mode of the old k-way memo is
  * gone.
  */
 function shortestCommonSupersequencePair<T>(
@@ -229,58 +147,4 @@ function shortestCommonSupersequencePair<T>(
   }
   result.reverse();
   return result;
-}
-
-/**
- * Enhanced SCS function that returns both supersequence and alignments
- * This eliminates the need for manual alignment logic and prevents bugs
- */
-export function shortestCommonSupersequenceWithAlignments<T>(
-  sequences: Sequence<T>[]
-): SCSResult<T> {
-  // Get the optimal supersequence using existing algorithm
-  const supersequence = shortestCommonSupersequence(sequences);
-
-  // Compute alignments for each input sequence
-  const alignments = computeAlignments(sequences, supersequence);
-
-  return {
-    supersequence,
-    alignments,
-  };
-}
-
-/**
- * Compute how each input sequence aligns to the supersequence
- */
-function computeAlignments<T>(
-  sequences: Sequence<T>[],
-  supersequence: Sequence<T>
-): SequenceAlignment<T>[] {
-  const alignments: SequenceAlignment<T>[] = [];
-  const superKeys = supersequence.map(elementKey);
-
-  sequences.forEach((sequence, sequenceIndex) => {
-    const seqKeys = sequence.map(elementKey);
-    let inputPosition = 0;
-
-    // Walk through supersequence and find matches with this input sequence
-    for (
-      let superPosition = 0;
-      superPosition < supersequence.length && inputPosition < sequence.length;
-      superPosition++
-    ) {
-      if (seqKeys[inputPosition] === superKeys[superPosition]) {
-        alignments.push({
-          sequenceIndex,
-          inputPosition,
-          supersequencePosition: superPosition,
-          element: sequence[inputPosition],
-        });
-        inputPosition++;
-      }
-    }
-  });
-
-  return alignments;
 }

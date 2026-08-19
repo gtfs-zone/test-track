@@ -1,0 +1,21 @@
+/* @vendored-from coloring-book:src/types/gtfs-flex.ts
+   @sha a4b5ee1
+   @status modified
+   @changes
+   - Types only. `stopTimeRef` and `isFlexStopTime` are dropped along with the
+     `StopTimes` entity import: test-track ingests stop_times into its own
+     `StopTime` model and builds refs in `gtfs-static-route-source.ts`. */
+/**
+ * GTFS Flex (on-demand service) shared types and helpers.
+ *
+ * A stop_time references exactly one of stop_id, location_group_id or
+ * location_id. StopTimeRef is the generalized form of that reference so the
+ * sequence and timetable pipelines do not have to assume stop_id.
+ */
+
+export type StopTimeRefKind = 'stop' | 'location_group' | 'location';
+
+export interface StopTimeRef {
+  kind: StopTimeRefKind;
+  id: string;
+}

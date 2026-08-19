@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/route-sequence.ts
-   @sha 9f1f986
+   @sha a4b5ee1
    @status verbatim */
 /**
  * The canonical stop order for one direction of one route, plus the mapping
@@ -35,11 +35,16 @@
  */
 
 import type { RouteSource, RouteSourceTrip } from './route-source.js';
+import type { StopTimeRef } from '../types/gtfs-flex.js';
 import { shortestCommonSupersequence } from './scs.js';
 
-/** A stop id together with which visit it is, within a single trip. */
+/**
+ * One stop_time reference together with which visit it is, within a single
+ * trip. The reference is a stop on a scheduled row, or a location group or
+ * on-demand zone on a flex row.
+ */
 export interface StripStop {
-  stop_id: string;
+  ref: StopTimeRef;
   /** 0 for the first visit; >0 only on loop routes. */
   occurrence: number;
 }
@@ -98,9 +103,119 @@ export interface DirectionInfo {
   tripCount: number;
 }
 
-/** `stop_id` plus visit index, so a loop's second visit is its own element. */
+/**
+ * Reference plus visit index, so a loop's second visit is its own element.
+ * The kind prefix keeps a location group from colliding with a stop that
+ * happens to share its id.
+ */
 function elementKey(stop: StripStop): string {
-  return `${stop.stop_id} ${stop.occurrence}`;
+  return `${refKey(stop.ref)} ${stop.occurrence}`;
+}
+
+/** The reference alone, with no visit index. */
+function refKey(ref: StopTimeRef): string {
+  return `${ref.kind}:${ref.id}`;
+}
+
+/**
+ * Longest common subsequence of two ref sequences, as the matching itself:
+ * `a` index -> `b` index, order-preserving.
+ *
+ * Standard O(n*m) DP. Only ever run over one route's patterns, and only when
+ * some pattern repeats a stop, so the quadratic cost is paid on loop routes
+ * alone.
+ */
+function lcsMatch(a: string[], b: string[]): Map<number, number> {
+  const table: number[][] = Array.from({ length: a.length + 1 }, () =>
+    new Array<number>(b.length + 1).fill(0)
+  );
+  for (let i = a.length - 1; i >= 0; i--) {
+    for (let j = b.length - 1; j >= 0; j--) {
+      table[i][j] =
+        a[i] === b[j]
+          ? table[i + 1][j + 1] + 1
+          : Math.max(table[i + 1][j], table[i][j + 1]);
+    }
+  }
+
+  const matching = new Map<number, number>();
+  let i = 0;
+  let j = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      matching.set(i, j);
+      i++;
+      j++;
+    } else if (table[i + 1][j] >= table[i][j + 1]) {
+      i++;
+    } else {
+      j++;
+    }
+  }
+  return matching;
+}
+
+/**
+ * Renumber every pattern's visit indices against the richest pattern, so that
+ * trips visiting a stop different numbers of times can still line up.
+ *
+ * `tripStops` counts occurrences positionally within one trip, which is the
+ * only thing it can do on its own. Used directly as a cross-pattern identity it
+ * is wrong: on a route where one trip runs `s1 s4 s1 s2 s3 s4` and the rest run
+ * `s1 s2 s3 s4`, the plain count makes the short pattern's only `s4` the *first*
+ * visit, so it must align with the loop's early `s4`. That asserts `s4` before
+ * `s2` for trips that plainly go `s2` then `s4` — a cycle out of nothing, which
+ * stalls the topological sort and drops the route onto the fold, where `s4`
+ * comes out in two columns.
+ *
+ * The fix is to let a single visit match *either* of the loop's visits: align
+ * each pattern to the base by longest common subsequence of the bare
+ * references, which by construction picks an order-consistent embedding, and
+ * take the visit index from whichever base element it matched. Elements that
+ * match nothing take a fresh index the base does not use, so they become their
+ * own column.
+ *
+ * The base is the pattern with the most elements — the one carrying the loop —
+ * with trip count as the tie-break. Patterns are mutated in place, `key`
+ * included.
+ */
+function realignOccurrences(patterns: RoutePattern[]): void {
+  const base = patterns.reduce((best, p) =>
+    p.stops.length > best.stops.length ||
+    (p.stops.length === best.stops.length &&
+      p.trip_ids.length > best.trip_ids.length)
+      ? p
+      : best
+  );
+  const baseRefs = base.stops.map((s) => refKey(s.ref));
+
+  // First visit index free for each ref, so an unmatched element never lands
+  // on a column the base already owns.
+  const freeIndex = new Map<string, number>();
+  for (const stop of base.stops) {
+    const key = refKey(stop.ref);
+    freeIndex.set(key, Math.max(freeIndex.get(key) ?? 0, stop.occurrence + 1));
+  }
+
+  for (const pattern of patterns) {
+    if (pattern === base) {
+      continue;
+    }
+    const refs = pattern.stops.map((s) => refKey(s.ref));
+    const matching = lcsMatch(refs, baseRefs);
+    const next = new Map(freeIndex);
+    pattern.stops = pattern.stops.map((stop, i) => {
+      const baseIndex = matching.get(i);
+      if (baseIndex !== undefined) {
+        return { ref: stop.ref, occurrence: base.stops[baseIndex].occurrence };
+      }
+      const key = refKey(stop.ref);
+      const occurrence = next.get(key) ?? 0;
+      next.set(key, occurrence + 1);
+      return { ref: stop.ref, occurrence };
+    });
+    pattern.key = pattern.stops.map(elementKey).join('');
+  }
 }
 
 /**
@@ -114,9 +229,20 @@ function elementKey(stop: StripStop): string {
  * before the occurrence counter runs is what keeps two consecutive platform
  * visits at one station from looking like a revisit.
  *
+ * Only *different* platforms collapse. Two consecutive stop_times on the
+ * literally same stop_id are not a station artefact, they are a trip calling
+ * at one stop twice in a row - a feed error worth seeing. Folding them would
+ * put both rows on one strip element, where the second silently hides the
+ * first and neither can be edited or deleted from the timetable.
+ *
  * `stopTimesForTrip` is already sorted by `stop_sequence` (route-source), so
  * this is a straight walk. `indexOfStop[i]` is the element the trip's i-th
- * stop time lands on — the identity unless a collapse merged something.
+ * stop time lands on — the identity unless a collapse merged something, or -1
+ * when the row references nothing usable.
+ *
+ * Collapsing and station roots apply to stop references only. Two consecutive
+ * stop_times on the same location group or zone mean travel *within* it, which
+ * is a legal flex shape and must stay two rows.
  */
 function tripStops(
   source: RouteSource,
@@ -130,17 +256,36 @@ function tripStops(
   const elements: StripStop[] = [];
   const indexOfStop: number[] = [];
   const seen = new Map<string, number>();
+  // The un-collapsed stop_id behind the last element, to tell a second
+  // platform of one station from a second call at one stop.
+  let lastRawId: string | null = null;
   for (const time of times) {
-    const stop_id = source.stationRoot(time.stop_id);
+    if (!time.ref) {
+      indexOfStop.push(-1);
+      continue;
+    }
+    const rawId = time.ref.kind === 'stop' ? time.ref.id : null;
+    const ref: StopTimeRef =
+      time.ref.kind === 'stop'
+        ? { kind: 'stop', id: source.stationRoot(time.ref.id) }
+        : time.ref;
     const last = elements[elements.length - 1];
-    if (last && last.stop_id === stop_id) {
+    if (
+      ref.kind === 'stop' &&
+      last &&
+      last.ref.kind === 'stop' &&
+      last.ref.id === ref.id &&
+      rawId !== lastRawId
+    ) {
       indexOfStop.push(elements.length - 1);
       continue;
     }
-    const occurrence = seen.get(stop_id) ?? 0;
-    seen.set(stop_id, occurrence + 1);
+    lastRawId = rawId;
+    const seenKey = `${ref.kind}:${ref.id}`;
+    const occurrence = seen.get(seenKey) ?? 0;
+    seen.set(seenKey, occurrence + 1);
     indexOfStop.push(elements.length);
-    elements.push({ stop_id, occurrence });
+    elements.push({ ref, occurrence });
   }
   return { elements, indexOfStop };
 }
@@ -317,10 +462,16 @@ function topoOrder(
     : { order: [], cyclic: true };
 }
 
+/** Inverse of `elementKey`. */
 function parseElement(key: string): StripStop {
   const sep = key.lastIndexOf(' ');
+  const refPart = key.slice(0, sep);
+  const kindEnd = refPart.indexOf(':');
   return {
-    stop_id: key.slice(0, sep),
+    ref: {
+      kind: refPart.slice(0, kindEnd) as StopTimeRef['kind'],
+      id: refPart.slice(kindEnd + 1),
+    },
     occurrence: Number(key.slice(sep + 1)),
   };
 }
@@ -357,7 +508,7 @@ function directionLabel(
     ? tripStops(source, trips[0].trip_id).elements
     : [];
   const terminal = firstTripStops[firstTripStops.length - 1];
-  const terminalName = terminal ? source.stopName(terminal.stop_id) : undefined;
+  const terminalName = terminal ? source.refName(terminal.ref) : undefined;
   if (terminalName) {
     return terminalName;
   }
@@ -439,6 +590,12 @@ function build(
     pattern.trip_ids.push(trip.trip_id);
   }
 
+  // Visit indices are only a cross-pattern identity once some pattern repeats a
+  // stop; with no repeats every element is visit 0 and this would be a no-op.
+  if (isLoop && byKey.size > 1) {
+    realignOccurrences([...byKey.values()]);
+  }
+
   const ranked = [...byKey.values()].sort(
     (a, b) => b.trip_ids.length - a.trip_ids.length
   );
@@ -458,6 +615,32 @@ function build(
     included.map((p) => p.trip_ids.length)
   );
   const supersequence = topo.cyclic ? foldSupersequence(sequences) : topo.order;
+
+  // The fold is only reached when the patterns genuinely contradict each other
+  // about stop order, and it is the path that can emit an element twice - the
+  // strip then shows the same stop in two columns and trips align to whichever
+  // copy the greedy embedding reached first. Nothing downstream can repair
+  // that, so say which route and which stops, loudly.
+  if (topo.cyclic) {
+    const counts = new Map<string, number>();
+    for (const key of supersequence) {
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const duplicates = [...counts].filter(([, n]) => n > 1).map(([key]) => key);
+    console.warn(
+      `[RouteSequence] route ${routeId} direction ${directionId}: patterns disagree about stop order, so the strip comes from the fold rather than a topological sort${
+        duplicates.length
+          ? `, and these stops appear in more than one column: ${JSON.stringify(duplicates)}`
+          : ''
+      }. Trip patterns: ${JSON.stringify(
+        included.map((p) => ({
+          trips: p.trip_ids.length,
+          stops: p.stops.map(elementKey),
+        }))
+      )}`
+    );
+  }
+
   const mappings = alignToSupersequence(sequences, supersequence);
 
   const patternForTrip = new Map<string, RoutePattern>();

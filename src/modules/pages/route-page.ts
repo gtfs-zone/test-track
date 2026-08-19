@@ -277,12 +277,14 @@ function renderStrip(
       });
     });
 
-    const name = feed?.stops.get(stop.stop_id)?.name || stop.stop_id;
+    // Every strip element is a stop ref here: test-track ingests no flex tables.
+    const stopId = stop.ref.id;
+    const name = feed?.stops.get(stopId)?.name || stopId;
     // The strip shows stations; the realtime feed talks about platforms. Ask
     // for the station and everything under it, the same split the station page
     // makes between boardable descendants (service) and all of them (alerts).
-    const serviceIds = [stop.stop_id, ...(feed?.boardableDescendants(stop.stop_id) ?? [])];
-    const alertIds = [stop.stop_id, ...(feed?.descendants(stop.stop_id) ?? [])];
+    const serviceIds = [stopId, ...(feed?.boardableDescendants(stopId) ?? [])];
+    const alertIds = [stopId, ...(feed?.descendants(stopId) ?? [])];
     const prediction = rt.nextAtStopsForRoute(serviceIds, route.id, directionId, feed ?? null);
     const stopAlerts = alertsForRouteStop(ctx.session, route.id, alertIds);
 
@@ -291,7 +293,7 @@ function renderStrip(
     const minority = isMinority(stats, sequence.totalTrips);
 
     rows.push({
-      stopId: stop.stop_id,
+      stopId: stopId,
       dot: { kind: endpoint ? 'solid' : 'open', lane: graph.rows[index].lane },
       paths: rowPaths(graph, index, {
         kind: 'stop',
@@ -303,7 +305,7 @@ function renderStrip(
       )}">
         <span class="flex-1 min-w-0 truncate text-sm${minority ? ' opacity-60' : ''}">${entityLink(
           ctx,
-          { type: 'stop', stop_id: stop.stop_id },
+          { type: 'stop', stop_id: stopId },
           name,
         )}${
           stop.occurrence > 0

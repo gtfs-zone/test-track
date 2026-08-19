@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/route-sort.ts
-   @sha 50657d9
+   @sha a4b5ee1
    @status verbatim */
 /**
  * Paint-order ranking for route lines.
@@ -12,10 +12,10 @@
  * Pure and dependency-free so it can be vendored as-is.
  */
 
-/** Rank for an unknown or unparseable route_type — below every real mode. */
+/** Rank for an unknown or unparseable route_type, below every real mode. */
 const RANK_UNKNOWN = 10;
 
-/** Base GTFS route_type → paint rank. Higher paints on top. */
+/** Base GTFS route_type to paint rank. Higher paints on top. */
 const RANK_BY_TYPE: Record<number, number> = {
   1: 90, // subway / metro
   12: 85, // monorail
@@ -50,7 +50,7 @@ const BASE_TYPE_BY_HUNDREDS: Record<number, number> = {
 
 /**
  * Map a GTFS route_type to its paint rank. Accepts `unknown` because
- * coloring-book's `Routes` is a loose record — route_type may arrive as a
+ * coloring-book's `Routes` is a loose record, route_type may arrive as a
  * string straight from the CSV.
  */
 export function routeTypeRank(rawRouteType: unknown): number {
@@ -83,7 +83,7 @@ export function routeTypeRank(rawRouteType: unknown): number {
 /**
  * The `line-sort-key` for a route: mode rank in the thousands place, log-scaled
  * trip count in the low three digits. Log scaling keeps a 5000-trip subway from
- * swamping a 400-trip one — the ordering only has to be stable and sensible,
+ * swamping a 400-trip one, the ordering only has to be stable and sensible,
  * not proportional.
  */
 export function routeSortKey(rawRouteType: unknown, tripCount: number): number {
