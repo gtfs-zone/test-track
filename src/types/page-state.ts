@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/types/page-state.ts
-   @sha f9c718c
+   @sha a4b5ee1
    @status modified
    @changes
    - Page types reduced to test-track's four object pages plus home: dropped
@@ -7,8 +7,10 @@
    - `route` gained an optional `direction_id` (absorbed from `timetable`), so the
      route strip's direction tab is linkable.
    - Added `vehicle` and `alert`, which have no coloring-book equivalent.
-   - `StateValidator` is synchronous — ours resolves against in-memory maps, not a
-     database. */
+   - `StateValidator` is synchronous, ours resolves against in-memory maps, not a
+     database.
+   - Skipped `136329b`: the `zone` and `location_group` variants and their
+     `isPageState` cases are GTFS Flex pages test-track has no data for. */
 
 /**
  * Union of every page test-track can display. Each variant carries the minimal
@@ -93,7 +95,7 @@ export type PageStateManagerConfig = {
 
 /**
  * Checks whether a page state refers to an object that exists in the currently
- * loaded feed. Returns false → the caller falls back to home.
+ * loaded feed. Returns false and the caller falls back to home.
  *
  * Synchronous, unlike coloring-book's: our model is a set of in-memory maps.
  */

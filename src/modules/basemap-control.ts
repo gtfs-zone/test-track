@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/basemap-control.ts
-   @sha f9c718c
+   @sha a4b5ee1
    @status modified
    @changes
    - Constructor takes an options object (initial basemap / projection / shape

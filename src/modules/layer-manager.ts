@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/layer-manager.ts
-   @sha f9c718c
+   @sha a4b5ee1
    @status modified
    @changes
    - Fed from the in-memory `GTFSStatic` model instead of `GTFSParser` /
@@ -16,8 +16,15 @@
    - Added `rebuild()`, called after a basemap change re-creates the style.
    - Route layers are sorted by a `sortKey` feature property (see
      `route-sort.ts`); `applySpotlight` lifts the focused route above it.
-   - Stop paint comes from the vendored `stop-layer-style.ts`; the accent it is
-     given is a hardcoded red, not a resolved theme color. */
+   - Stop paint comes from the vendored `stop-layer-style.ts`.
+   - Took the theme-aware accent from `f7084c5`: the accent resolves from
+     `--color-primary` through the vendored `theme-color.ts` and repaints on
+     `refreshAccentColor()`, replacing the hardcoded red. The rest of that
+     commit is pathways, station hulls and map icons, none of which exist here.
+   - Skipped `69dd3f6` (timetable stop focus), `1dbef88` / `63af1c9` /
+     `26b87e2` (GTFS Flex zones and location groups) and `c48eede` / `b5e30d1`
+     (transfer edges and table-row hover): test-track ingests none of that
+     data. */
 
 import type maplibregl from 'maplibre-gl';
 import type {
@@ -32,6 +39,7 @@ import type { VehiclePosition } from '../map-controller';
 import type { ShapeMode } from './basemap-control';
 import { routeSortKey } from './route-sort';
 import { casingColor } from '../utils/route-colors';
+import { clearThemeColorCache, resolveThemeColor } from '../utils/theme-color';
 import {
   STOP_FOCUS_HALO_LAYER,
   STOP_FOCUS_RING_LAYER,
@@ -40,6 +48,7 @@ import {
   focusRingPaint,
   focusTopPaint,
   stationDotPaint,
+  stopFillColor,
   stopsBackgroundPaint,
   type StopStyleOptions,
 } from './stop-layer-style';
@@ -99,16 +108,26 @@ const STOPS_FILTER: FilterSpecification = [
 ] as FilterSpecification;
 
 const STOP_CLICK_RADIUS = 15;
-const FOCUS_ACCENT = '#e74c3c';
+
+/**
+ * Selection color, resolved from the active DaisyUI theme. Red is reserved for
+ * errors, so selection must not use it. The fallback is only reached when the
+ * token cannot be read at all.
+ */
+function accentColor(): string {
+  return resolveThemeColor('--color-primary', '#3b82f6');
+}
 
 /** Plain-stop colors and sizes the shared paint builders read. */
-const STOP_STYLE: StopStyleOptions = {
-  accent: FOCUS_ACCENT,
-  backgroundColor: '#ffffff',
-  strokeColor: '#37474f',
-  strokeWidth: 2,
-  radius: 5.5,
-};
+function stopStyle(accent: string): StopStyleOptions {
+  return {
+    accent,
+    backgroundColor: '#ffffff',
+    strokeColor: '#37474f',
+    strokeWidth: 2,
+    radius: 5.5,
+  };
+}
 /** Hard-contrast edge for vehicles, so a route-colored marker reads on top of
  *  its own route line. Reads on light basemaps; on dark ones the dot keeps its
  *  white inner stroke and the arrow its route-colored fill. */
@@ -196,8 +215,39 @@ export class LayerManager {
   /** Called when a click lands on no feature — the map's "click away". */
   onEmptySelect: (() => void) | null = null;
 
+  /** Resolved once per theme; `refreshAccentColor` re-reads it. */
+  private accent = accentColor();
+  private stopStyle = stopStyle(this.accent);
+
   constructor(map: MapLibreMap) {
     this.map = map;
+  }
+
+  /**
+   * Re-resolve the accent against the now-active theme and repaint every
+   * property painted with it. Called by the theme controller; the layers are
+   * already on the map, so this cannot go through `addLayers`.
+   */
+  refreshAccentColor(): void {
+    clearThemeColorCache();
+    this.accent = accentColor();
+    this.stopStyle = stopStyle(this.accent);
+
+    for (const id of [STOP_FOCUS_HALO_LAYER, STOP_FOCUS_RING_LAYER, 'vehicles-halo']) {
+      if (!this.map.getLayer(id)) continue;
+      this.map.setPaintProperty(id, 'circle-color', this.accent);
+      this.map.setPaintProperty(id, 'circle-stroke-color', this.accent);
+    }
+    // Only the fill reads the accent on these two: the focused circle is
+    // painted in it, everything else in the layer is accent-free.
+    const fill = stopFillColor(this.accent, this.stopStyle.backgroundColor);
+    for (const id of ['stops-background', STOP_FOCUS_TOP_LAYER]) {
+      if (!this.map.getLayer(id)) continue;
+      this.map.setPaintProperty(id, 'circle-color', fill);
+    }
+    // stops-background's opacity carries the route spotlight, which the
+    // repaint above leaves untouched but applyStopDim re-derives anyway.
+    this.applyStopDim();
   }
 
   // ── Data in ────────────────────────────────────────────────────────────────
@@ -610,7 +660,7 @@ export class LayerManager {
    *   ~ STATION_FADE_ZOOM_MAX   stations and child nodes have faded in
    *   ~ STOP_FADE_ZOOM_MAX      plain stops (location_type 0) have faded in
    *
-   * Stations get the gentler band because they're far more spaced out — a
+   * Stations get the gentler band because they're far more spaced out, a
    * zoomed-out view of them still reads as a network, where the same view of
    * every plain stop reads as a pile of dots. Special stops (focused, or on the
    * spotlighted route) are exempt at every zoom. When `dim` is set (route
@@ -672,7 +722,7 @@ export class LayerManager {
       type: 'circle',
       source: 'stops',
       filter: STOPS_FILTER,
-      paint: focusHaloPaint(FOCUS_ACCENT),
+      paint: focusHaloPaint(this.accent),
     });
 
     this.map.addLayer({
@@ -680,7 +730,7 @@ export class LayerManager {
       type: 'circle',
       source: 'stops',
       filter: STOPS_FILTER,
-      paint: focusRingPaint(FOCUS_ACCENT),
+      paint: focusRingPaint(this.accent),
     });
 
     this.map.addLayer({
@@ -688,7 +738,7 @@ export class LayerManager {
       type: 'circle',
       source: 'stops',
       filter: STOPS_FILTER,
-      paint: stopsBackgroundPaint(STOP_STYLE, this.stopFadeOpacity(null)),
+      paint: stopsBackgroundPaint(this.stopStyle, this.stopFadeOpacity(null)),
     });
 
     this.map.addLayer({
@@ -696,7 +746,7 @@ export class LayerManager {
       type: 'circle',
       source: 'stops',
       filter: STOPS_FILTER,
-      paint: focusTopPaint(STOP_STYLE),
+      paint: focusTopPaint(this.stopStyle),
     });
 
     this.map.addLayer({
@@ -709,7 +759,7 @@ export class LayerManager {
 
     // The hit radius mirrors the visible layer's fade: it collapses to 0 where
     // plain stops are fully faded out, so invisible stops are simply not
-    // returned by queryRenderedFeatures — no JS-side visibility predicate to
+    // returned by queryRenderedFeatures: no JS-side visibility predicate to
     // keep in sync. Adjust this and stopFadeOpacity together or stops become
     // clickable while invisible, which reads as a ghost-click bug.
     this.map.addLayer({
@@ -773,9 +823,9 @@ export class LayerManager {
           ['interpolate', ['linear'], ['zoom'], 8, 11, 14, 17, 18, 23],
           0,
         ] as unknown as ExpressionSpecification,
-        'circle-color': FOCUS_ACCENT,
+        'circle-color': this.accent,
         'circle-opacity': 0.25,
-        'circle-stroke-color': FOCUS_ACCENT,
+        'circle-stroke-color': this.accent,
         'circle-stroke-width': ['case', FOCUSED, 2, 0],
       },
     });

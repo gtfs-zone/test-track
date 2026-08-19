@@ -303,6 +303,14 @@ export class MapController {
     this.layers?.setHoveredStop(stop_id);
   }
 
+  /**
+   * Repaint the accent-colored map layers against the now-active theme. The
+   * accent is resolved from the DaisyUI palette, so it only changes here.
+   */
+  refreshAccentColor(): void {
+    this.layers?.refreshAccentColor();
+  }
+
   private applyFocus(state: PageState): void {
     // Any focus that is not this same vehicle leaves follow mode.
     if (state.type !== 'vehicle') this.following = null;

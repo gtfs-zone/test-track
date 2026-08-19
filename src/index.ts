@@ -25,10 +25,14 @@ const appContainer = document.querySelector<HTMLElement>('.app-container')!;
 restorePanelWidth(appContainer);
 
 notify.initialize();
-new ThemeController().initialize();
+const themeController = new ThemeController();
+themeController.initialize();
 
 const mapCtrl = new MapController();
 mapCtrl.initialize('map');
+// The map accent comes from the theme palette, so it has to be repainted
+// whenever the theme switches.
+themeController.onThemeChange(() => mapCtrl.refreshAccentColor());
 
 new PanelResizer(appContainer, mapCtrl);
 

@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/page-state-manager.ts
-   @sha f9c718c
+   @sha a4b5ee1
    @status modified
    @changes
    - Reduced to test-track's five page variants; all `agency` / `timetable` /
@@ -14,7 +14,11 @@
      coloring-book instead stripped a single `load=` command param.
    - `CONFIG.MAX_NAVIGATION_HISTORY` inlined — test-track has no config module.
    - Dropped the module-level singleton (`getPageStateManager` /
-     `initPageStateManager`); AppState owns the one instance. */
+     `initPageStateManager`); AppState owns the one instance.
+   - Skipped `136329b`: the `zone` and `location_group` branches in
+     `getBreadcrumbs`, `pageStateToURL` and `urlToPageState`, plus the two
+     `BreadcrumbLookup` name getters, are GTFS Flex pages test-track has no
+     data for. */
 
 import type {
   BreadcrumbItem,
@@ -62,7 +66,7 @@ export class PageStateManager {
 
   /**
    * Set the validator used to check that a restored state still names an object
-   * in the loaded feed. Returns false → fall back to home.
+   * in the loaded feed. Returns false to fall back to home.
    */
   setStateValidator(fn: StateValidator): void {
     this.stateValidator = fn;
@@ -201,7 +205,7 @@ export class PageStateManager {
 
   /**
    * Read the focus out of a hash string (no leading `#`), ignoring the feed
-   * params. Priority stop → vehicle → alert → route → home; always returns a
+   * params. Priority stop -> vehicle -> alert -> route -> home; always returns a
    * valid state.
    */
   urlToPageState(hash: string): PageState {

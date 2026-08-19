@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/bottom-sheet.ts
-   @sha f9c718c
+   @sha a4b5ee1
    @status modified
    @changes
    - Removed the TabManager import and the `setupDock` method — there is no mobile dock.
@@ -149,7 +149,7 @@ export class BottomSheetController {
     const fullH = vph * FULL_VH;
 
     if (velocity < -VELOCITY_THRESHOLD || h < halfH / 2) {
-      // Strongly downward or very low — dismiss
+      // Strongly downward or very low: dismiss
       this.fireDismissCallbacks();
       return 'closed';
     }
@@ -232,7 +232,7 @@ export class BottomSheetController {
     if (!this.active) {
       return;
     }
-    // Programmatic close — does not fire dismiss callbacks
+    // Programmatic close: does not fire dismiss callbacks
     this.setSnap('closed', true);
   }
 }
