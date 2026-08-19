@@ -262,17 +262,17 @@ calls `notify.show('Load cancelled', 'info')`, and returns without touching
 `loadStatic` throws before `this.staticFeed = feed`, so the previously loaded
 feed simply stays live, and `startPoller` is never reached.
 
-- [ ] Add the `onCancel` option, the button, and the `Cancelling...` state to
+- [x] Add the `onCancel` option, the button, and the `Cancelling...` state to
       `feed-progress-indicator.ts` in coloring-book
-- [ ] Wire `parseFromURL` in coloring-book: controller, signal, handler,
+- [x] Wire `parseFromURL` in coloring-book: controller, signal, handler,
       `LoadCancelledError` catch, info toast, no state mutation
-- [ ] Commit, then re-vendor `feed-progress-indicator.ts` into test-track
+- [x] Commit, then re-vendor `feed-progress-indicator.ts` into test-track
       (still `verbatim`) and update its SHA
-- [ ] Wire `FeedSession.loadStatic` the same way; verify the `finally` block
+- [x] Wire `FeedSession.loadStatic` the same way; verify the `finally` block
       still finishes both `static-download` and `static-parse`
-- [ ] Verify a cancel followed by a fresh load works: the old controller must
+- [x] Verify a cancel followed by a fresh load works: the old controller must
       not be reused, and `startLoading` must overwrite the stale handler
-- [ ] `pnpm typecheck` / `pnpm build` in both repos, then hand off for visual
+- [x] `pnpm typecheck` / `pnpm build` in both repos, then hand off for visual
       verification
 
 **Gotchas.** An `AbortController` fires a `DOMException` named `AbortError` out
@@ -285,6 +285,29 @@ must not race the completion path: if the abort lands after the last chunk, the
 load may already have succeeded, in which case swallow the abort and keep the
 loaded feed. Per the project rules, stop at `pnpm build`; the user does the
 browser verification.
+
+**What the wiring actually turned up.**
+
+- coloring-book's single `parseFile` key covers both the abortable download and
+  the unabortable parse, so the indicator needed a third method,
+  `clearCancel(operation)`, to drop the button when the bytes land without
+  ending the operation. test-track splits the keys, so `finishLoading` on
+  `static-download` already clears its handler.
+- The button follows the *displayed* operation, and `updateProgress` now claims
+  the display for its own operation. Late chunks keep arriving after a cancel,
+  so a `cancellingOperations` set suppresses their status text and the
+  `Cancelling...` line stays put until the abort lands.
+- `LoadHooks` gained `signal` rather than `loadFromUrl` gaining a parameter;
+  it is already the per-load options bag.
+- Three test-track call sites catch `LoadCancelledError`, not one:
+  `handleLoadResult`, the reload button, and `AppState`'s link restore.
+- `FeedSession.load` assigns `this.selection` before awaiting the static load,
+  so a cancel restores the previous selection instead of leaving the abandoned
+  one in place. `staticError` is left untouched on cancel for the same reason.
+- coloring-book's `loadGTFSFromURL` calls `scheduleController.resetForNewFeed()`
+  before `parseFromURL`, so a cancel there still leaves the schedule controller
+  reset while the old feed is live. Pre-existing to this phase and not moved,
+  but worth a follow-up.
 
 ---
 
