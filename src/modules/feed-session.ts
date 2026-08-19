@@ -5,6 +5,7 @@ import type { AlertRecord, FeedStatus, FetchStartDetail, TripUpdate } from '../g
 import type { VehiclePosition } from '../map-controller';
 import { adoptFeedTimezone } from './feed-time';
 import { feedProgressIndicator } from './feed-progress-indicator';
+import { downloadPercent, formatBytes } from './feed-download';
 import type { FeedSelection, RealtimeEndpointName, StaticSource } from './feed-selection';
 import {
   REALTIME_ENDPOINT_LABELS,
@@ -108,7 +109,7 @@ export class FeedSession extends EventTarget {
       onDownload: (loaded: number, total: number | null) => {
         feedProgressIndicator.updateProgress(
           'static-download',
-          total ? Math.round((loaded / total) * 100) : 0,
+          downloadPercent(loaded, total) ?? 0,
           total
             ? `Downloading ${label} — ${formatBytes(loaded)} of ${formatBytes(total)}`
             : `Downloading ${label} — ${formatBytes(loaded)}`,
@@ -207,10 +208,4 @@ export class FeedSession extends EventTarget {
   private emitChange(): void {
     this.dispatchEvent(new Event('change'));
   }
-}
-
-export function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }

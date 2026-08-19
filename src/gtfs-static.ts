@@ -1,7 +1,7 @@
 import JSZip from 'jszip';
 import Papa from 'papaparse';
-import { describeHttpError, describeNetworkError } from './modules/feed-selection';
 import { splitInnerZipPath } from './modules/feed-url-resolve';
+import { downloadWithProgress } from './modules/feed-download';
 import { routeColor, routeTextColor } from './utils/route-colors';
 
 /** Verbatim CSV rows, kept so object pages can dump every column. */
@@ -224,7 +224,7 @@ export class GTFSStatic {
    */
   async loadFromUrl(url: string, hooks: LoadHooks = {}): Promise<void> {
     const { url: fetchUrl, innerPaths } = splitInnerZipPath(url);
-    const buffer = await downloadWithProgress(fetchUrl, hooks.onDownload);
+    const buffer = await downloadWithProgress(fetchUrl, { onProgress: hooks.onDownload });
     let zip = await JSZip.loadAsync(buffer);
     for (const inner of innerPaths) {
       zip = await openInnerZip(zip, inner);
@@ -534,49 +534,3 @@ async function openInnerZip(zip: JSZip, innerPath: string): Promise<JSZip> {
   return JSZip.loadAsync(await entry.async('arraybuffer'));
 }
 
-/**
- * Fetch a zip, reporting real byte progress when the server tells us the size.
- * Falls back to a single unmeasured read when the body is not streamable.
- */
-async function downloadWithProgress(
-  url: string,
-  onProgress?: (loaded: number, total: number | null) => void,
-): Promise<ArrayBuffer> {
-  let response: Response;
-  try {
-    response = await fetch(url);
-  } catch (err) {
-    throw new Error(describeNetworkError(url, err));
-  }
-  if (!response.ok) {
-    const body = await response.text().catch(() => '');
-    throw new Error(describeHttpError(url, response.status, response.statusText, body));
-  }
-
-  const lengthHeader = response.headers.get('Content-Length');
-  const total = lengthHeader ? Number(lengthHeader) : null;
-
-  if (!response.body || !onProgress) {
-    onProgress?.(0, total);
-    return response.arrayBuffer();
-  }
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let loaded = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-    loaded += value.length;
-    onProgress(loaded, total);
-  }
-
-  const merged = new Uint8Array(loaded);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return merged.buffer;
-}

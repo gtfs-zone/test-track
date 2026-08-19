@@ -183,18 +183,18 @@ module, since both apps need it to render the percent line.
 uses, and wraps the result in a `Blob` for the existing `parseFile` path so
 nothing downstream changes.
 
-- [ ] Write `feed-download.ts` in coloring-book, importing the describers from
+- [x] Write `feed-download.ts` in coloring-book, importing the describers from
       `feed-selection.ts`
-- [ ] Route `GTFSParser.parseFromURL` through it, keeping the `parseFile`
+- [x] Route `GTFSParser.parseFromURL` through it, keeping the `parseFile`
       operation key and its finish/error paths intact
-- [ ] Confirm the inner-zip descent (`splitInnerZipPath` / `extractInnerZip`)
+- [x] Confirm the inner-zip descent (`splitInnerZipPath` / `extractInnerZip`)
       still works on an `ArrayBuffer` wrapped as a `Blob` (SEPTA's
       `google_bus.zip` is the fixture for this)
-- [ ] Commit in coloring-book, note the SHA
-- [ ] In test-track: delete the private `downloadWithProgress` from
+- [x] Commit in coloring-book, note the SHA (`e7d7fe0`)
+- [x] In test-track: delete the private `downloadWithProgress` from
       `gtfs-static.ts`, delete `formatBytes` from `feed-session.ts`, import both
       from the vendored module, add the banner and a `verbatim` row
-- [ ] `pnpm typecheck` and `pnpm build` in both repos
+- [x] `pnpm typecheck` and `pnpm build` in both repos
 
 **Gotchas.** Servers that omit `Content-Length`, and any response behind the
 CORS proxy where the header may be stripped, must still show an indeterminate
@@ -205,6 +205,27 @@ length in `Content-Length` while the reader yields decompressed bytes, so
 `loaded` can exceed `total`; clamp the percent at 100 rather than letting the
 `<progress>` element overflow. Keep the module free of DOM references so it
 stays vendorable and testable.
+
+**What the extraction actually turned up.**
+
+- `downloadPercent(loaded, total)` came along as a fourth export. Both call
+  sites had to clamp for the gzip case anyway, and neither should own that
+  arithmetic; it returns `null` when the size is unknown so the caller decides
+  what an indeterminate bar looks like.
+- coloring-book's `parseFromURL` has one operation key for both download and
+  parse, so the bar now runs 0-100 on bytes and then `parseFile` immediately
+  drops it to 10 for its own scale. The status text carries the phase change
+  (`Downloading feed, 3.1 MB of 8.4 MB` then `Preparing...`), so the reset reads
+  as a new stage rather than a regression. Splitting the key the way test-track
+  does is the alternative if it looks wrong in the browser.
+- `LoadCancelledError` is exported but unreferenced until Phase 3 wires an
+  `AbortController`; `downloadWithProgress` already translates the `AbortError`
+  `DOMException` out of both `fetch` and `reader.read()`.
+- The inner-zip descent is unchanged: `extractInnerZip` only ever calls
+  `outer.arrayBuffer()`, so `new Blob([buffer])` satisfies it. Verified by
+  reading the path, not by loading SEPTA in a browser.
+- `gtfs-static.ts` no longer imports the error describers directly; they reach
+  it through the vendored module now.
 
 ---
 
