@@ -1,7 +1,17 @@
 /**
- * Diff every `verbatim` entry in VENDORED.md against ../coloring-book at the
- * recorded SHA. Exits 0 with a "skipped" message when the sibling repo is
- * absent, so CI (which never has it) is never blocked by this check.
+ * Two passes over VENDORED.md, against ../coloring-book:
+ *
+ * - drift: every `verbatim` entry must still match its source at the *recorded*
+ *   SHA. A mismatch means someone edited the local copy.
+ * - staleness: every entry, `modified` included, is checked for commits landed
+ *   on the source path since the recorded SHA. Drift-clean says nothing about
+ *   freshness, so without this a file ten commits behind reports `ok`.
+ *
+ * Staleness is a warning by default, since a routine build should not break
+ * the day someone commits upstream. `--strict` makes it fatal.
+ *
+ * Exits 0 with a "skipped" message when the sibling repo is absent, so CI
+ * (which never has it) is never blocked by this check.
  */
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
@@ -43,6 +53,20 @@ function stripBanner(text: string): string {
   return text;
 }
 
+/** Commits on `path` after `sha`, newest first. Empty when the entry is current. */
+function commitsSince(sha: string, path: string): string[] {
+  try {
+    const log = execFileSync(
+      'git',
+      ['-C', sourceRepo, 'log', '--oneline', `${sha}..HEAD`, '--', path],
+      { encoding: 'utf8' }
+    ).trim();
+    return log ? log.split('\n') : [];
+  } catch {
+    return [];
+  }
+}
+
 function readFromSource(sha: string, path: string): string | null {
   try {
     return execFileSync('git', ['-C', sourceRepo, 'show', `${sha}:${path}`], {
@@ -62,10 +86,28 @@ const entries = parseVendoredTable(
   readFileSync(resolve(repoRoot, 'VENDORED.md'), 'utf8')
 );
 
+const strict = process.argv.includes('--strict');
+
 let drift = 0;
 let checked = 0;
+let stale = 0;
 
 for (const entry of entries) {
+  // Staleness applies to every entry: a `modified` file still has to be told
+  // about upstream work, even though its body is expected to differ.
+  const behind = commitsSince(entry.sha, entry.sourcePath);
+  if (behind.length > 0) {
+    stale++;
+    console.warn(
+      `STALE    ${entry.localPath}  (${behind.length} commit${
+        behind.length === 1 ? '' : 's'
+      } behind ${entry.sha})`
+    );
+    for (const line of behind) {
+      console.warn(`           ${line}`);
+    }
+  }
+
   if (entry.status !== 'verbatim') continue;
   checked++;
 
@@ -102,3 +144,12 @@ if (drift > 0) {
 }
 
 console.log(`\n${checked} verbatim entries match.`);
+
+if (stale > 0) {
+  const message = `${stale} of ${entries.length} entries are behind coloring-book HEAD.`;
+  if (strict) {
+    console.error(message);
+    process.exit(1);
+  }
+  console.warn(`${message} Re-sync them, or pass --strict to fail on this.`);
+}

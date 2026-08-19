@@ -89,25 +89,25 @@ What is actually waiting upstream:
 | `route-colors.ts`, `route-sort.ts`, `search-controller.ts`, `bottom-sheet.ts`, `basemap-control.ts` | 1-2 | `a2bf4cf` emoji/em-dash removal, `f456bbb` knip |
 | `load-modal.ts`, `feed-selection.ts`, `feed-url-resolve.ts`, `examples.ts` | 1 | `e328ab1` CORS proxy, already applied locally; SHA bump only |
 
-- [ ] Bump the four DRIFT rows to the SHA that carries `e328ab1` and confirm
+- [x] Bump the four DRIFT rows to the SHA that carries `e328ab1` and confirm
       `vendor:check` goes green on them with no file edits
-- [ ] Re-sync the `verbatim` rows: `scs.ts`, `route-source.ts`,
+- [x] Re-sync the `verbatim` rows: `scs.ts`, `route-source.ts`,
       `route-sequence.ts`, `route-colors.ts`, `route-sort.ts`,
       `search-controller.ts`, `theme-controller.ts`, plus any other row whose
       count is non-zero
-- [ ] Adapt `route-sequence.ts` + `route-source.ts` together; `850caff`
+- [x] Adapt `route-sequence.ts` + `route-source.ts` together; `850caff`
       generalizes what a stop_time points at, so `GTFSStaticRouteSource`
       (app-specific, not vendored) has to satisfy the widened interface
-- [ ] Walk `layer-manager.ts` commit by commit; take the styling and stop-layer
+- [x] Walk `layer-manager.ts` commit by commit; take the styling and stop-layer
       commits, skip the flex-zone and transfer-editing work test-track has no
       data for, and record every skip in the row's `@changes`
-- [ ] Re-sync `main.css`, `page-state.ts`, `page-state-manager.ts`,
+- [x] Re-sync `main.css`, `page-state.ts`, `page-state-manager.ts`,
       `bottom-sheet.ts`, `basemap-control.ts` the same way
-- [ ] Extend `scripts/vendor-check.ts` with a freshness pass: for every row,
+- [x] Extend `scripts/vendor-check.ts` with a freshness pass: for every row,
       `git -C ../coloring-book log <sha>..HEAD -- <sourcePath>` and print
       `STALE  <path>  (n commits behind)`. Non-fatal by default so a routine
       build is not blocked, fatal under `--strict`
-- [ ] `pnpm vendor:check` clean, `pnpm typecheck`, `pnpm build`
+- [x] `pnpm vendor:check` clean, `pnpm typecheck`, `pnpm build`
 
 **Gotchas.** `f7084c5` and `cfecd04` both touch how a stop circle is painted,
 and `stop-layer-style.ts` is already vendored at `cfecd04`; re-sync
@@ -118,6 +118,36 @@ sanity check that the banner-strip comparison is working. The `modified` rows
 are the only place where a careless overwrite silently deletes test-track
 behavior; re-read each `@changes` bullet before touching the file, and treat the
 bullet list as the checklist for what to re-apply.
+
+**What the re-sync actually turned up.**
+
+- `d5be033` (station zoom fade) and `cfecd04` (shared stop layer styles) were
+  already applied to `layer-manager.ts`; only its recorded SHA was stale. The
+  `stop-layer-style.ts` row was current, so the gotcha about the two disagreeing
+  never materialized.
+- `f456bbb` (knip) deleted `routeTextColor` upstream as unused, but
+  `gtfs-static.ts` calls it for route badge text. It is kept locally and
+  `route-colors.ts` is now a `modified` row rather than `verbatim`.
+- `850caff` needed a new vendored file: `src/types/gtfs-flex.ts`, carrying
+  `StopTimeRef` alone. The two row helpers there parse coloring-book's
+  `StopTimes` entity, which test-track does not have, so the row is `modified`.
+  `GTFSStaticRouteSource` now maps its `StopTime`s to `{ kind: 'stop', id }`
+  refs and answers the three name lookups (`locationGroupName`, `zoneName`,
+  `refName`); `route-page.ts` reads `stop.ref.id`.
+- The accent half of `f7084c5` was worth taking on its own: `utils/theme-color.ts`
+  is now vendored, the hardcoded `#e74c3c` focus accent is gone, and
+  `LayerManager.refreshAccentColor()` is wired to `ThemeController.onThemeChange`
+  through `MapController`. The vendored `theme-controller.ts` gained that hook in
+  the same upstream commit, so the re-sync supplied both halves.
+- `a2bf4cf` was very nearly a no-op: `basemap-control.ts` had already dropped the
+  emoji `console.log`s it rewrites, and `main.css`'s `ba983ca` is a deletion of
+  search rules that were not in the local copy either.
+- Skipped and recorded in `@changes`: `136329b` (zone / location_group page
+  states), `69dd3f6` (timetable stop focus), `1dbef88` / `63af1c9` / `26b87e2`
+  (Flex zones), `c48eede` / `b5e30d1` (transfer edges and table-row hover).
+- `vendor:check` now runs the staleness pass over *every* row, `modified`
+  included, printing `STALE <path> (n commits behind <sha>)` plus the commit
+  subjects. Warning by default, fatal under `--strict`.
 
 ---
 
