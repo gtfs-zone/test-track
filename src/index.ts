@@ -6,6 +6,7 @@ import type { AlertRecord } from './gtfs-rt';
 import { showAboutModal } from './modules/about-modal';
 import { showLoadModal } from './modules/load-modal';
 import { notify } from './modules/notification-system';
+import { LoadCancelledError } from './modules/feed-download';
 import { PanelResizer, restorePanelWidth } from './modules/panel-resizer';
 import { BottomSheetController } from './modules/bottom-sheet';
 import { ThemeController } from './modules/theme-controller';
@@ -153,6 +154,10 @@ async function handleLoadResult(selection: FeedSelection | null): Promise<void> 
     showFeedControls();
     notify.success(`Loaded ${label}`);
   } catch (err) {
+    if (err instanceof LoadCancelledError) {
+      notify.info('Load cancelled');
+      return;
+    }
     console.error('Load failed:', err);
     notify.error(`Failed to load ${label}: ${err instanceof Error ? err.message : String(err)}`);
   }
@@ -176,6 +181,10 @@ reloadBtn.addEventListener('click', async () => {
     await session.reload();
     notify.success(`Reloaded ${label}`);
   } catch (err) {
+    if (err instanceof LoadCancelledError) {
+      notify.info('Load cancelled');
+      return;
+    }
     console.error('Reload failed:', err);
     notify.error(`Failed to reload ${label}: ${err instanceof Error ? err.message : String(err)}`);
   } finally {

@@ -92,6 +92,8 @@ export interface LoadHooks {
   /** `total` is null when the server sends no Content-Length. */
   onDownload?: (loaded: number, total: number | null) => void;
   onParse?: (fileName: string, done: number, total: number) => void;
+  /** Aborts the download only; a parse always runs to completion. */
+  signal?: AbortSignal;
 }
 
 export interface StaticCounts {
@@ -224,7 +226,10 @@ export class GTFSStatic {
    */
   async loadFromUrl(url: string, hooks: LoadHooks = {}): Promise<void> {
     const { url: fetchUrl, innerPaths } = splitInnerZipPath(url);
-    const buffer = await downloadWithProgress(fetchUrl, { onProgress: hooks.onDownload });
+    const buffer = await downloadWithProgress(fetchUrl, {
+      onProgress: hooks.onDownload,
+      signal: hooks.signal,
+    });
     let zip = await JSZip.loadAsync(buffer);
     for (const inner of innerPaths) {
       zip = await openInnerZip(zip, inner);

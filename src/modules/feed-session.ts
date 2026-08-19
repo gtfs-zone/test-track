@@ -5,7 +5,7 @@ import type { AlertRecord, FeedStatus, FetchStartDetail, TripUpdate } from '../g
 import type { VehiclePosition } from '../map-controller';
 import { adoptFeedTimezone } from './feed-time';
 import { feedProgressIndicator } from './feed-progress-indicator';
-import { downloadPercent, formatBytes } from './feed-download';
+import { downloadPercent, formatBytes, LoadCancelledError } from './feed-download';
 import type { FeedSelection, RealtimeEndpointName, StaticSource } from './feed-selection';
 import {
   REALTIME_ENDPOINT_LABELS,
@@ -70,8 +70,17 @@ export class FeedSession extends EventTarget {
     if (!isComplete(selection)) {
       throw new Error('Selection is incomplete');
     }
+    const previous = this.selection;
     this.selection = selection;
-    await this.loadStatic(selection.static!);
+    try {
+      await this.loadStatic(selection.static!);
+    } catch (err) {
+      // A cancelled load leaves the session exactly as it was.
+      if (err instanceof LoadCancelledError) {
+        this.selection = previous;
+      }
+      throw err;
+    }
     this.startPoller(selection);
     this.emitChange();
   }
@@ -129,12 +138,21 @@ export class FeedSession extends EventTarget {
       },
     };
 
-    feedProgressIndicator.startLoading('static-download', `Downloading ${label}…`);
+    // A file upload has no fetch to abort, so it gets no Cancel button.
+    const controller = source.kind === 'file' ? null : new AbortController();
+    feedProgressIndicator.startLoading(
+      'static-download',
+      `Downloading ${label}…`,
+      controller ? { onCancel: () => controller.abort() } : {},
+    );
     try {
       if (source.kind === 'file') {
         await feed.loadFromFile(source.file, hooks);
       } else {
-        await feed.loadFromUrl(resolvedStaticUrl(source), hooks);
+        await feed.loadFromUrl(resolvedStaticUrl(source), {
+          ...hooks,
+          signal: controller!.signal,
+        });
       }
       this.staticFeed = feed;
       // Every transit time rendered from here on is anchored to this feed's zone.
@@ -143,7 +161,10 @@ export class FeedSession extends EventTarget {
       this.staticLoadedAt = Date.now();
       this.dispatchEvent(new CustomEvent<GTFSStatic>('staticloaded', { detail: feed }));
     } catch (err) {
-      this.staticError = err instanceof Error ? err.message : String(err);
+      // A cancel is not a feed error: the previously loaded feed stays live.
+      if (!(err instanceof LoadCancelledError)) {
+        this.staticError = err instanceof Error ? err.message : String(err);
+      }
       throw err;
     } finally {
       feedProgressIndicator.finishLoading('static-download');

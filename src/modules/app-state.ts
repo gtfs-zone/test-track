@@ -13,6 +13,7 @@ import { pageStatesEqual } from '../types/page-state';
 import { buildBreadcrumbs, validateState } from './breadcrumbs';
 import type { FeedSession } from './feed-session';
 import { isComplete } from './feed-selection';
+import { LoadCancelledError } from './feed-download';
 import { paramsToSelection, selectionToParams } from './feed-url';
 import { notify } from './notification-system';
 import { PageStateManager } from './page-state-manager';
@@ -94,6 +95,11 @@ export class AppState {
     try {
       await this.session.load(selection);
     } catch (err) {
+      if (err instanceof LoadCancelledError) {
+        notify.info('Load cancelled');
+        this.hooks.onFocusChange(this.focus);
+        return false;
+      }
       notify.error(
         `Failed to load feeds from link: ${err instanceof Error ? err.message : String(err)}`,
       );

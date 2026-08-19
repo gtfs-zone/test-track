@@ -22,7 +22,7 @@ in `../coloring-book` (skipped if that sibling repo isn't present).
 |---|---|---|---|---|
 | `src/styles/main.css` | `src/styles/main.css` | a4b5ee1 | modified | Editor-only rules dropped, no mobile dock, daisyUI v4 color refs translated to v5 |
 | `src/modules/notification-system.ts` | `src/modules/notification-system.ts` | 51e8536 | verbatim | Toast system; `notify` singleton needs `.initialize()`. Imports `renderCloseIcon` from the local `modal-utils.ts` |
-| `src/modules/feed-progress-indicator.ts` | `src/modules/feed-progress-indicator.ts` | f9c718c | verbatim | Top loading bar; singleton touches `document.body` at import time |
+| `src/modules/feed-progress-indicator.ts` | `src/modules/feed-progress-indicator.ts` | c6199c5 | verbatim | Top loading bar; singleton touches `document.body` at import time |
 | `src/modules/theme-controller.ts` | `src/modules/theme-controller.ts` | a4b5ee1 | verbatim | Replaces the inline theme toggle that never applied `data-theme` |
 | `src/modules/panel-resizer.ts` | `src/modules/panel-resizer.ts` | f9c718c | modified | Persists `--panel-width` to localStorage; adds `restorePanelWidth()` |
 | `src/modules/bottom-sheet.ts` | `src/modules/bottom-sheet.ts` | a4b5ee1 | modified | Dock and TabManager stripped; re-activates across the 768px breakpoint; `coveredHeight()`/`onSnapChange()` added for map padding |
