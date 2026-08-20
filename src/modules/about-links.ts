@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/about-links.ts
-   @sha 310dce0
+   @sha 2c858bf
    @status verbatim */
 // The off-site destinations both gtfs.zone apps name in their About modal, and
 // the blocks that render them. Each app supplies its own identity through
@@ -7,14 +7,21 @@
 // shared so a URL cannot drift between the two modals.
 
 const SITE_URL = 'https://gtfs.zone';
+const MANAGER_URL = 'https://manage.rt.gtfs.zone';
 const FORGE_URL = 'https://git.kcfam.us/gtfs.zone';
 const CONTACT_EMAIL = 'inquiry@gtfs.zone';
 
 export interface AboutApp {
   /** Host name, used as the modal title and in prose. */
   name: string;
-  /** One paragraph saying what the app does. */
-  blurb: string;
+  /** Lead paragraphs saying what the app does, one <p> each. */
+  blurb: string[];
+  /** Optional bulleted list of what the app shows, under the paragraphs. */
+  highlights?: string[];
+  /** Optional closing paragraph, rendered after the bullets. */
+  blurbFooter?: string;
+  /** Subject line the contact link opens with. */
+  contactSubject: string;
   /** Forgejo repo name under gtfs.zone. */
   repo: string;
   /** The other app, linked so each modal points at its sibling. */
@@ -30,6 +37,12 @@ function divider(label: string): string {
   return `<div class="divider text-sm font-semibold opacity-60">${label}</div>`;
 }
 
+function bullets(items: string[]): string {
+  return `<ul class="list-disc list-inside space-y-1 text-sm">${items
+    .map((item) => `<li>${item}</li>`)
+    .join('')}</ul>`;
+}
+
 function list(items: string[]): string {
   return `<ul class="list-none space-y-1 text-sm">${items
     .map((item) => `<li>${item}</li>`)
@@ -37,7 +50,16 @@ function list(items: string[]): string {
 }
 
 export function renderBlurb(app: AboutApp): string {
-  return `<p>${app.blurb}</p>`;
+  // Lead paragraphs, then the bullets, then a closing line. Breaking the blurb
+  // up this way is what keeps a long one from reading as a wall of prose.
+  const parts = app.blurb.map((p) => `<p>${p}</p>`);
+  if (app.highlights) {
+    parts.push(bullets(app.highlights));
+  }
+  if (app.blurbFooter) {
+    parts.push(`<p>${app.blurbFooter}</p>`);
+  }
+  return `<div class="space-y-2">${parts.join('')}</div>`;
 }
 
 export function renderVersionAndSource(app: AboutApp, version: string): string {
@@ -58,6 +80,7 @@ export function renderProjectSection(app: AboutApp): string {
     list([
       `${link(SITE_URL, 'gtfs.zone')}: the project these tools belong to`,
       `${link(app.sibling.href, app.sibling.name)}: ${app.sibling.note}`,
+      `${link(MANAGER_URL, 'manage.rt.gtfs.zone')}: run your own realtime feed (needs an account)`,
     ])
   );
 }
@@ -75,10 +98,11 @@ export function renderResourcesSection(): string {
 export function renderFeedbackSection(app: AboutApp): string {
   // The mailto is first because Forgejo redirects anonymous visitors away from
   // the new-issue form; the email always works.
+  const mailto = `mailto:${CONTACT_EMAIL}?subject=${encodeURIComponent(app.contactSubject)}`;
   return (
     divider('Feedback') +
     list([
-      `<a href="mailto:${CONTACT_EMAIL}" class="link">${CONTACT_EMAIL}</a>: questions, feed requests, anything else`,
+      `${link(mailto, CONTACT_EMAIL)}: questions, feed requests, anything else`,
       `${link(`${FORGE_URL}/${app.repo}/issues/new`, 'File an issue')}: bug reports and feature requests (needs a git.kcfam.us account)`,
     ])
   );

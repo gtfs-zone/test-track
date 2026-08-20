@@ -10,8 +10,19 @@ import {
 
 const APP: AboutApp = {
   name: 'viz.rt.gtfs.zone',
-  blurb:
-    'viz.rt.gtfs.zone is a browser-based GTFS Realtime visualizer. GTFS Realtime is the feed an agency publishes alongside its schedule to say where its vehicles are right now, how late each trip is running, and what is disrupted. Point this at a static GTFS feed plus its realtime feeds and the map draws the routes and stops, the vehicles moving along them, the arrival predictions for any stop, and the active service alerts. Every feed is fetched and decoded in your browser, so nothing you load is uploaded anywhere.',
+  blurb: [
+    'viz.rt.gtfs.zone shows a GTFS Realtime feed on a live map.',
+    'GTFS Realtime is what an agency publishes alongside its schedule to say where its vehicles are right now, how late each trip is running, and what is disrupted. Point this at a static GTFS feed plus its realtime feeds and the map draws the rest:',
+  ],
+  highlights: [
+    'Routes and stops from the schedule',
+    'Vehicles moving along them, updated every few seconds',
+    'Arrival predictions at any stop',
+    'Active service alerts',
+  ],
+  blurbFooter:
+    'Every feed is fetched and decoded in your browser. Nothing you load is uploaded anywhere.',
+  contactSubject: 'viz.rt.gtfs.zone feedback',
   repo: 'test-track',
   sibling: {
     name: 'edit.gtfs.zone',
