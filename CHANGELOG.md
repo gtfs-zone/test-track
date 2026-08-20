@@ -1,3 +1,26 @@
+## v0.7.0 (2026-08-20)
+
+### Feat
+
+- **nav**: match edit's navbar, add a Clear feed button, and polish About
+- **about**: restructure the About modal onto the shared blocks and add SEO metadata
+- **load**: cancel a static feed download from the progress bar
+- **load**: vendor the shared feed downloader
+- **map**: resolve the map accent from the active theme
+
+### Fix
+
+- **nav**: icon-only editor link and navbar spacing
+- **map**: always frame the feed on static load
+
+## v0.6.3 (2026-08-18)
+
+## v0.6.2 (2026-08-18)
+
+### Fix
+
+- **load**: do not block an http feed URL that goes through the proxy
+
 ## v0.6.1 (2026-08-15)
 
 ### Fix
