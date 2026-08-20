@@ -226,11 +226,11 @@ export class GTFSStatic {
    */
   async loadFromUrl(url: string, hooks: LoadHooks = {}): Promise<void> {
     const { url: fetchUrl, innerPaths } = splitInnerZipPath(url);
-    const buffer = await downloadWithProgress(fetchUrl, {
+    const blob = await downloadWithProgress(fetchUrl, {
       onProgress: hooks.onDownload,
       signal: hooks.signal,
     });
-    let zip = await JSZip.loadAsync(buffer);
+    let zip = await JSZip.loadAsync(blob);
     for (const inner of innerPaths) {
       zip = await openInnerZip(zip, inner);
     }

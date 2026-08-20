@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/feed-download.ts
-   @sha e7d7fe0
+   @sha 2505f6c
    @status verbatim */
 /**
  * Fetching a feed archive with real byte progress.
@@ -12,11 +12,22 @@
  * Cancel aborts the *fetch* only. Once the bytes are in hand the caller parses
  * them to completion, so no app can end up with a half-ingested feed.
  *
+ * Progress callbacks are coalesced: a fetch chunk is 16-64 KB, so an unthrottled
+ * callback turns a large feed into thousands of main-thread DOM writes that
+ * compete with draining the body.
+ *
  * Deliberately DOM-free: it is vendored into test-track and has to stay
  * testable outside a browser document.
  */
 
 import { describeHttpError, describeNetworkError } from './feed-selection';
+
+/**
+ * Shortest gap between two `onProgress` calls. Kept local rather than in the
+ * app's CONFIG because this file is vendored into test-track and stays
+ * dependency-free.
+ */
+const PROGRESS_INTERVAL_MS = 100;
 
 /** Thrown when the caller's `AbortSignal` fires before the body is fully read. */
 export class LoadCancelledError extends Error {
@@ -44,7 +55,7 @@ function isAbort(err: unknown): boolean {
 export async function downloadWithProgress(
   url: string,
   options: DownloadOptions = {}
-): Promise<ArrayBuffer> {
+): Promise<Blob> {
   const { onProgress, signal } = options;
 
   let response: Response;
@@ -69,7 +80,7 @@ export async function downloadWithProgress(
   if (!response.body || !onProgress) {
     onProgress?.(0, total);
     try {
-      return await response.arrayBuffer();
+      return await response.blob();
     } catch (err) {
       if (isAbort(err)) {
         throw new LoadCancelledError();
@@ -81,6 +92,7 @@ export async function downloadWithProgress(
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let loaded = 0;
+  let lastEmit = 0;
   for (;;) {
     let chunk: ReadableStreamReadResult<Uint8Array>;
     try {
@@ -96,16 +108,20 @@ export async function downloadWithProgress(
     }
     chunks.push(chunk.value);
     loaded += chunk.value.length;
-    onProgress(loaded, total);
+    const now = performance.now();
+    if (now - lastEmit >= PROGRESS_INTERVAL_MS) {
+      lastEmit = now;
+      onProgress(loaded, total);
+    }
   }
 
-  const merged = new Uint8Array(loaded);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return merged.buffer;
+  // The throttle can swallow the last chunk, so land the bar on the real count.
+  onProgress(loaded, total);
+  // Blob assembly, not a merged Uint8Array: every caller wants a Blob, and this
+  // keeps the whole feed from being copied twice through the JS heap. The cast
+  // covers lib.dom typing chunks as possibly SharedArrayBuffer-backed, which a
+  // fetch body never is.
+  return new Blob(chunks as BlobPart[]);
 }
 
 /**
