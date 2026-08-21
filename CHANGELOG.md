@@ -1,3 +1,9 @@
+## v0.7.1 (2026-08-21)
+
+### Perf
+
+- **load**: re-vendor the feed downloader with coalesced progress
+
 ## v0.7.0 (2026-08-20)
 
 ### Feat
