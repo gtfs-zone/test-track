@@ -439,30 +439,28 @@ Gotchas
 
 Phase 1's table, applied to this repo's own files, plus the hash param.
 
-- [ ] `src/gtfs-static.ts` becomes `src/gtfs-scheduled.ts`, `GTFSStatic` becomes
+- [x] `src/gtfs-static.ts` becomes `src/gtfs-scheduled.ts`, `GTFSStatic` becomes
       `GTFSScheduled`, via `git mv`. Update every import, including
       `gtfs-static-route-source.ts`, which becomes
       `gtfs-scheduled-route-source.ts`.
-- [ ] `src/modules/feed-session.ts`: `staticFeed` becomes `scheduledFeed`,
+- [x] `src/modules/feed-session.ts`: `staticFeed` becomes `scheduledFeed`,
       `staticLoadedAt` becomes `scheduleLoadedAt`, `staticError` becomes
       `scheduleError`, and the `staticloaded` event becomes `scheduleloaded`.
-- [ ] `src/modules/feed-url.ts`: write `scheduled=` and read `scheduled` first,
+- [x] `src/modules/feed-url.ts`: write `scheduled=` and read `scheduled` first,
       falling back to `static`. Keep both in `PARAM_KEYS` so a legacy-only hash
       is still recognised as naming a feed. Rewrite the scheme comment.
-- [ ] `src/modules/status-page.ts`: `renderStaticSection` becomes
+- [x] `src/modules/status-page.ts`: `renderStaticSection` becomes
       `renderScheduledSection` with the heading `Scheduled feed`, and the
       uploaded-file sentence in `renderShare` is reworded.
-- [ ] `src/index.ts`: the `staticSrc` local and the editor-link comment, the
+- [x] `src/index.ts`: the `staticSrc` local and the editor-link comment, the
       notify strings, and the `scheduleloaded` listener.
-- [ ] `src/index.html`: `<title>`, `og:title`, both descriptions, and the
-      `#edit-feed-btn` tooltip ("Edit schedule in coloring-book" already reads
-      right, leave it).
-- [ ] Grep `src/` for `static` and triage to zero, same rule as Phase 1.
-- [ ] Verify by hand: a `#static=...` link still loads, and the address bar
-      rewrites itself to `#scheduled=...` on the next focus change. Note that
-      rewrite in the module comment, because it means an old link silently
-      upgrades.
-- [ ] Commit as `refactor(vocab): call a static feed a scheduled feed`.
+- [x] ~~`src/index.html`~~ — nothing in the head or the tooltip says "static"
+      (see discoveries).
+- [x] Grep `src/` for `static` and triage to zero, same rule as Phase 1.
+- [x] Note the rewrite in the module comment, because it means an old link
+      silently upgrades. Left for hand verification: a `#static=...` link still
+      loads and the address bar rewrites itself to `#scheduled=...`.
+- [x] Commit as `refactor(vocab): call a static feed a scheduled feed`.
 
 Gotchas
 - `PageStateManager.setFeedParams` diffs the params it is handed. Handing it
@@ -473,6 +471,32 @@ Gotchas
 - The `staticloaded` event name is listened for in three places
   (`index.ts`, `app-state.ts`, `panel-renderer.ts`). An event name is a string,
   so the compiler will not catch a missed one. Grep, do not trust.
+
+Discoveries
+- The rewrite is immediate, not deferred to the next focus change.
+  `session.load` fires `change`, `AppState`'s handler calls
+  `setFeedParams(selectionToParams(...))`, and `setFeedParams` writes the hash
+  straight away. So a `#static=` link upgrades to `#scheduled=` the moment the
+  feed finishes loading.
+- The `buildHash` gotcha is a non-issue: it builds a fresh `URLSearchParams`
+  from `feedParams`, and `setFeedParams` replaces that record wholesale, so the
+  old `static` key cannot survive a write.
+- `src/index.html` needed no edit. The title, og tags and both descriptions talk
+  about GTFS Realtime and never say "static", and the `#edit-feed-btn` tooltip
+  already read "Edit schedule in coloring-book". Phase 8 owns the titles anyway.
+- `route-source.ts` is a `verbatim` row whose doc comment named `GTFSStatic`,
+  which Phase 1 deliberately left for this phase. Editing it here would have
+  demoted the row, so the one-line comment fix landed upstream as coloring-book
+  `d7dd8e0` and was re-vendored in the same commit.
+- `feed-session.ts`'s progress-indicator keys (`static-download` /
+  `static-parse`) were not in the plan's list. They are strings the compiler
+  cannot check, same class of hazard as the event name, and they renamed too.
+- Three `modified` vendored files carry the old names in prose or types
+  (`layer-manager.ts`, `route-colors.ts`, `types/gtfs-flex.ts`). Their local
+  divergence is what the rename touches, so they were edited in place and the
+  matching VENDORED.md notes were updated with them.
+- `pnpm vendor:check` reports 22 verbatim entries matching and no drift; the
+  four rows behind HEAD are the same `modified` four Phase 4 listed.
 
 ## Phase 6: Boot into the load modal, with a continue card
 
