@@ -1,15 +1,15 @@
 /* @vendored-from coloring-book:src/modules/feed-selection.ts
-   @sha 200966a
+   @sha fcb17b2
    @status verbatim */
 /**
  * Feed selection model.
  *
- * A session needs BOTH a static GTFS source and at least one GTFS-RT endpoint
+ * A session needs BOTH a scheduled GTFS source and at least one GTFS-RT endpoint
  * before it can load. That contract lives here: every load path (examples,
  * atlas, manual, and later the URL hash) produces a `FeedSelection`, and
  * `isComplete` is the single gate.
  *
- * `useCors` is per-source rather than global, because a static feed from an
+ * `useCors` is per-source rather than global, because a scheduled feed from an
  * agency CDN and an RT feed from rt.gtfs.zone have genuinely different proxy
  * needs.
  */
@@ -57,7 +57,7 @@ export function describeHttpError(
   return head;
 }
 
-export type StaticSource =
+export type ScheduledSource =
   | { kind: 'url'; url: string; useCors: boolean; label: string }
   | { kind: 'file'; file: File; label: string };
 
@@ -70,7 +70,7 @@ export interface RealtimeSource {
 }
 
 export interface FeedSelection {
-  static: StaticSource | null;
+  scheduled: ScheduledSource | null;
   realtime: RealtimeSource | null;
 }
 
@@ -121,17 +121,17 @@ export function hasAnyRealtimeUrl(rt: RealtimeSource | null): boolean {
  *
  * `requireRealtime` is what separates the two apps sharing this file: a live
  * map is useless without a realtime endpoint, but a schedule editor only ever
- * needs the static feed. Defaults to the stricter rule so the realtime app
+ * needs the schedule. Defaults to the stricter rule so the realtime app
  * reads unchanged.
  */
 export function isComplete(
   sel: FeedSelection,
   requireRealtime = true
 ): boolean {
-  if (!sel.static) {
+  if (!sel.scheduled) {
     return false;
   }
-  if (sel.static.kind === 'url' && !sel.static.url) {
+  if (sel.scheduled.kind === 'url' && !sel.scheduled.url) {
     return false;
   }
   return !requireRealtime || hasAnyRealtimeUrl(sel.realtime);
@@ -142,14 +142,14 @@ export function describeMissing(
   sel: FeedSelection,
   requireRealtime = true
 ): string {
-  const needStatic =
-    !sel.static || (sel.static.kind === 'url' && !sel.static.url);
+  const needScheduled =
+    !sel.scheduled || (sel.scheduled.kind === 'url' && !sel.scheduled.url);
   const needRt = requireRealtime && !hasAnyRealtimeUrl(sel.realtime);
-  if (needStatic && needRt) {
-    return 'Choose a static feed and a realtime feed';
+  if (needScheduled && needRt) {
+    return 'Choose a scheduled feed and a realtime feed';
   }
-  if (needStatic) {
-    return 'Choose a static feed';
+  if (needScheduled) {
+    return 'Choose a scheduled feed';
   }
   if (needRt) {
     return 'Choose a realtime feed';
@@ -158,13 +158,13 @@ export function describeMissing(
 }
 
 /**
- * The static URL to actually fetch, proxied if the source asks for it.
+ * The scheduled URL to actually fetch, proxied if the source asks for it.
  *
  * Note the asymmetry with the realtime side: `RT_BASE` resolution is realtime
- * only. A path-only static URL stays same-origin, because there is no single
- * server that static feeds come from.
+ * only. A path-only scheduled URL stays same-origin, because there is no single
+ * server that scheduled feeds come from.
  */
-export function resolvedStaticUrl(src: StaticSource): string {
+export function resolvedScheduledUrl(src: ScheduledSource): string {
   return src.kind === 'url' ? maybeProxy(src.url, src.useCors) : '';
 }
 
@@ -192,15 +192,15 @@ export function resolvedRealtimeUrl(url: string, useCors: boolean): string {
 /** A short description of the whole selection, for toasts and titles. */
 export function describeSelection(sel: FeedSelection): string {
   const parts: string[] = [];
-  if (sel.static) {
-    parts.push(sel.static.label);
+  if (sel.scheduled) {
+    parts.push(sel.scheduled.label);
   }
-  if (sel.realtime && sel.realtime.label !== sel.static?.label) {
+  if (sel.realtime && sel.realtime.label !== sel.scheduled?.label) {
     parts.push(sel.realtime.label);
   }
   return parts.join(' + ') || 'feeds';
 }
 
 export function emptySelection(): FeedSelection {
-  return { static: null, realtime: null };
+  return { scheduled: null, realtime: null };
 }

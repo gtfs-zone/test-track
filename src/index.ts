@@ -128,7 +128,7 @@ function showFeedControls(): void {
   // coloring-book does not understand the fragment. Left deliberately, because
   // an editor link that visibly fails is clearer than one that silently opens
   // the wrong dataset.
-  const staticSrc = session.selection?.static;
+  const staticSrc = session.selection?.scheduled;
   if (staticSrc?.kind === 'url' && staticSrc.url) {
     editBtn.href = `${CONFIG.EDITOR_BASE}/#load=${encodeURIComponent(staticSrc.url)}`;
     editBtn.classList.remove('hidden');
@@ -175,7 +175,10 @@ async function handleLoadResult(selection: FeedSelection | null): Promise<void> 
 // Seeded from the current selection, which is what makes reopening the modal
 // the way to edit a loaded feed — the right panel has no editors of its own.
 document.getElementById('load-btn')!.addEventListener('click', async () => {
-  await handleLoadResult(await showLoadModal(session.selection));
+  // The modal can also return `{ kind: 'continue' }`, but only when it is given
+  // a `continueWith` card, which this call site does not.
+  const result = await showLoadModal(session.selection);
+  await handleLoadResult(result?.kind === 'selection' ? result.selection : null);
 });
 
 // ─── Reload feed button ───────────────────────────────────────────────────────

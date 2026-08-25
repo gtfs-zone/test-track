@@ -14,13 +14,13 @@
  * session.
  */
 
-import type { FeedSelection, RealtimeSource, StaticSource } from './feed-selection';
+import type { FeedSelection, RealtimeSource, ScheduledSource } from './feed-selection';
 
 const PARAM_KEYS = ['static', 'rt_vp', 'rt_tu', 'rt_al', 'cors'] as const;
 
 /** True when a link can restore this selection in full. */
 export function isReproducible(sel: FeedSelection | null): boolean {
-  return sel?.static?.kind === 'url';
+  return sel?.scheduled?.kind === 'url';
 }
 
 /** The hash params describing a selection. Empty when there is nothing to say. */
@@ -30,9 +30,9 @@ export function selectionToParams(sel: FeedSelection | null): Record<string, str
 
   const corsFlags: string[] = [];
 
-  if (sel.static?.kind === 'url' && sel.static.url) {
-    params.static = sel.static.url;
-    if (sel.static.useCors) corsFlags.push('s');
+  if (sel.scheduled?.kind === 'url' && sel.scheduled.url) {
+    params.static = sel.scheduled.url;
+    if (sel.scheduled.useCors) corsFlags.push('s');
   }
 
   const rt = sel.realtime;
@@ -61,7 +61,7 @@ export function paramsToSelection(hash: string): FeedSelection | null {
   const cors = new Set((params.get('cors') ?? '').split(',').filter(Boolean));
 
   const staticUrl = params.get('static');
-  const staticSource: StaticSource | null = staticUrl
+  const staticSource: ScheduledSource | null = staticUrl
     ? {
         kind: 'url',
         url: staticUrl,
@@ -86,7 +86,7 @@ export function paramsToSelection(hash: string): FeedSelection | null {
       : null;
 
   if (!staticSource && !realtime) return null;
-  return { static: staticSource, realtime };
+  return { scheduled: staticSource, realtime };
 }
 
 /**

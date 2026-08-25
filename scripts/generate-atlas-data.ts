@@ -11,7 +11,7 @@
  * `static_current`, an `rt` row when it has any realtime URL. The UI pins one of
  * each, so they must be separately selectable.
  *
- * `--static-only` drops the rt rows. An app with no realtime would otherwise
+ * `--schedule-only` drops the rt rows. An app with no realtime would otherwise
  * ship several hundred KB of endpoints it can never load, and this is the only
  * difference between the two apps' copies of this file — so it is a flag rather
  * than a fork.
@@ -31,7 +31,7 @@ const LOCAL_ATLAS_PATH = path.join(__dirname, '..', '..', 'transitland-atlas');
 /** GBFS is bikeshare discovery, not something this app can load. */
 const USABLE_SPECS = new Set(['gtfs', 'gtfs-rt']);
 
-const STATIC_ONLY = process.argv.includes('--static-only');
+const SCHEDULE_ONLY = process.argv.includes('--schedule-only');
 
 interface DmfrUrls {
   static_current?: string;
@@ -75,7 +75,7 @@ export interface AtlasRow {
   operator_name: string;
   /** DMFR source domain (e.g. "511.org"). The corpus carries no place data. */
   source: string;
-  staticUrl?: string;
+  scheduledUrl?: string;
   vehiclesUrl?: string;
   tripUpdatesUrl?: string;
   alertsUrl?: string;
@@ -179,11 +179,11 @@ function buildRows(docs: SourceDoc[]): AtlasRow[] {
       if (!USABLE_SPECS.has(feed.spec ?? 'gtfs')) continue;
 
       const urls = feed.urls ?? {};
-      const staticUrl = urls.static_current;
+      const scheduledUrl = urls.static_current;
       const vehiclesUrl = urls.realtime_vehicle_positions;
       const tripUpdatesUrl = urls.realtime_trip_updates;
       const alertsUrl = urls.realtime_alerts;
-      if (!staticUrl && !vehiclesUrl && !tripUpdatesUrl && !alertsUrl) continue;
+      if (!scheduledUrl && !vehiclesUrl && !tripUpdatesUrl && !alertsUrl) continue;
 
       const op = operatorsByFeedId.get(feed.id);
       const operatorName = op?.name ?? op?.short_name ?? '';
@@ -202,10 +202,10 @@ function buildRows(docs: SourceDoc[]): AtlasRow[] {
         rows.push(row);
       };
 
-      if (staticUrl) {
-        push({ ...base, rowId: `${feed.id}:static`, kind: 'static', staticUrl });
+      if (scheduledUrl) {
+        push({ ...base, rowId: `${feed.id}:static`, kind: 'static', scheduledUrl });
       }
-      if (!STATIC_ONLY && (vehiclesUrl || tripUpdatesUrl || alertsUrl)) {
+      if (!SCHEDULE_ONLY && (vehiclesUrl || tripUpdatesUrl || alertsUrl)) {
         push({
           ...base,
           rowId: `${feed.id}:rt`,
@@ -228,10 +228,10 @@ async function writeRows(rows: AtlasRow[]): Promise<void> {
   await fs.writeFile(OUTPUT_PATH, JSON.stringify(rows));
 
   const { size } = await fs.stat(OUTPUT_PATH);
-  const staticCount = rows.filter(r => r.kind === 'static').length;
+  const scheduledCount = rows.filter(r => r.kind === 'static').length;
   const named = rows.filter(r => r.operator_name).length;
   console.log(
-    `\n${rows.length} rows (${staticCount} static, ${rows.length - staticCount} rt), ` +
+    `\n${rows.length} rows (${scheduledCount} scheduled, ${rows.length - scheduledCount} rt), ` +
       `${named} with a resolved operator, ${(size / 1024 / 1024).toFixed(2)} MB`,
   );
   console.log(`Written to ${OUTPUT_PATH}`);

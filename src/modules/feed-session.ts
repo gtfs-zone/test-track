@@ -6,12 +6,12 @@ import type { VehiclePosition } from '../map-controller';
 import { adoptFeedTimezone } from './feed-time';
 import { feedProgressIndicator } from './feed-progress-indicator';
 import { downloadPercent, formatBytes, LoadCancelledError } from './feed-download';
-import type { FeedSelection, RealtimeEndpointName, StaticSource } from './feed-selection';
+import type { FeedSelection, RealtimeEndpointName, ScheduledSource } from './feed-selection';
 import {
   REALTIME_ENDPOINT_LABELS,
   isComplete,
   resolvedRealtimeUrls,
-  resolvedStaticUrl,
+  resolvedScheduledUrl,
 } from './feed-selection';
 
 /**
@@ -73,7 +73,7 @@ export class FeedSession extends EventTarget {
     const previous = this.selection;
     this.selection = selection;
     try {
-      await this.loadStatic(selection.static!);
+      await this.loadStatic(selection.scheduled!);
     } catch (err) {
       // A cancelled load leaves the session exactly as it was.
       if (err instanceof LoadCancelledError) {
@@ -128,7 +128,7 @@ export class FeedSession extends EventTarget {
     this.emitChange();
   }
 
-  private async loadStatic(source: StaticSource): Promise<void> {
+  private async loadStatic(source: ScheduledSource): Promise<void> {
     const feed = new GTFSStatic();
     const label = source.label;
 
@@ -170,7 +170,7 @@ export class FeedSession extends EventTarget {
       if (source.kind === 'file') {
         await feed.loadFromFile(source.file, hooks);
       } else {
-        await feed.loadFromUrl(resolvedStaticUrl(source), {
+        await feed.loadFromUrl(resolvedScheduledUrl(source), {
           ...hooks,
           signal: controller!.signal,
         });

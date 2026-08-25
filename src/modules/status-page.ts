@@ -245,7 +245,7 @@ function renderEndpoints(session: FeedSession): string {
 }
 
 function renderStaticSection(session: FeedSession): string {
-  const src = session.selection?.static;
+  const src = session.selection?.scheduled;
   if (!src) return '';
 
   const source =

@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/feed-url-resolve.ts
-   @sha 27587a0
+   @sha fcb17b2
    @status verbatim */
 /**
  * Turning what someone typed into a URL that can actually be fetched.
