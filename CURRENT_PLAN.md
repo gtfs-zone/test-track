@@ -630,25 +630,25 @@ Type labels, decided once:
 | `vehicle` | Vehicle |
 | `alert` | Service alert |
 
-- [ ] `src/modules/breadcrumbs.ts`: keep the variant switch, the label helpers,
+- [x] `src/modules/breadcrumbs.ts`: keep the variant switch, the label helpers,
       `stopAncestors`, `vehicleRouteId`, `alertParent` and `validateState`. Every
       returned item now carries `typeLabel`. Import the labels from the vendored
       module so `LOCATION_TYPE_LABELS` has one home.
-- [ ] Add a `breadcrumbs.ts` row to this repo's VENDORED.md as an **origin**
+- [x] Add a `breadcrumbs.ts` row to this repo's VENDORED.md as an **origin**
       note: not vendored itself, but the file yard-master vendors, and now a
       consumer of `breadcrumb-trail.ts`. The table is the place someone looks
       when diffing, and an origin file being absent from it is why yard-master's
       copy drifted.
-- [ ] `panel-renderer.ts`: delete the local `renderBreadcrumbs` and call
+- [x] `panel-renderer.ts`: delete the local `renderBreadcrumbs` and call
       `renderBreadcrumbTrail(items, ctx.href)`. The `data-nav` delegation is
       unchanged, which is why that hook was the one chosen in Phase 3.
-- [ ] `src/types/page-state.ts`: `BreadcrumbItem` now comes from the vendored
+- [x] `src/types/page-state.ts`: `BreadcrumbItem` now comes from the vendored
       module. Re-export it from here if that keeps import sites short, and note
       the move in the file's `@changes` banner.
-- [ ] Set `document.title` on every focus change, from `pageTitle(breadcrumbs,
+- [x] Set `document.title` on every focus change, from `pageTitle(breadcrumbs,
       'viz.rt.gtfs.zone')`. Home and the no-feed state keep the full marketing
       title from `index.html`.
-- [ ] Normalize the four page headers onto one shape: eyebrow (from
+- [x] Normalize the four page headers onto one shape: eyebrow (from
       `pageHeaderEyebrow`), `<h2>` name, then a dim subtitle line.
       - Route: eyebrow `Route`, and move the `route_type` label into the subtitle
         next to the agency name, since the eyebrow now says what kind of object
@@ -659,10 +659,10 @@ Type labels, decided once:
       - Alert: gains a header block it does not have today, eyebrow
         `Service alert`, `<h2>` of the preferred header text, subtitle of the
         alert level and its active window.
-- [ ] Decide the doubling question from Phase 3's gotcha by looking at it: if the
+- [x] Decide the doubling question from Phase 3's gotcha by looking at it: if the
       trail's last crumb and the header eyebrow read as a stutter, drop the header
       eyebrow and keep the trail's. Do not keep both because the plan listed both.
-- [ ] Commit as `feat(nav): two-line breadcrumbs, page titles and shared headers`.
+- [x] Commit as `feat(nav): two-line breadcrumbs, page titles and shared headers`.
 
 Gotchas
 - The trail is rebuilt on every `show()`, and `show()` runs on every realtime
@@ -676,6 +676,34 @@ Gotchas
 - `alertLabel` falls back to `Alert <id>`. With a type eyebrow now saying "Service
   alert", the fallback reads as "Service alert / Alert 42". Change the fallback to
   the bare id.
+
+Discoveries
+- The home crumb needed a label once it had an eyebrow: `Feed status` over
+  `Feed status` is not a crumb. It now names the loaded feed via
+  `describeSelection`, falling back to `No feed`, so the root reads like every
+  other crumb — type over object.
+- The doubling question answered itself in the markup rather than the browser:
+  the trail's last crumb is the current page, so it already renders exactly the
+  type-over-name pair each page header was about to render six pixels below it.
+  Every header eyebrow is dropped and the trail carries the type. That leaves
+  `pageHeaderEyebrow` used by the trail alone here, which is fine — it is a
+  vendored file and the other two apps have header blocks with no trail above
+  them. Worth a look: if the trail reads as too weak a type indicator on its
+  own, putting one eyebrow back is a one-line change per page.
+- `LOCATION_TYPE_LABELS` is gone from `render-utils.ts`. Its wording differed
+  from the module's (`Stop / platform` vs `Stop`, `Generic node` vs `Node`), so
+  the platform list and the stop header both shifted to the shorter spec words.
+- The alert header block forced `renderTranslations` apart: the preferred text
+  is now the `<h2>`, so the header's other-language block is its own
+  `renderOtherTranslations`, which `renderTranslations` also calls. Description
+  still renders through the full helper.
+- `activeWindow` is the one-line form of the active periods for the subtitle;
+  the full `Active periods` section below is unchanged.
+- `origin` is a new `@status` value in VENDORED.md for a file this repo owns and
+  another vendors from. `vendor-check.ts` skips those rows — an em dash in the
+  SHA column was being fed to `git log` as a revision.
+- `pnpm typecheck`, `pnpm build` and `pnpm vendor:check` are clean. Committed as
+  `83d2150`.
 
 ## Phase 9: Empty-state copy and landing-zone
 
