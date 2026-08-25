@@ -513,36 +513,36 @@ Behavior:
   "Continue with <label>" and a sublabel of its counts.
 - Dismissing the modal leaves the app in its empty state on the status page.
 
-- [ ] Add `src/modules/last-feed.ts`: `readLastFeed()` / `writeLastFeed(selection,
+- [x] Add `src/modules/last-feed.ts`: `readLastFeed()` / `writeLastFeed(selection,
       summary)` / `clearLastFeed()` over one localStorage key
       (`viz:last-feed`), storing `{ selection, summary: { label, routes, stops,
       trips }, savedAt }`. Version the record with a `v: 1` field and treat any
       other shape as absent, so a future change never has to migrate.
-- [ ] Write the record after every successful load, from the one place that
+- [x] Write the record after every successful load, from the one place that
       already knows a load succeeded (`handleLoadResult` and `AppState.boot`'s
       success path). Counts come from the parsed feed, so write it on
       `scheduleloaded` rather than at the call site, and keep the selection and
       the counts in one write.
-- [ ] A file-backed scheduled source cannot be restored from localStorage. Store
+- [x] A file-backed scheduled source cannot be restored from localStorage. Store
       the record only when `isReproducible(selection)`, matching the rule the
       share link already uses.
-- [ ] Restructure the boot tail in `index.ts`: `await appState.boot()`, and when
+- [x] Restructure the boot tail in `index.ts`: `await appState.boot()`, and when
       it returns false, open the load modal with `continueWith` built from
       `readLastFeed()`.
-- [ ] Route the modal's `{ kind: 'continue' }` result through the same
+- [x] Route the modal's `{ kind: 'continue' }` result through the same
       `handleLoadResult` path as a fresh selection, using the stored selection.
       There is no separate restore path in this app, which is the whole reason
       this is cheaper here than it is in coloring-book.
-- [ ] Dismissal returns null and does nothing: no notify, no state change. The
+- [x] Dismissal returns null and does nothing: no notify, no state change. The
       status page's empty state is the fallback, so Phase 9's rewrite of that copy
       matters more now than it did.
-- [ ] A stored selection that fails to load clears the record and re-opens the
+- [x] A stored selection that fails to load clears the record and re-opens the
       modal with an error toast, so a dead feed cannot trap boot in a loop.
       Guard with a "this is the second attempt" flag rather than recursion.
-- [ ] Log the chosen path: `[boot] hash selection loaded`,
+- [x] Log the chosen path: `[boot] hash selection loaded`,
       `[boot] modal opened, stored feed available`, `[boot] modal opened, nothing
       stored`, `[boot] modal dismissed`.
-- [ ] Commit as `feat(boot): open the load modal when no feed is in the link`.
+- [x] Commit as `feat(boot): open the load modal when no feed is in the link`.
 
 Gotchas
 - `showFeedControls()` currently runs only on the `boot().then` success path and
@@ -557,6 +557,30 @@ Gotchas
   before the modal opens so it reads as context for it.
 - localStorage can throw (private mode, quota). Wrap every read and write, and
   treat a throw as "no stored feed".
+
+Discoveries
+- The `edits` question Phase 4 left open was answered upstream. `ContinueOffer`
+  now has `edits?: number` and the card drops the count when it is unset, and
+  its title reads "Continue with <name>" rather than "Continue editing <name>",
+  which is what this plan's summary specified in the first place. That is
+  coloring-book `6a20621`, re-vendored here in `7cd6453`, so `load-modal.ts`
+  stays `verbatim` and viz never prints "0 edits".
+- The partial-hash seed needed a channel out of `boot()`. `AppState.bootSeed`
+  holds the incomplete selection the hash named, and boot passes it as the
+  modal's `current`, so a half link is completed in the form rather than
+  retyped. The warning still fires inside `boot()`, before the modal opens.
+- `handleLoadResult` now returns a boolean, which is what makes the retry guard
+  a loop rather than recursion: the continue path reloads once, and on failure
+  clears the record and goes round exactly one more time.
+- The record is written from the `scheduleloaded` listener, which fires inside
+  `session.load`, so it also covers the reload button and the status page's
+  inline URL edit. `writeLastFeed` re-checks `isReproducible` itself and clears
+  a stale record when a file upload replaces a URL feed.
+- `readLastFeed` re-checks `isReproducible` on the way out too: a `File` cannot
+  survive `JSON.stringify`, so a record holding a file source would deserialise
+  as `{ kind: 'file' }` with no file and is treated as absent.
+- A dismissed modal leaves the feed controls hidden, because `showFeedControls`
+  is still only reachable from a successful load.
 
 ## Phase 7: Drop the trash button
 
