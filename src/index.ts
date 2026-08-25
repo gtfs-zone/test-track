@@ -13,6 +13,7 @@ import { ThemeController } from './modules/theme-controller';
 import type { FeedSelection } from './modules/feed-selection';
 import { describeSelection } from './modules/feed-selection';
 import { FeedSession } from './modules/feed-session';
+import { clearLastFeed, readLastFeed, writeLastFeed } from './modules/last-feed';
 import { StatusPage } from './modules/status-page';
 import { AppState } from './modules/app-state';
 import { PanelRenderer } from './modules/panel-renderer';
@@ -47,9 +48,21 @@ bottomSheet.onSnapChange(covered => mapCtrl.setBottomPadding(covered));
 const session = new FeedSession();
 
 session.addEventListener('scheduleloaded', e => {
+  const scheduled = (e as CustomEvent<GTFSScheduled>).detail;
   // `loadScheduledFeed` replaces the previous feed's data in place — no explicit
   // clear, which would only cost an extra empty repaint.
-  mapCtrl.loadScheduledFeed((e as CustomEvent<GTFSScheduled>).detail);
+  mapCtrl.loadScheduledFeed(scheduled);
+  // The one place that knows both a load succeeded and what it parsed, so the
+  // selection and its counts are remembered in a single write.
+  if (session.selection) {
+    const counts = scheduled.counts();
+    writeLastFeed(session.selection, {
+      label: describeSelection(session.selection),
+      routes: counts.routes,
+      stops: counts.stops,
+      trips: counts.trips,
+    });
+  }
   // Blank the vehicles layer for the new feed: `startPoller` resets the
   // session's vehicle map, but if the first poll on the new feed fails the old
   // feed's markers would otherwise linger on the map.
@@ -144,9 +157,53 @@ function hideFeedControls(): void {
   clearBtn.classList.add('hidden');
 }
 
-void appState.boot().then(loaded => {
-  if (loaded) showFeedControls();
-});
+/**
+ * An empty hash opens the load modal rather than an empty status page, led by
+ * the last feed this browser loaded. Dismissing it is allowed: the empty status
+ * page is still the fallback.
+ */
+async function boot(): Promise<void> {
+  if (await appState.boot()) {
+    console.log('[boot] hash selection loaded');
+    showFeedControls();
+    return;
+  }
+
+  // A stored feed that no longer loads must not trap boot in a reopen loop, so
+  // the record is forgotten and the modal is offered exactly once more.
+  let retried = false;
+  for (;;) {
+    const last = readLastFeed();
+    console.log(
+      last ? '[boot] modal opened, stored feed available' : '[boot] modal opened, nothing stored',
+    );
+    const result = await showLoadModal(appState.bootSeed, {
+      continueWith: last
+        ? {
+            name: last.summary.label,
+            routes: last.summary.routes,
+            stops: last.summary.stops,
+            trips: last.summary.trips,
+          }
+        : undefined,
+    });
+
+    if (!result) {
+      console.log('[boot] modal dismissed');
+      return;
+    }
+    if (result.kind === 'selection') {
+      await handleLoadResult(result.selection);
+      return;
+    }
+    // `continue` is only reachable when the card was rendered, so `last` is set.
+    if (!last || (await handleLoadResult(last.selection)) || retried) return;
+    clearLastFeed();
+    retried = true;
+  }
+}
+
+void boot();
 
 // ─── About button ─────────────────────────────────────────────────────────────
 document.getElementById('app-version')!.textContent = __APP_VERSION__;
@@ -155,20 +212,23 @@ document.getElementById('about-btn')!
 
 
 // ─── Load ─────────────────────────────────────────────────────────────────────
-async function handleLoadResult(selection: FeedSelection | null): Promise<void> {
-  if (!selection) return;
+/** True when the feed is now loaded; false for a cancelled or failed load. */
+async function handleLoadResult(selection: FeedSelection | null): Promise<boolean> {
+  if (!selection) return false;
   const label = describeSelection(selection);
   try {
     await session.load(selection);
     showFeedControls();
     notify.success(`Loaded ${label}`);
+    return true;
   } catch (err) {
     if (err instanceof LoadCancelledError) {
       notify.info('Load cancelled');
-      return;
+      return false;
     }
     console.error('Load failed:', err);
     notify.error(`Failed to load ${label}: ${err instanceof Error ? err.message : String(err)}`);
+    return false;
   }
 }
 

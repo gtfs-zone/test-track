@@ -8,6 +8,7 @@
  * `suppressHashUpdate` guard honest.
  */
 
+import type { FeedSelection } from './feed-selection';
 import type { PageState } from '../types/page-state';
 import { pageStatesEqual } from '../types/page-state';
 import { buildBreadcrumbs, validateState } from './breadcrumbs';
@@ -25,6 +26,12 @@ export interface AppStateHooks {
 
 export class AppState {
   readonly pages = new PageStateManager({ enableUrlSync: true });
+  /**
+   * What the hash named when `boot()` could not load it: a partial selection,
+   * or null. Boot's modal seeds itself with this, so a link naming only half a
+   * session is completed rather than retyped.
+   */
+  bootSeed: FeedSelection | null = null;
   private session: FeedSession;
   private hooks: AppStateHooks;
 
@@ -84,6 +91,7 @@ export class AppState {
 
     if (!selection || !isComplete(selection)) {
       if (selection) {
+        this.bootSeed = selection;
         notify.warning('The link is missing a scheduled or realtime feed — nothing loaded.');
       }
       this.hooks.onFocusChange(this.focus);
