@@ -130,11 +130,9 @@ mapCtrl.onEmptySelect = () => appState.clearFocus();
 const reloadBtn = document.getElementById('reload-feed-btn') as HTMLButtonElement;
 const intervalDropdown = document.getElementById('rt-interval-dropdown')!;
 const editBtn = document.getElementById('edit-feed-btn') as HTMLAnchorElement;
-const clearBtn = document.getElementById('clear-feed-btn') as HTMLButtonElement;
 function showFeedControls(): void {
   reloadBtn.classList.remove('hidden');
   intervalDropdown.classList.remove('hidden');
-  clearBtn.classList.remove('hidden');
   // The editor link only works from a URL-backed scheduled feed — file uploads
   // have no URL to hand off — so it stays hidden otherwise. A
   // `…/outer.zip#inner.zip` URL is handed over whole and will fail there:
@@ -148,13 +146,6 @@ function showFeedControls(): void {
   } else {
     editBtn.classList.add('hidden');
   }
-}
-
-function hideFeedControls(): void {
-  reloadBtn.classList.add('hidden');
-  intervalDropdown.classList.add('hidden');
-  editBtn.classList.add('hidden');
-  clearBtn.classList.add('hidden');
 }
 
 /**
@@ -262,20 +253,6 @@ reloadBtn.addEventListener('click', async () => {
   } finally {
     reloadBtn.disabled = false;
   }
-});
-
-// ─── Clear feed button ────────────────────────────────────────────────────────
-// No confirmation: a viz feed is a URL, and Load reopens seeded with whatever
-// was last selected, so nothing here is unrecoverable.
-clearBtn.addEventListener('click', () => {
-  (document.activeElement as HTMLElement | null)?.blur();
-  session.clear();
-  mapCtrl.clearScheduledFeed();
-  mapCtrl.clearVehicles();
-  renderAlertsModal([]);
-  appState.clearFocus();
-  hideFeedControls();
-  notify.info('Feed cleared');
 });
 
 // ─── Realtime refresh rate ────────────────────────────────────────────────────
