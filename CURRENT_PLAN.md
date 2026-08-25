@@ -588,22 +588,28 @@ A viz feed is a URL. Load reopens seeded with the current selection, the boot
 modal now covers switching feeds, and clearing to an empty map is not a state
 anyone wants to reach on purpose.
 
-- [ ] Delete `#clear-feed-btn` from `src/index.html`.
-- [ ] Delete the `clearBtn` binding, its click handler, and its lines in
+- [x] Delete `#clear-feed-btn` from `src/index.html`.
+- [x] Delete the `clearBtn` binding, its click handler, and its lines in
       `showFeedControls` / `hideFeedControls` in `src/index.ts`.
-- [ ] Keep `FeedSession.clear()`: `session.load()` still needs to reset state
+- [x] Keep `FeedSession.clear()`: `session.load()` still needs to reset state
       between feeds, and the boot error path in Phase 6 uses it. Confirm it has a
       caller after the button is gone; if it does not, that is a sign the load
       path is leaking old state and is worth checking before deleting it.
-- [ ] `renderTrashIcon` in `modal-utils.ts` is a vendored file. Leave it alone:
+- [x] `renderTrashIcon` in `modal-utils.ts` is a vendored file. Leave it alone:
       coloring-book uses it, and this repo carrying an unused export is not a
       reason to demote a `verbatim` row.
-- [ ] Commit as `feat(nav): drop the clear feed button`.
+- [x] Commit as `feat(nav): drop the clear feed button`.
+
+`FeedSession.clear()` has no caller left: Phase 6's boot error path forgets the
+stored record and reopens the modal rather than clearing the session, and
+`load()` already resets everything itself — `loadScheduled` replaces
+`scheduledFeed`, and `startPoller` replaces the poller and resets the counts and
+the vehicle/alert/tripUpdate maps. So the unused `clear()` is not a sign of a
+leak; it is kept as session API per the plan.
 
 Gotchas
-- `hideFeedControls` becomes unreachable once the only caller was the clear
-  handler. Check: if nothing calls it, delete it too rather than leaving a dead
-  function, and note in the commit that the controls now only ever appear.
+- `hideFeedControls` was unreachable once the clear handler went, so it was
+  deleted too. The feed controls now only ever appear.
 
 ## Phase 8: Verbose breadcrumbs and consistent titles in test-track
 
