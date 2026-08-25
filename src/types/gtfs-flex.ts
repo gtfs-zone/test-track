@@ -1,10 +1,10 @@
 /* @vendored-from coloring-book:src/types/gtfs-flex.ts
-   @sha a4b5ee1
+   @sha 52baec7
    @status modified
    @changes
-   - Types only. `stopTimeRef` and `isFlexStopTime` are dropped along with the
-     `StopTimes` entity import: test-track ingests stop_times into its own
-     `StopTime` model and builds refs in `gtfs-static-route-source.ts`. */
+   - Types only. `stopTimeRef`, its `value` helper and the `StopTimes` entity
+     import are dropped: test-track ingests stop_times into its own `StopTime`
+     model and builds refs in `gtfs-static-route-source.ts`. */
 /**
  * GTFS Flex (on-demand service) shared types and helpers.
  *
