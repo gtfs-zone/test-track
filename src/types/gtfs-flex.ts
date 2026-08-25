@@ -4,7 +4,7 @@
    @changes
    - Types only. `stopTimeRef`, its `value` helper and the `StopTimes` entity
      import are dropped: test-track ingests stop_times into its own `StopTime`
-     model and builds refs in `gtfs-static-route-source.ts`. */
+     model and builds refs in `gtfs-scheduled-route-source.ts`. */
 /**
  * GTFS Flex (on-demand service) shared types and helpers.
  *

@@ -128,7 +128,7 @@ function renderActivePeriods(alert: ServiceAlert): string {
 
 /** Each informed entity as links to the pages for the objects it names. */
 function renderInformedEntity(ctx: RenderContext, e: EntitySelector): string {
-  const feed = ctx.session.staticFeed;
+  const feed = ctx.session.scheduledFeed;
   const links: string[] = [];
 
   if (e.agencyId) links.push(`<span class="opacity-60">agency</span> ${escHtml(e.agencyId)}`);

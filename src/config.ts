@@ -49,7 +49,7 @@ export const CONFIG = {
   SPOTLIGHT_SORT_KEY: 1_000_000,
 
   // Realtime vehicles — neutral fill for a vehicle whose trip/route cannot be
-  // resolved against the static feed.
+  // resolved against the schedule.
   VEHICLE_UNMATCHED_COLOR: '#94a3b8',
 
   // localStorage keys for map view + appearance (Plan 03 decided these are
@@ -69,7 +69,7 @@ export const CONFIG = {
 
   // Prod URL of the schedule editor (coloring-book). Hardcoded to prod on
   // purpose: dev editor URLs change often, so a shared/edit link should always
-  // point at the stable public editor. It loads a static GTFS via `#load=<url>`.
+  // point at the stable public editor. It loads a scheduled GTFS via `#load=<url>`.
   EDITOR_BASE: 'https://edit.gtfs.zone',
 
   // Where the feed catalog and any path-only realtime URL resolve to. Dev is

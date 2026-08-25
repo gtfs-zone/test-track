@@ -13,18 +13,18 @@ const HOME: BreadcrumbItem = { label: 'Feed status', pageState: { type: 'home' }
 
 /** Human label for a route: short name, long name, or the bare id. */
 export function routeLabel(session: FeedSession, routeId: string): string {
-  const route = session.staticFeed?.routes.get(routeId);
+  const route = session.scheduledFeed?.routes.get(routeId);
   if (!route) return routeId;
   return route.short_name || route.long_name || route.id;
 }
 
 export function stopLabel(session: FeedSession, stopId: string): string {
-  return session.staticFeed?.stops.get(stopId)?.name || stopId;
+  return session.scheduledFeed?.stops.get(stopId)?.name || stopId;
 }
 
 export function vehicleLabel(session: FeedSession, vehicleId: string): string {
   const vehicle = session.vehicles.get(vehicleId);
-  return vehicle ? vehicleDisplayName(session.staticFeed, vehicle) : vehicleId;
+  return vehicle ? vehicleDisplayName(session.scheduledFeed, vehicle) : vehicleId;
 }
 
 export function alertLabel(session: FeedSession, alertId: string): string {
@@ -40,7 +40,7 @@ export function alertLabel(session: FeedSession, alertId: string): string {
  * feed with a cycle rather than hanging on one.
  */
 function stopAncestors(session: FeedSession, stopId: string): string[] {
-  const feed = session.staticFeed;
+  const feed = session.scheduledFeed;
   if (!feed) return [];
 
   const chain: string[] = [];
@@ -56,13 +56,13 @@ function stopAncestors(session: FeedSession, stopId: string): string[] {
 
 /**
  * The route a vehicle is on: its trip's route when the trip resolves against
- * static data, otherwise whatever `route_id` the feed asserted.
+ * the schedule, otherwise whatever `route_id` the feed asserted.
  */
 function vehicleRouteId(session: FeedSession, vehicleId: string): string | null {
   const vehicle = session.vehicles.get(vehicleId);
   if (!vehicle) return null;
   const fromTrip = vehicle.tripId
-    ? session.staticFeed?.trips.get(vehicle.tripId)?.route_id
+    ? session.scheduledFeed?.trips.get(vehicle.tripId)?.route_id
     : undefined;
   return fromTrip ?? vehicle.routeId ?? null;
 }
@@ -156,9 +156,9 @@ export function validateState(session: FeedSession, state: PageState): boolean {
     case 'home':
       return true;
     case 'route':
-      return session.staticFeed?.routes.has(state.route_id) ?? false;
+      return session.scheduledFeed?.routes.has(state.route_id) ?? false;
     case 'stop':
-      return session.staticFeed?.stops.has(state.stop_id) ?? false;
+      return session.scheduledFeed?.stops.has(state.stop_id) ?? false;
     case 'vehicle':
       return session.vehicles.has(state.vehicle_id);
     case 'alert':

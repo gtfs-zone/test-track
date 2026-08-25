@@ -12,12 +12,12 @@
  */
 
 import type { AlertRecord } from '../../gtfs-rt';
-import type { Route } from '../../gtfs-static';
+import type { Route } from '../../gtfs-scheduled';
 import type { VehiclePosition } from '../../map-controller';
 import type { PageState } from '../../types/page-state';
 import { alertsForRoute, alertsForRouteStop, feedWideAlerts } from '../alerts';
 import { renderTriangleIcon, renderWarningIcon } from '../modal-utils';
-import { GTFSStaticRouteSource } from '../gtfs-static-route-source';
+import { GTFSScheduledRouteSource } from '../gtfs-scheduled-route-source';
 import { routeGraph } from '../route-graph';
 import type { RtIndex, VehicleStopSequence } from '../rt-index';
 import type { Prediction } from '../rt-index';
@@ -93,7 +93,7 @@ function placeVehicles(
   routeId: string,
   directionId: string,
 ): { placed: PlacedVehicle[]; unplaced: Unplaced[] } {
-  const feed = ctx.session.staticFeed;
+  const feed = ctx.session.scheduledFeed;
   const placed: PlacedVehicle[] = [];
   const unplaced: Unplaced[] = [];
 
@@ -107,7 +107,7 @@ function placeVehicles(
       unplaced.push({
         vehicle,
         reason: vehicle.tripId
-          ? `trip ${vehicle.tripId} is not in the static feed`
+          ? `trip ${vehicle.tripId} is not in the schedule`
           : 'no trip_id reported',
       });
       continue;
@@ -190,7 +190,7 @@ function vehicleChip(
   vehicle: VehiclePosition,
   current: VehicleStopSequence,
 ): string {
-  const label = vehicleDisplayName(ctx.session.staticFeed, vehicle);
+  const label = vehicleDisplayName(ctx.session.scheduledFeed, vehicle);
   const status =
     vehicle.currentStatus === undefined
       ? ''
@@ -238,7 +238,7 @@ function renderStrip(
   directionId: string,
   placed: PlacedVehicle[],
 ): string {
-  const feed = ctx.session.staticFeed;
+  const feed = ctx.session.scheduledFeed;
   if (sequence.stops.length === 0) {
     return '<p class="text-sm opacity-60">No trips with stop times for this direction.</p>';
   }
@@ -378,7 +378,7 @@ function renderUnplaced(ctx: RenderContext, unplaced: Unplaced[]): string {
      <ul class="space-y-1">${unplaced
        .map(
          u => `<li class="text-xs flex justify-between gap-2">
-           ${entityLink(ctx, { type: 'vehicle', vehicle_id: u.vehicle.key }, vehicleDisplayName(ctx.session.staticFeed, u.vehicle))}
+           ${entityLink(ctx, { type: 'vehicle', vehicle_id: u.vehicle.key }, vehicleDisplayName(ctx.session.scheduledFeed, u.vehicle))}
            <span class="opacity-60 text-right">${escHtml(u.reason)}</span>
          </li>`,
        )
@@ -412,11 +412,11 @@ export function renderRoutePage(
   rt: RtIndex,
   state: Extract<PageState, { type: 'route' }>,
 ): string {
-  const feed = ctx.session.staticFeed;
+  const feed = ctx.session.scheduledFeed;
   const route = feed?.routes.get(state.route_id);
   if (!feed || !route) return missing(`Route ${state.route_id}`);
 
-  const source = new GTFSStaticRouteSource(feed);
+  const source = new GTFSScheduledRouteSource(feed);
   const directions = directionsForRoute(source, route.id);
   const active =
     directions.find(d => d.direction_id === state.direction_id)?.direction_id ??

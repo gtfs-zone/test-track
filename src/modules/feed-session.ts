@@ -1,5 +1,5 @@
 import { CONFIG } from '../config';
-import { GTFSStatic } from '../gtfs-static';
+import { GTFSScheduled } from '../gtfs-scheduled';
 import { GTFSRealtime } from '../gtfs-rt';
 import type { AlertRecord, FeedStatus, FetchStartDetail, TripUpdate } from '../gtfs-rt';
 import type { VehiclePosition } from '../map-controller';
@@ -38,7 +38,7 @@ export interface RealtimeCounts {
 }
 
 /**
- * Owns the loaded feeds: the static dataset, the RT poller, and the selection
+ * Owns the loaded feeds: the scheduled dataset, the RT poller, and the selection
  * they came from. Everything that loads a feed goes through here so there is a
  * single place that reports progress and a single place the status page reads.
  *
@@ -47,11 +47,11 @@ export interface RealtimeCounts {
  */
 export class FeedSession extends EventTarget {
   selection: FeedSelection | null = null;
-  staticFeed: GTFSStatic | null = null;
+  scheduledFeed: GTFSScheduled | null = null;
   poller: GTFSRealtime | null = null;
   rtCounts: RealtimeCounts = { vehicles: 0, tripUpdates: 0, alerts: 0 };
-  staticError: string | null = null;
-  staticLoadedAt: number | null = null;
+  scheduleError: string | null = null;
+  scheduleLoadedAt: number | null = null;
 
   // Latest decoded payloads, kept so a focused object can be resolved by id
   // without waiting for the next poll. Replaced wholesale on each poll.
@@ -65,7 +65,7 @@ export class FeedSession extends EventTarget {
     return this.poller?.getStatus() ?? null;
   }
 
-  /** Load a complete selection: static first, then start the RT poller. */
+  /** Load a complete selection: the schedule first, then start the RT poller. */
   async load(selection: FeedSelection): Promise<void> {
     if (!isComplete(selection)) {
       throw new Error('Selection is incomplete');
@@ -73,7 +73,7 @@ export class FeedSession extends EventTarget {
     const previous = this.selection;
     this.selection = selection;
     try {
-      await this.loadStatic(selection.scheduled!);
+      await this.loadScheduled(selection.scheduled!);
     } catch (err) {
       // A cancelled load leaves the session exactly as it was.
       if (err instanceof LoadCancelledError) {
@@ -88,7 +88,7 @@ export class FeedSession extends EventTarget {
   /**
    * Unload everything: stop polling, drop both feeds, forget the selection.
    *
-   * Deliberately does not dispatch `staticloaded` — there is no feed to load,
+   * Deliberately does not dispatch `scheduleloaded` — there is no feed to load,
    * and the listener that revalidates the focus would run against an empty
    * session. The caller clears the focus and repaints the map itself.
    */
@@ -96,9 +96,9 @@ export class FeedSession extends EventTarget {
     this.poller?.stop();
     this.poller = null;
     this.selection = null;
-    this.staticFeed = null;
-    this.staticError = null;
-    this.staticLoadedAt = null;
+    this.scheduledFeed = null;
+    this.scheduleError = null;
+    this.scheduleLoadedAt = null;
     this.rtCounts = { vehicles: 0, tripUpdates: 0, alerts: 0 };
     this.vehicles = new Map();
     this.alerts = new Map();
@@ -106,7 +106,7 @@ export class FeedSession extends EventTarget {
     this.emitChange();
   }
 
-  /** Re-run the current selection from scratch: static download plus a fresh poller. */
+  /** Re-run the current selection from scratch: schedule download plus a fresh poller. */
   async reload(): Promise<void> {
     if (!this.selection) return;
     await this.load(this.selection);
@@ -128,8 +128,8 @@ export class FeedSession extends EventTarget {
     this.emitChange();
   }
 
-  private async loadStatic(source: ScheduledSource): Promise<void> {
-    const feed = new GTFSStatic();
+  private async loadScheduled(source: ScheduledSource): Promise<void> {
+    const feed = new GTFSScheduled();
     const label = source.label;
 
     // Download and parse are separate operations so the bar shows real byte
@@ -138,7 +138,7 @@ export class FeedSession extends EventTarget {
     const hooks = {
       onDownload: (loaded: number, total: number | null) => {
         feedProgressIndicator.updateProgress(
-          'static-download',
+          'scheduled-download',
           downloadPercent(loaded, total) ?? 0,
           total
             ? `Downloading ${label} — ${formatBytes(loaded)} of ${formatBytes(total)}`
@@ -148,11 +148,11 @@ export class FeedSession extends EventTarget {
       onParse: (fileName: string, done: number, total: number) => {
         if (!parsing) {
           parsing = true;
-          feedProgressIndicator.finishLoading('static-download');
-          feedProgressIndicator.startLoading('static-parse', `Parsing ${label}…`);
+          feedProgressIndicator.finishLoading('scheduled-download');
+          feedProgressIndicator.startLoading('scheduled-parse', `Parsing ${label}…`);
         }
         feedProgressIndicator.updateProgress(
-          'static-parse',
+          'scheduled-parse',
           Math.round((done / total) * 100),
           `Parsing ${label} — ${fileName}`,
         );
@@ -162,7 +162,7 @@ export class FeedSession extends EventTarget {
     // A file upload has no fetch to abort, so it gets no Cancel button.
     const controller = source.kind === 'file' ? null : new AbortController();
     feedProgressIndicator.startLoading(
-      'static-download',
+      'scheduled-download',
       `Downloading ${label}…`,
       controller ? { onCancel: () => controller.abort() } : {},
     );
@@ -175,21 +175,21 @@ export class FeedSession extends EventTarget {
           signal: controller!.signal,
         });
       }
-      this.staticFeed = feed;
+      this.scheduledFeed = feed;
       // Every transit time rendered from here on is anchored to this feed's zone.
       adoptFeedTimezone(feed);
-      this.staticError = null;
-      this.staticLoadedAt = Date.now();
-      this.dispatchEvent(new CustomEvent<GTFSStatic>('staticloaded', { detail: feed }));
+      this.scheduleError = null;
+      this.scheduleLoadedAt = Date.now();
+      this.dispatchEvent(new CustomEvent<GTFSScheduled>('scheduleloaded', { detail: feed }));
     } catch (err) {
       // A cancel is not a feed error: the previously loaded feed stays live.
       if (!(err instanceof LoadCancelledError)) {
-        this.staticError = err instanceof Error ? err.message : String(err);
+        this.scheduleError = err instanceof Error ? err.message : String(err);
       }
       throw err;
     } finally {
-      feedProgressIndicator.finishLoading('static-download');
-      feedProgressIndicator.finishLoading('static-parse');
+      feedProgressIndicator.finishLoading('scheduled-download');
+      feedProgressIndicator.finishLoading('scheduled-parse');
       this.emitChange();
     }
   }

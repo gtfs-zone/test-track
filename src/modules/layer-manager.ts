@@ -2,7 +2,7 @@
    @sha a4b5ee1
    @status modified
    @changes
-   - Fed from the in-memory `GTFSStatic` model instead of `GTFSParser` /
+   - Fed from the in-memory `GTFSScheduled` model instead of `GTFSParser` /
      IndexedDB; no async, no coord resolver, no `onStopsDataUpdated` hook.
    - Dropped pathways, levels, the Tutte coord embedding, `stops-highlight` /
      `trip-highlight`, the editing affordances, and file-highlight mode.
@@ -34,7 +34,7 @@ import type {
   Map as MapLibreMap,
 } from 'maplibre-gl';
 import { CONFIG } from '../config';
-import type { GTFSStatic } from '../gtfs-static';
+import type { GTFSScheduled } from '../gtfs-scheduled';
 import type { VehiclePosition } from '../map-controller';
 import type { ShapeMode } from './basemap-control';
 import { routeSortKey } from './route-sort';
@@ -55,7 +55,7 @@ import {
 
 /**
  * Counts of feed data the map could not draw. Surfaced on the status page —
- * a stop with no id or a vehicle whose route doesn't exist in the static feed
+ * a stop with no id or a vehicle whose route doesn't exist in the schedule
  * is exactly the kind of problem this tool exists to make visible.
  */
 export interface MapDataIssues {
@@ -63,7 +63,7 @@ export interface MapDataIssues {
   stopsMissingId: number;
   /** Rows in stops.txt with unparseable `stop_lat`/`stop_lon`. */
   stopsMissingCoords: number;
-  /** Vehicles whose `trip.route_id` doesn't resolve against the static feed. */
+  /** Vehicles whose `trip.route_id` doesn't resolve against the schedule. */
   vehiclesUnmatched: number;
   /**
    * Vehicles sharing a promoted map-feature id after key derivation. Must be 0:
@@ -187,7 +187,7 @@ const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: 
 
 export class LayerManager {
   private map: MapLibreMap;
-  private feed: GTFSStatic | null = null;
+  private feed: GTFSScheduled | null = null;
   private shapeMode: ShapeMode = 'shapes';
 
   /** Built once per feed / shape-mode change and re-used on style rebuilds. */
@@ -252,7 +252,7 @@ export class LayerManager {
 
   // ── Data in ────────────────────────────────────────────────────────────────
 
-  setStaticFeed(feed: GTFSStatic | null): void {
+  setScheduledFeed(feed: GTFSScheduled | null): void {
     this.feed = feed;
     this.stopsData = feed ? this.buildStops(feed) : EMPTY;
     this.routesData = feed ? this.buildRoutes(feed) : EMPTY;
@@ -963,7 +963,7 @@ export class LayerManager {
 
   // ── GeoJSON builders ───────────────────────────────────────────────────────
 
-  private buildStops(feed: GTFSStatic): GeoJSON.FeatureCollection {
+  private buildStops(feed: GTFSScheduled): GeoJSON.FeatureCollection {
     const features: GeoJSON.Feature[] = [];
     let missingId = 0;
     let missingCoords = 0;
@@ -1004,7 +1004,7 @@ export class LayerManager {
    * route has thousands of trips sharing a handful of shapes, and merging them
    * all would produce enormous geometries with heavy overdraw.
    */
-  private buildRoutes(feed: GTFSStatic): GeoJSON.FeatureCollection {
+  private buildRoutes(feed: GTFSScheduled): GeoJSON.FeatureCollection {
     const features: GeoJSON.Feature[] = [];
 
     for (const route of feed.routes.values()) {

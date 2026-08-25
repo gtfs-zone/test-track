@@ -25,7 +25,7 @@ function haystack(...parts: (string | undefined)[]): string {
 }
 
 export function buildSearchEntries(session: FeedSession): SearchEntry<PageState>[] {
-  const feed = session.staticFeed;
+  const feed = session.scheduledFeed;
   const entries: SearchEntry<PageState>[] = [];
 
   for (const stop of feed?.stops.values() ?? []) {

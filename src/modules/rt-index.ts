@@ -10,7 +10,7 @@
 
 import type { TripUpdate } from '../gtfs-rt';
 import { presentNumber } from '../gtfs-rt';
-import type { GTFSStatic } from '../gtfs-static';
+import type { GTFSScheduled } from '../gtfs-scheduled';
 import type { VehiclePosition } from '../map-controller';
 import type { FeedSession } from './feed-session';
 
@@ -84,11 +84,11 @@ export class RtIndex {
 
   /** Derivation is per-trip, and several vehicles can share a trip. */
   private readonly derivedByTrip = new Map<string, number | undefined>();
-  private readonly feed: GTFSStatic | null;
+  private readonly feed: GTFSScheduled | null;
   private readonly nowSeconds: number;
 
   constructor(session: FeedSession, nowSeconds = Date.now() / 1000) {
-    const feed = session.staticFeed;
+    const feed = session.scheduledFeed;
     this.feed = feed;
     this.nowSeconds = nowSeconds;
 
@@ -100,7 +100,7 @@ export class RtIndex {
     }
   }
 
-  private ingestUpdate(update: TripUpdate, feed: GTFSStatic | null): void {
+  private ingestUpdate(update: TripUpdate, feed: GTFSScheduled | null): void {
     const tripId = update.trip?.tripId;
     if (!tripId) return;
     this.updateByTrip.set(tripId, update);
@@ -110,7 +110,7 @@ export class RtIndex {
 
     for (const stu of update.stopTimeUpdate ?? []) {
       // Producers may give `stop_id`, `stop_sequence`, or both. When only the
-      // sequence is given the stop has to come from the static trip, which is
+      // sequence is given the stop has to come from the scheduled trip, which is
       // also the only way to place the prediction on the strip.
       const sequence = presentNumber(stu, 'stopSequence');
       const stopId =
@@ -139,7 +139,7 @@ export class RtIndex {
     for (const p of predictions) push(this.predictionsByStop, p.stop_id, p);
   }
 
-  private ingestVehicle(vehicle: VehiclePosition, feed: GTFSStatic | null): void {
+  private ingestVehicle(vehicle: VehiclePosition, feed: GTFSScheduled | null): void {
     if (vehicle.tripId) push(this.vehiclesByTrip, vehicle.tripId, vehicle);
 
     const routeId = (vehicle.tripId && feed?.trips.get(vehicle.tripId)?.route_id) || vehicle.routeId;
@@ -215,7 +215,7 @@ export class RtIndex {
    * The `stop_sequence` of the trip's soonest prediction that is not already in
    * the past.
    *
-   * A prediction that carries only `stop_id` has to be looked up in the static
+   * A prediction that carries only `stop_id` has to be looked up in the schedule
    * trip. On a trip that visits a stop twice that lookup takes the first visit —
    * a known approximation, reachable only when the producer gave no sequence.
    */
@@ -238,7 +238,7 @@ export class RtIndex {
   }
 
   /** `current_stop_sequence` is a GTFS `stop_sequence`, never an array index. */
-  private resolveStopId(vehicle: VehiclePosition, feed: GTFSStatic | null): string | undefined {
+  private resolveStopId(vehicle: VehiclePosition, feed: GTFSScheduled | null): string | undefined {
     const current = this.stopSequenceFor(vehicle);
     if (!vehicle.tripId || !current) return undefined;
     return feed?.stopTimesByTrip
@@ -284,7 +284,7 @@ export class RtIndex {
     stopIds: string[],
     routeId: string,
     directionId: string,
-    feed: GTFSStatic | null,
+    feed: GTFSScheduled | null,
     nowSeconds = Date.now() / 1000,
   ): Prediction | undefined {
     let best: Prediction | undefined;
@@ -294,8 +294,8 @@ export class RtIndex {
         const trip = feed?.trips.get(p.trip_id);
         const tripRoute = trip?.route_id ?? p.update.trip?.routeId;
         if (tripRoute !== routeId) continue;
-        // Static wins; the realtime field is a number, so both are stringified.
-        // `''` from static is a known direction (the column was absent for that
+        // The schedule wins; the realtime field is a number, so both are stringified.
+        // `''` from the schedule is a known direction (the column was absent for that
         // trip) and must still match the `''` tab — only null/undefined is unknown.
         const dir = trip?.direction_id ?? p.update.trip?.directionId;
         if (dir === undefined || dir === null || String(dir) !== directionId) continue;

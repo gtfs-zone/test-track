@@ -1,7 +1,7 @@
 import { CONFIG } from './config';
 import { MapController } from './map-controller';
 import type { VehiclePosition } from './map-controller';
-import type { GTFSStatic } from './gtfs-static';
+import type { GTFSScheduled } from './gtfs-scheduled';
 import type { AlertRecord } from './gtfs-rt';
 import { showAboutModal } from './modules/about-modal';
 import { showLoadModal } from './modules/load-modal';
@@ -46,10 +46,10 @@ bottomSheet.onSnapChange(covered => mapCtrl.setBottomPadding(covered));
 // ─── Feed session ─────────────────────────────────────────────────────────────
 const session = new FeedSession();
 
-session.addEventListener('staticloaded', e => {
-  // `loadStaticFeed` replaces the previous feed's data in place — no explicit
+session.addEventListener('scheduleloaded', e => {
+  // `loadScheduledFeed` replaces the previous feed's data in place — no explicit
   // clear, which would only cost an extra empty repaint.
-  mapCtrl.loadStaticFeed((e as CustomEvent<GTFSStatic>).detail);
+  mapCtrl.loadScheduledFeed((e as CustomEvent<GTFSScheduled>).detail);
   // Blank the vehicles layer for the new feed: `startPoller` resets the
   // session's vehicle map, but if the first poll on the new feed fails the old
   // feed's markers would otherwise linger on the map.
@@ -122,15 +122,15 @@ function showFeedControls(): void {
   reloadBtn.classList.remove('hidden');
   intervalDropdown.classList.remove('hidden');
   clearBtn.classList.remove('hidden');
-  // The editor link only works from a URL-backed static feed — file uploads
+  // The editor link only works from a URL-backed scheduled feed — file uploads
   // have no URL to hand off — so it stays hidden otherwise. A
   // `…/outer.zip#inner.zip` URL is handed over whole and will fail there:
   // coloring-book does not understand the fragment. Left deliberately, because
   // an editor link that visibly fails is clearer than one that silently opens
   // the wrong dataset.
-  const staticSrc = session.selection?.scheduled;
-  if (staticSrc?.kind === 'url' && staticSrc.url) {
-    editBtn.href = `${CONFIG.EDITOR_BASE}/#load=${encodeURIComponent(staticSrc.url)}`;
+  const scheduledSrc = session.selection?.scheduled;
+  if (scheduledSrc?.kind === 'url' && scheduledSrc.url) {
+    editBtn.href = `${CONFIG.EDITOR_BASE}/#load=${encodeURIComponent(scheduledSrc.url)}`;
     editBtn.classList.remove('hidden');
   } else {
     editBtn.classList.add('hidden');
@@ -182,7 +182,7 @@ document.getElementById('load-btn')!.addEventListener('click', async () => {
 });
 
 // ─── Reload feed button ───────────────────────────────────────────────────────
-// A full reload — the static feed is re-downloaded and the poller replaced —
+// A full reload — the schedule is re-downloaded and the poller replaced —
 // so it is disabled while one is in flight rather than stacking two loads.
 reloadBtn.addEventListener('click', async () => {
   (document.activeElement as HTMLElement | null)?.blur();
@@ -210,7 +210,7 @@ reloadBtn.addEventListener('click', async () => {
 clearBtn.addEventListener('click', () => {
   (document.activeElement as HTMLElement | null)?.blur();
   session.clear();
-  mapCtrl.clearStaticFeed();
+  mapCtrl.clearScheduledFeed();
   mapCtrl.clearVehicles();
   renderAlertsModal([]);
   appState.clearFocus();

@@ -2,21 +2,27 @@
  * Round-trips a `FeedSelection` through the URL hash, so a link reproduces the
  * whole session and not just what was focused.
  *
- * Scheme: `static=<url>&rt_vp=<url>&rt_tu=<url>&rt_al=<url>&cors=s,r`
+ * Scheme: `scheduled=<url>&rt_vp=<url>&rt_tu=<url>&rt_al=<url>&cors=s,r`
  *
  * `cors` is a compact flag list rather than two booleans, because the common
  * cases are "both" and "neither" and `cors=s,r` reads better in an address bar
- * than `static_cors=1&rt_cors=1`.
+ * than `scheduled_cors=1&rt_cors=1`.
  *
- * A file-backed static source cannot be represented at all — there is no URL to
- * put in the link. Such a selection encodes with no `static` key and reports as
- * non-reproducible, rather than silently producing a link that loads half a
- * session.
+ * `static=` is the old name of `scheduled=` and is still read, because links
+ * are already in the wild. Only `scheduled=` is ever written, so an old link
+ * rewrites itself in the address bar as soon as the feed loads, since the
+ * session change that follows a load rewrites the whole feed param block.
+ *
+ * A file-backed scheduled source cannot be represented at all — there is no URL
+ * to put in the link. Such a selection encodes with no `scheduled` key and
+ * reports as non-reproducible, rather than silently producing a link that loads
+ * half a session.
  */
 
 import type { FeedSelection, RealtimeSource, ScheduledSource } from './feed-selection';
 
-const PARAM_KEYS = ['static', 'rt_vp', 'rt_tu', 'rt_al', 'cors'] as const;
+// `static` stays in the list so a legacy-only hash still counts as naming a feed.
+const PARAM_KEYS = ['scheduled', 'static', 'rt_vp', 'rt_tu', 'rt_al', 'cors'] as const;
 
 /** True when a link can restore this selection in full. */
 export function isReproducible(sel: FeedSelection | null): boolean {
@@ -31,7 +37,7 @@ export function selectionToParams(sel: FeedSelection | null): Record<string, str
   const corsFlags: string[] = [];
 
   if (sel.scheduled?.kind === 'url' && sel.scheduled.url) {
-    params.static = sel.scheduled.url;
+    params.scheduled = sel.scheduled.url;
     if (sel.scheduled.useCors) corsFlags.push('s');
   }
 
@@ -60,13 +66,13 @@ export function paramsToSelection(hash: string): FeedSelection | null {
 
   const cors = new Set((params.get('cors') ?? '').split(',').filter(Boolean));
 
-  const staticUrl = params.get('static');
-  const staticSource: ScheduledSource | null = staticUrl
+  const scheduledUrl = params.get('scheduled') ?? params.get('static');
+  const scheduledSource: ScheduledSource | null = scheduledUrl
     ? {
         kind: 'url',
-        url: staticUrl,
+        url: scheduledUrl,
         useCors: cors.has('s'),
-        label: labelForUrl(staticUrl),
+        label: labelForUrl(scheduledUrl),
       }
     : null;
 
@@ -85,8 +91,8 @@ export function paramsToSelection(hash: string): FeedSelection | null {
         }
       : null;
 
-  if (!staticSource && !realtime) return null;
-  return { scheduled: staticSource, realtime };
+  if (!scheduledSource && !realtime) return null;
+  return { scheduled: scheduledSource, realtime };
 }
 
 /**

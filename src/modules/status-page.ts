@@ -91,7 +91,7 @@ function statTile(label: string, value: number | string): string {
 }
 
 function renderCounts(session: FeedSession): string {
-  const s = session.staticFeed?.counts();
+  const s = session.scheduledFeed?.counts();
   const rt = session.rtCounts;
   return `
     <section class="space-y-2">
@@ -244,7 +244,7 @@ function renderEndpoints(session: FeedSession): string {
     </section>`;
 }
 
-function renderStaticSection(session: FeedSession): string {
+function renderScheduledSection(session: FeedSession): string {
   const src = session.selection?.scheduled;
   if (!src) return '';
 
@@ -255,17 +255,17 @@ function renderStaticSection(session: FeedSession): string {
 
   return `
     <section class="space-y-2">
-      <h3 class="font-semibold text-sm">Static feed</h3>
+      <h3 class="font-semibold text-sm">Scheduled feed</h3>
       <div class="rounded-lg border border-base-300 p-3 space-y-2">
         <div class="flex items-center gap-2">
           <p class="text-sm flex-1">${escHtml(src.label)}</p>
           ${
-            session.staticLoadedAt
-              ? `<span class="text-xs opacity-60" data-since="${session.staticLoadedAt}">${formatRelative(session.staticLoadedAt)}</span>`
+            session.scheduleLoadedAt
+              ? `<span class="text-xs opacity-60" data-since="${session.scheduleLoadedAt}">${formatRelative(session.scheduleLoadedAt)}</span>`
               : ''
           }
         </div>
-        ${session.staticError ? `<p class="text-xs text-error break-words">${escHtml(session.staticError)}</p>` : ''}
+        ${session.scheduleError ? `<p class="text-xs text-error break-words">${escHtml(session.scheduleError)}</p>` : ''}
         ${source}
       </div>
     </section>`;
@@ -322,7 +322,7 @@ function renderFeedGaps(gaps: FeedGaps | null): string {
 
 /**
  * What the map could not draw. Surfacing these is the point of the tool: a stop
- * with no id or a vehicle pointing at a route the static feed never declares is
+ * with no id or a vehicle pointing at a route the schedule never declares is
  * a feed bug, not a rendering one.
  */
 function renderMapIssues(issues: MapDataIssues | null): string {
@@ -357,7 +357,7 @@ function renderMapIssues(issues: MapDataIssues | null): string {
  * reportable feed defect (Plan 06 Phase 7).
  */
 function renderStationIssues(session: FeedSession): string {
-  const issues = session.staticFeed?.stationIssues;
+  const issues = session.scheduledFeed?.stationIssues;
   if (!issues) return '';
   return renderIssueCard('Station hierarchy issues', [
     {
@@ -380,8 +380,8 @@ function renderStationIssues(session: FeedSession): string {
 
 /**
  * CSV columns that arrived with leading/trailing whitespace and were trimmed at
- * parse time (see `parseCSV` in gtfs-static.ts). The GTFS reference forbids the
- * padding, and it is silently fatal: a padded static `stop_id` matches no clean
+ * parse time (see `parseCSV` in gtfs-scheduled.ts). The GTFS reference forbids the
+ * padding, and it is silently fatal: a padded scheduled `stop_id` matches no clean
  * realtime `stop_id`, so absorbing it without saying so would hide the defect.
  *
  * Rows are counted, not distinct values — "3544 rows" is a fact; "3544 stops"
@@ -393,7 +393,7 @@ function renderStationIssues(session: FeedSession): string {
  * escaping helper cannot pass through.
  */
 function renderPaddedColumns(session: FeedSession): string {
-  const padded = session.staticFeed?.paddedColumns;
+  const padded = session.scheduledFeed?.paddedColumns;
   if (!padded || padded.length === 0) return '';
 
   return `
@@ -422,7 +422,7 @@ function renderPaddedColumns(session: FeedSession): string {
 
 /** feed_info.txt and agency.txt, verbatim. */
 function renderRawTables(session: FeedSession): string {
-  const feed = session.staticFeed;
+  const feed = session.scheduledFeed;
   if (!feed) return '';
   const tables = [
     ...feed.feedInfo.map(info => ['feed_info.txt', info.raw] as const),
@@ -474,7 +474,7 @@ function renderShare(session: FeedSession): string {
           ${
             reproducible
               ? 'The link carries both feed URLs and whatever is focused.'
-              : 'This session loaded a static feed from an uploaded file, which a link cannot reproduce.'
+              : 'This session loaded a scheduled feed from an uploaded file, which a link cannot reproduce.'
           }
         </p>
       </div>
@@ -486,7 +486,7 @@ function renderEmpty(): string {
     <div class="h-full flex flex-col items-center justify-center text-center gap-2 py-12">
       <p class="text-sm opacity-60">No feed loaded.</p>
       <p class="text-xs opacity-40 max-w-xs">
-        Press <span class="font-medium">Load</span> to pick a static GTFS feed and a
+        Press <span class="font-medium">Load</span> to pick a scheduled GTFS feed and a
         realtime feed. Both are required.
       </p>
     </div>`;
@@ -578,7 +578,7 @@ export class StatusPage {
         ${renderMapIssues(this.mapIssues?.() ?? null)}
         ${renderStationIssues(this.session)}
         ${renderPaddedColumns(this.session)}
-        ${renderStaticSection(this.session)}
+        ${renderScheduledSection(this.session)}
         ${renderEndpoints(this.session)}
         ${renderShare(this.session)}
         ${renderRawTables(this.session)}

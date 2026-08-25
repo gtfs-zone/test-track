@@ -42,10 +42,10 @@ export class AppState {
       this.pages.setFeedParams(selectionToParams(session.selection));
     });
 
-    // A new static feed almost never contains the object that was focused in
+    // A new scheduled feed almost never contains the object that was focused in
     // the old one, and leaving a stale focus in place would render an object
     // page for something the loaded feed does not describe.
-    session.addEventListener('staticloaded', () => {
+    session.addEventListener('scheduleloaded', () => {
       const current = this.focus;
       if (current.type !== 'home' && !validateState(session, current)) {
         this.clearFocus();
@@ -72,7 +72,7 @@ export class AppState {
 
   /**
    * Restore a session from the hash: read the feed config, load it, then apply
-   * the focus — which cannot resolve until the static feed has parsed.
+   * the focus — which cannot resolve until the scheduled feed has parsed.
    *
    * Returns false when the hash named no feeds, leaving the app in its empty
    * state. A focus without feeds is meaningless, so it is discarded rather than
@@ -84,7 +84,7 @@ export class AppState {
 
     if (!selection || !isComplete(selection)) {
       if (selection) {
-        notify.warning('The link is missing a static or realtime feed — nothing loaded.');
+        notify.warning('The link is missing a scheduled or realtime feed — nothing loaded.');
       }
       this.hooks.onFocusChange(this.focus);
       return false;

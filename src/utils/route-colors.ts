@@ -3,7 +3,7 @@
    @status modified
    @changes
    - `routeTextColor` (plus `luminance` and `TEXT_LUMINANCE_PIVOT`) kept: knip
-     dropped it upstream in `f456bbb` as unused there, but `gtfs-static.ts`
+     dropped it upstream in `f456bbb` as unused there, but `gtfs-scheduled.ts`
      still needs it for route badge text. */
 /**
  * Colors for a route on the map and in the UI.

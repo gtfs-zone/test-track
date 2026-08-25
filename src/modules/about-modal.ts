@@ -12,7 +12,7 @@ const APP: AboutApp = {
   name: 'viz.rt.gtfs.zone',
   blurb: [
     'viz.rt.gtfs.zone shows a GTFS Realtime feed on a live map.',
-    'GTFS Realtime is what an agency publishes alongside its schedule to say where its vehicles are right now, how late each trip is running, and what is disrupted. Point this at a static GTFS feed plus its realtime feeds and the map draws the rest:',
+    'GTFS Realtime is what an agency publishes alongside its schedule to say where its vehicles are right now, how late each trip is running, and what is disrupted. Point this at a scheduled GTFS feed plus its realtime feeds and the map draws the rest:',
   ],
   highlights: [
     'Routes and stops from the schedule',

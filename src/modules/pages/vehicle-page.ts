@@ -59,7 +59,7 @@ function renderStopSequenceValue(rt: RtIndex, vehicle: VehiclePosition): string 
 }
 
 function renderTripSection(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosition): string {
-  const feed = ctx.session.staticFeed;
+  const feed = ctx.session.scheduledFeed;
   const trip = vehicle.tripId ? feed?.trips.get(vehicle.tripId) : undefined;
   if (!vehicle.tripId) {
     return section('Trip', '<p class="text-xs opacity-60">No trip_id reported.</p>');
@@ -91,7 +91,7 @@ function renderTripSection(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosi
               feed?.routes.get(trip.route_id)?.short_name || trip.route_id,
             ),
           )
-        : prop('Route', '<span class="opacity-50">trip not in the static feed</span>'),
+        : prop('Route', '<span class="opacity-50">trip not in the schedule</span>'),
       trip?.headsign ? prop('Headsign', escHtml(trip.headsign)) : '',
       currentStop
         ? prop(
@@ -122,7 +122,7 @@ function renderPredictions(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosi
       '<p class="text-xs opacity-60">No trip update in the feed matches this trip.</p>',
     );
   }
-  const feed = ctx.session.staticFeed;
+  const feed = ctx.session.scheduledFeed;
   const current = rt.stopSequenceFor(vehicle);
 
   return section(
@@ -175,7 +175,7 @@ export function renderVehiclePage(
   }
 
   const vehicle = live ?? remembered!.vehicle;
-  const feed = ctx.session.staticFeed;
+  const feed = ctx.session.scheduledFeed;
   const trip = vehicle.tripId ? feed?.trips.get(vehicle.tripId) : undefined;
   const route = feed?.routes.get(trip?.route_id ?? vehicle.routeId ?? '');
 

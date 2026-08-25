@@ -8,8 +8,8 @@
  * intercepts to navigate without a reload.
  */
 
-import type { RawRow } from '../gtfs-static';
-import type { GTFSStatic, Route } from '../gtfs-static';
+import type { RawRow } from '../gtfs-scheduled';
+import type { GTFSScheduled, Route } from '../gtfs-scheduled';
 import type { VehiclePosition } from '../map-controller';
 import type { PageState } from '../types/page-state';
 import type { FeedSession } from './feed-session';
@@ -122,7 +122,7 @@ export function formatEpochTime(seconds: number | undefined, withZone = true): s
   return withZone ? `${clock} ${zoneLabel(seconds * 1000)}` : clock;
 }
 
-/** A static `stop_times` clock time, formatted to match `formatEpochTime`. */
+/** A scheduled `stop_times` clock time, formatted to match `formatEpochTime`. */
 export function formatScheduledTime(value: string | undefined, withZone = true): string {
   const clock = formatScheduleTime(value);
   if (!withZone || clock === '—') return clock;
@@ -268,7 +268,7 @@ export function stopSequenceMark(v: VehiclePosition, current: VehicleStopSequenc
 }
 
 /**
- * The name to *display* for a vehicle. Prefers the static trip's
+ * The name to *display* for a vehicle. Prefers the scheduled trip's
  * `trip_short_name` — for Amtrak this is the train number — then the trip
  * headsign, then the feed's `vehicle.label`, then the id. This is display-layer
  * only: the raw dump and the id field still show exactly what the feed sent.
@@ -278,7 +278,7 @@ export function stopSequenceMark(v: VehiclePosition, current: VehicleStopSequenc
  * distinguishes them either way.
  */
 export function vehicleDisplayName(
-  feed: GTFSStatic | null | undefined,
+  feed: GTFSScheduled | null | undefined,
   v: VehiclePosition,
 ): string {
   const trip = v.tripId ? feed?.trips.get(v.tripId) : undefined;

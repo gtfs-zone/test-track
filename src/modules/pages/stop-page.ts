@@ -11,7 +11,7 @@
  */
 
 import type { AlertRecord } from '../../gtfs-rt';
-import type { Stop } from '../../gtfs-static';
+import type { Stop } from '../../gtfs-scheduled';
 import type { PageState } from '../../types/page-state';
 import { alertsForStop } from '../alerts';
 import { zoneLabel } from '../feed-time';
@@ -44,7 +44,7 @@ function platformLabel(stop: Stop): string {
 
 /** The muted "this came from a child stop" tag every aggregated row carries. */
 function fromChild(ctx: RenderContext, stopId: string): string {
-  const stop = ctx.session.staticFeed!.stops.get(stopId);
+  const stop = ctx.session.scheduledFeed!.stops.get(stopId);
   const label = stop ? platformLabel(stop) : stopId;
   return `<span class="opacity-50 text-xs whitespace-nowrap">@ ${escHtml(label)}</span>`;
 }
@@ -58,7 +58,7 @@ function aggregationNote(count: number): string {
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
 function renderRoutes(ctx: RenderContext, serviceIds: string[], isStation: boolean): string {
-  const feed = ctx.session.staticFeed!;
+  const feed = ctx.session.scheduledFeed!;
   // route_id → the platforms that serve it
   const routePlatforms = new Map<string, Set<string>>();
   for (const id of serviceIds) {
@@ -111,7 +111,7 @@ function renderDepartures(
   serviceIds: string[],
   isStation: boolean,
 ): string {
-  const feed = ctx.session.staticFeed!;
+  const feed = ctx.session.scheduledFeed!;
   const upcoming = isStation
     ? rt.upcomingAtStops(serviceIds, MAX_DEPARTURES)
     : rt.upcomingAtStop(serviceIds[0], MAX_DEPARTURES);
@@ -176,7 +176,7 @@ function renderVehiclesHere(
     for (const v of rt.vehiclesAtStop.get(id) ?? []) {
       rows.push(`<li class="flex justify-between gap-2 items-center">
         <span class="flex items-center gap-2 min-w-0">
-          ${entityLink(ctx, { type: 'vehicle', vehicle_id: v.key }, vehicleDisplayName(ctx.session.staticFeed, v))}
+          ${entityLink(ctx, { type: 'vehicle', vehicle_id: v.key }, vehicleDisplayName(ctx.session.scheduledFeed, v))}
           ${isStation ? fromChild(ctx, id) : ''}
         </span>
         <span class="opacity-60 shrink-0">${escHtml(
@@ -216,7 +216,7 @@ function renderStationAlerts(ctx: RenderContext, ids: string[]): string {
  * cannot bury the platforms (South Station has 131 of them over 23 platforms).
  */
 function renderPlatforms(ctx: RenderContext, stopId: string): string {
-  const feed = ctx.session.staticFeed!;
+  const feed = ctx.session.scheduledFeed!;
   const children = feed.descendants(stopId).map(id => feed.stops.get(id)!).filter(Boolean);
   if (children.length === 0) {
     return section('Platforms', '<p class="text-xs opacity-60">No platforms in this feed.</p>');
@@ -269,7 +269,7 @@ function renderPlatforms(ctx: RenderContext, stopId: string): string {
 
 /** For a platform: the parent's other platforms. Stations use renderPlatforms. */
 function renderSiblingPlatforms(ctx: RenderContext, stop: Stop): string {
-  const feed = ctx.session.staticFeed!;
+  const feed = ctx.session.scheduledFeed!;
   if (!stop.parent_station) return '';
   const siblings = (feed.childrenByParent.get(stop.parent_station) ?? [])
     .filter(id => id !== stop.id)
@@ -297,7 +297,7 @@ export function renderStopPage(
   rt: RtIndex,
   state: Extract<PageState, { type: 'stop' }>,
 ): string {
-  const feed = ctx.session.staticFeed;
+  const feed = ctx.session.scheduledFeed;
   const stop = feed?.stops.get(state.stop_id);
   if (!feed || !stop) return missing(`Stop ${state.stop_id}`);
 

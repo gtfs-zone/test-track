@@ -1,6 +1,6 @@
 import maplibregl from 'maplibre-gl';
 import { CONFIG } from './config';
-import type { GTFSStatic } from './gtfs-static';
+import type { GTFSScheduled } from './gtfs-scheduled';
 import type { PageState } from './types/page-state';
 import { BasemapControl, initialMapStyle } from './modules/basemap-control';
 import type { MapAppearance } from './modules/basemap-control';
@@ -222,15 +222,15 @@ export class MapController {
     else this.pending.push(fn);
   }
 
-  loadStaticFeed(feed: GTFSStatic): void {
+  loadScheduledFeed(feed: GTFSScheduled): void {
     this.whenLoaded(() => {
-      this.layers.setStaticFeed(feed);
+      this.layers.setScheduledFeed(feed);
       this.fitFeed();
     });
   }
 
-  clearStaticFeed(): void {
-    this.whenLoaded(() => this.layers.setStaticFeed(null));
+  clearScheduledFeed(): void {
+    this.whenLoaded(() => this.layers.setScheduledFeed(null));
   }
 
   showVehicles(positions: VehiclePosition[]): void {
@@ -257,7 +257,7 @@ export class MapController {
   }
 
   /**
-   * Frame the loaded feed. Every static load refits, reloads included: the old
+   * Frame the loaded feed. Every schedule load refits, reloads included: the old
    * "camera is already inside the bbox" bail-out skipped the fit whenever the
    * stored view happened to sit in the new feed's box, and the only thing that
    * framed the feed after that was a click-in/click-out returning focus to home.
