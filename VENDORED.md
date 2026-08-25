@@ -13,6 +13,8 @@ very first lines of the file:
 - `verbatim` — byte-identical apart from the banner. Re-sync = overwrite + re-add banner.
 - `modified` — adapted. Must be followed by an `@changes` line listing what diverged,
   one bullet per change, so a re-sync knows what to re-apply.
+- `origin` — not vendored at all, but the canonical copy another repo vendors *from*.
+  Carries no banner and no SHA; listed so the table is the whole map of what is shared.
 
 This table is the single place to look when diffing against a newer coloring-book.
 Run `pnpm vendor:check` to diff every `verbatim` entry below against the recorded SHA
@@ -43,6 +45,7 @@ in `../coloring-book` (skipped if that sibling repo isn't present).
 | `src/modules/feed-url-resolve.ts` | `src/modules/feed-url-resolve.ts` | fcb17b2 | verbatim | `RT_BASE` (re-exported from each app's `CONFIG`, since coloring-book has no local feed server), `normalizeFeedUrl`, `validateFeedUrl`, `isLocalUrl`, `splitInnerZipPath` |
 | `src/modules/examples.ts` | `src/modules/examples.ts` | fcb17b2 | verbatim | Curated ready-to-load feeds. An entry may set `realtime: null` when the agency publishes no GTFS-RT — it still fills the scheduled slot here |
 | `src/modules/breadcrumb-trail.ts` | `src/modules/breadcrumb-trail.ts` | fcb17b2 | verbatim | The crumb type vocabulary (`STOP_TYPE_LABELS`, `stopTypeLabel`), the `BreadcrumbItem` shape, the two-line crumb render (`renderBreadcrumbTrail`), the header eyebrow, and `pageTitle`. Only the shell: which crumbs a page state has and how their labels are looked up stays in each app's own `breadcrumbs.ts`, since the variant sets and the label sources differ |
+| `src/modules/breadcrumbs.ts` | — | — | origin | Not vendored: this repo's own crumb build (the variant switch, the label lookups, `stopAncestors`, `vehicleRouteId`, `alertParent`, `validateState`), consuming `breadcrumb-trail.ts`. Listed because yard-master vendors *this* file, so a diff against yard-master starts here rather than upstream |
 | `scripts/generate-atlas-data.ts` | `scripts/generate-atlas-data.ts` | fcb17b2 | verbatim | Builds `public/atlas-feeds.json` from the transitland-atlas DMFR corpus, one row per source kind. `--schedule-only` drops the rt rows; coloring-book passes it, test-track does not |
 | `src/modules/scs.ts` | `src/modules/scs.ts` | a4b5ee1 | verbatim | Shortest common supersequence. Now folds pairwise over an exact iterative O(n·m) two-sequence DP (no k-way memo, no `MAX_MEMO_SIZE` fallback), so multi-pattern routes no longer degrade to concatenation. `route-sequence.ts` still folds pairwise and does its own alignment walk |
 | `src/types/gtfs-flex.ts` | `src/types/gtfs-flex.ts` | 52baec7 | modified | `StopTimeRef`, the generalized form of a stop_time's single reference (stop, location group or on-demand zone), which the route sequence pipeline is keyed on since `850caff`. Types only here; the row helpers that parse a `StopTimes` entity stay upstream |

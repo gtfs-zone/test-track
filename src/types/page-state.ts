@@ -9,6 +9,8 @@
    - Added `vehicle` and `alert`, which have no coloring-book equivalent.
    - `StateValidator` is synchronous, ours resolves against in-memory maps, not a
      database.
+   - `BreadcrumbItem` moved upstream into `breadcrumb-trail.ts` when it gained a
+     `typeLabel`; re-exported here so import sites are unchanged.
    - Skipped `136329b`: the `zone` and `location_group` variants and their
      `isPageState` cases are GTFS Flex pages test-track has no data for. */
 
@@ -28,11 +30,8 @@ export type PageState =
 
 export type PageStateType = PageState['type'];
 
-/** A single item in the breadcrumb trail: a label plus where it navigates. */
-export type BreadcrumbItem = {
-  label: string;
-  pageState: PageState;
-};
+/** Re-export, so the crumb shape and the page states stay one import apart. */
+export type { BreadcrumbItem } from '../modules/breadcrumb-trail.js';
 
 /** Type guard for a valid PageState. */
 export function isPageState(value: unknown): value is PageState {

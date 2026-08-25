@@ -39,6 +39,9 @@ function parseVendoredTable(markdown: string): Entry[] {
     if (cells.length < 4) continue;
     const [localPath, sourcePath, sha, status] = cells;
     if (localPath === 'Local path' || /^-+$/.test(localPath)) continue;
+    // `origin` rows are this repo's own canonical files, listed only so the
+    // table maps everything that is shared. There is nothing upstream to diff.
+    if (status === 'origin') continue;
     entries.push({ localPath, sourcePath, sha, status });
   }
   return entries;

@@ -1,4 +1,7 @@
-import type { BreadcrumbItem, PageState } from '../types/page-state';
+import type { PageState } from '../types/page-state';
+import type { BreadcrumbItem } from './breadcrumb-trail';
+import { stopTypeLabel } from './breadcrumb-trail';
+import { describeSelection } from './feed-selection';
 import type { FeedSession } from './feed-session';
 import { vehicleDisplayName } from './render-utils';
 
@@ -9,7 +12,18 @@ import { vehicleDisplayName } from './render-utils';
  * interface. Our whole model is in memory, so both of these are plain reads.
  */
 
-const HOME: BreadcrumbItem = { label: 'Feed status', pageState: { type: 'home' } };
+/**
+ * The root crumb. Its eyebrow says what the page is, its label names the feed
+ * being looked at, so the crumb reads like every other one: type over object.
+ */
+function home(session: FeedSession): BreadcrumbItem {
+  const label = session.selection ? describeSelection(session.selection) : null;
+  return {
+    typeLabel: 'Feed status',
+    label: label && label !== 'feeds' ? label : 'No feed',
+    pageState: { type: 'home' },
+  };
+}
 
 /** Human label for a route: short name, long name, or the bare id. */
 export function routeLabel(session: FeedSession, routeId: string): string {
@@ -22,6 +36,11 @@ export function stopLabel(session: FeedSession, stopId: string): string {
   return session.scheduledFeed?.stops.get(stopId)?.name || stopId;
 }
 
+/** The crumb eyebrow for a stop: its `location_type`, or a plain stop. */
+function stopEyebrow(session: FeedSession, stopId: string): string {
+  return stopTypeLabel(session.scheduledFeed?.stops.get(stopId)?.location_type);
+}
+
 export function vehicleLabel(session: FeedSession, vehicleId: string): string {
   const vehicle = session.vehicles.get(vehicleId);
   return vehicle ? vehicleDisplayName(session.scheduledFeed, vehicle) : vehicleId;
@@ -30,7 +49,9 @@ export function vehicleLabel(session: FeedSession, vehicleId: string): string {
 export function alertLabel(session: FeedSession, alertId: string): string {
   const alert = session.alerts.get(alertId)?.alert;
   const header = alert?.headerText?.translation?.[0]?.text;
-  return header ? String(header) : `Alert ${alertId}`;
+  // The crumb's eyebrow already says "Service alert", so the fallback is the
+  // bare id rather than a second "Alert".
+  return header ? String(header) : alertId;
 }
 
 /**
@@ -90,8 +111,9 @@ export function buildBreadcrumbs(session: FeedSession, state: PageState): Breadc
 
     case 'route':
       return [
-        HOME,
+        home(session),
         {
+          typeLabel: 'Route',
           label: routeLabel(session, state.route_id),
           pageState: { type: 'route', route_id: state.route_id },
         },
@@ -99,37 +121,49 @@ export function buildBreadcrumbs(session: FeedSession, state: PageState): Breadc
 
     case 'stop':
       return [
-        HOME,
+        home(session),
         ...stopAncestors(session, state.stop_id).map(id => ({
+          typeLabel: stopEyebrow(session, id),
           label: stopLabel(session, id),
           pageState: { type: 'stop' as const, stop_id: id },
         })),
-        { label: stopLabel(session, state.stop_id), pageState: state },
+        {
+          typeLabel: stopEyebrow(session, state.stop_id),
+          label: stopLabel(session, state.stop_id),
+          pageState: state,
+        },
       ];
 
     case 'vehicle': {
       const routeId = vehicleRouteId(session, state.vehicle_id);
       return [
-        HOME,
+        home(session),
         ...(routeId
           ? [
               {
+                typeLabel: 'Route',
                 label: routeLabel(session, routeId),
                 pageState: { type: 'route' as const, route_id: routeId },
               },
             ]
           : []),
-        { label: vehicleLabel(session, state.vehicle_id), pageState: state },
+        {
+          typeLabel: 'Vehicle',
+          label: vehicleLabel(session, state.vehicle_id),
+          pageState: state,
+        },
       ];
     }
 
     case 'alert': {
       const parent = alertParent(session, state.alert_id);
       return [
-        HOME,
+        home(session),
         ...(parent
           ? [
               {
+                typeLabel:
+                  parent.type === 'route' ? 'Route' : stopEyebrow(session, parent.stop_id),
                 label:
                   parent.type === 'route'
                     ? routeLabel(session, parent.route_id)
@@ -138,7 +172,11 @@ export function buildBreadcrumbs(session: FeedSession, state: PageState): Breadc
               },
             ]
           : []),
-        { label: alertLabel(session, state.alert_id), pageState: state },
+        {
+          typeLabel: 'Service alert',
+          label: alertLabel(session, state.alert_id),
+          pageState: state,
+        },
       ];
     }
   }

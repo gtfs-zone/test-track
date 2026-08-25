@@ -219,7 +219,6 @@ export function renderVehiclePage(
       ${goneBanner}
       ${sharedIdBanner}
       <div class="space-y-1">
-        <p class="text-xs uppercase tracking-wide opacity-50">Vehicle</p>
         <h2 class="text-lg font-semibold leading-tight">${escHtml(vehicleDisplayName(feed, vehicle))}</h2>
         <div class="flex items-center gap-2 flex-wrap">
           ${route ? routeBadge(ctx, route) : ''}

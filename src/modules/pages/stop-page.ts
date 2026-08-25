@@ -14,11 +14,11 @@ import type { AlertRecord } from '../../gtfs-rt';
 import type { Stop } from '../../gtfs-scheduled';
 import type { PageState } from '../../types/page-state';
 import { alertsForStop } from '../alerts';
+import { stopTypeLabel } from '../breadcrumb-trail';
 import { zoneLabel } from '../feed-time';
 import type { RtIndex } from '../rt-index';
 import type { RenderContext } from '../render-utils';
 import {
-  LOCATION_TYPE_LABELS,
   VEHICLE_STATUS_LABELS,
   entityLink,
   escHtml,
@@ -256,7 +256,7 @@ function renderPlatforms(ctx: RenderContext, stopId: string): string {
              s => `<li class="flex justify-between gap-2">
                ${entityLink(ctx, { type: 'stop', stop_id: s.id }, s.name || s.id)}
                <span class="opacity-50">${escHtml(
-                 LOCATION_TYPE_LABELS[s.location_type] ?? `type ${s.location_type}`,
+                 stopTypeLabel(s.location_type),
                )}</span>
              </li>`,
            )
@@ -314,9 +314,6 @@ export function renderStopPage(
   return `
     <div class="space-y-4">
       <div class="space-y-1">
-        <p class="text-xs uppercase tracking-wide opacity-50">${escHtml(
-          LOCATION_TYPE_LABELS[stop.location_type] ?? `location_type ${stop.location_type}`,
-        )}</p>
         <h2 class="text-lg font-semibold leading-tight">${escHtml(stop.name || stop.id)}</h2>
         <p class="text-xs opacity-60 font-mono">${escHtml(stop.id)}</p>
         ${

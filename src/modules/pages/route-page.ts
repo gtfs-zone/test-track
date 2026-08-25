@@ -432,14 +432,17 @@ export function renderRoutePage(
       <div class="space-y-1">
         <div class="flex items-center gap-2">
           ${routeBadge(ctx, route)}
-          <span class="text-xs opacity-60">${escHtml(
-            ROUTE_TYPE_LABELS[route.type] ?? `route_type ${route.type}`,
-          )}</span>
+          <h2 class="text-lg font-semibold leading-tight">${escHtml(
+            route.long_name || route.short_name || route.id,
+          )}</h2>
         </div>
-        <h2 class="text-lg font-semibold leading-tight">${escHtml(
-          route.long_name || route.short_name || route.id,
-        )}</h2>
-        ${agency ? `<p class="text-xs opacity-60">${escHtml(agency.name)}</p>` : ''}
+        <p class="text-xs opacity-60">${[
+          ROUTE_TYPE_LABELS[route.type] ?? `route_type ${route.type}`,
+          agency?.name,
+        ]
+          .filter(Boolean)
+          .map(part => escHtml(part as string))
+          .join(' · ')}</p>
       </div>
 
       ${renderAlertList(ctx, feedWideAlerts(ctx.session), 'Feed-wide alerts')}

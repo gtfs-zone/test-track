@@ -9,11 +9,13 @@
  * tracked by key in a set that outlives the DOM.
  */
 
-import type { BreadcrumbItem, PageState } from '../types/page-state';
+import type { PageState } from '../types/page-state';
+import type { BreadcrumbItem } from './breadcrumb-trail';
+import { renderBreadcrumbTrail } from './breadcrumb-trail';
 import type { FeedSession } from './feed-session';
 import { RtIndex } from './rt-index';
 import type { RenderContext } from './render-utils';
-import { escHtml, formatRelative } from './render-utils';
+import { formatRelative } from './render-utils';
 import { renderAlertPage } from './pages/alert-page';
 import { renderRoutePage } from './pages/route-page';
 import { renderStopPage } from './pages/stop-page';
@@ -26,22 +28,6 @@ export interface PanelRendererHooks {
   href: (state: PageState) => string;
   /** Light a stop on the map while its route-strip row is hovered. */
   hoverStop: (stop_id: string | null) => void;
-}
-
-function renderBreadcrumbs(ctx: RenderContext, items: BreadcrumbItem[]): string {
-  if (items.length === 0) return '';
-  return `
-    <nav class="text-xs breadcrumbs opacity-70 py-0">
-      <ul>${items
-        .map((item, i) =>
-          i === items.length - 1
-            ? `<li>${escHtml(item.label)}</li>`
-            : `<li><a href="${escHtml(ctx.href(item.pageState))}" data-nav="${escHtml(
-                JSON.stringify(item.pageState),
-              )}">${escHtml(item.label)}</a></li>`,
-        )
-        .join('')}</ul>
-    </nav>`;
 }
 
 export class PanelRenderer {
@@ -183,7 +169,7 @@ export class PanelRenderer {
 
     this.host.innerHTML = `
       <div class="space-y-4">
-        ${renderBreadcrumbs(ctx, this.breadcrumbs)}
+        ${renderBreadcrumbTrail(this.breadcrumbs, this.hooks.href)}
         ${this.renderPage(ctx)}
       </div>`;
 

@@ -208,14 +208,6 @@ export const ROUTE_TYPE_LABELS: Record<number, string> = {
   12: 'Monorail',
 };
 
-export const LOCATION_TYPE_LABELS: Record<number, string> = {
-  0: 'Stop / platform',
-  1: 'Station',
-  2: 'Entrance / exit',
-  3: 'Generic node',
-  4: 'Boarding area',
-};
-
 /** A definition list row, used by every page's properties region. */
 export function prop(label: string, valueHtml: string): string {
   return `

@@ -68,34 +68,64 @@ export function renderAlertList(
   );
 }
 
+/** The languages the feed supplied beyond the one we chose to display. */
+function renderOtherTranslations(label: string, ts: ServiceAlert['headerText']): string {
+  const others = translations(ts).filter(t => t.text !== preferredText(ts));
+  if (others.length === 0) return '';
+  return `
+    <details class="text-xs" data-detail="tr:${escHtml(label)}">
+      <summary class="cursor-pointer opacity-60">${others.length} other translation${
+        others.length === 1 ? '' : 's'
+      }</summary>
+      <dl class="mt-1 space-y-1">${others
+        .map(
+          t => `<div>
+            <dt class="opacity-50 font-mono">${escHtml(t.language || '(no language)')}</dt>
+            <dd class="whitespace-pre-wrap">${escHtml(t.text)}</dd>
+          </div>`,
+        )
+        .join('')}</dl>
+    </details>`;
+}
+
 /** Every language the feed supplied, not just the one we chose to display. */
 function renderTranslations(label: string, ts: ServiceAlert['headerText']): string {
   const list = translations(ts);
   if (list.length === 0) return '';
-  const preferred = preferredText(ts);
-  const others = list.filter(t => t.text !== preferred);
   return `
     <div class="space-y-1">
       <p class="text-xs opacity-60">${escHtml(label)}</p>
-      <p class="text-sm whitespace-pre-wrap">${escHtml(preferred)}</p>
-      ${
-        others.length
-          ? `<details class="text-xs" data-detail="tr:${escHtml(label)}">
-               <summary class="cursor-pointer opacity-60">${others.length} other translation${
-                 others.length === 1 ? '' : 's'
-               }</summary>
-               <dl class="mt-1 space-y-1">${others
-                 .map(
-                   t => `<div>
-                     <dt class="opacity-50 font-mono">${escHtml(t.language || '(no language)')}</dt>
-                     <dd class="whitespace-pre-wrap">${escHtml(t.text)}</dd>
-                   </div>`,
-                 )
-                 .join('')}</dl>
-             </details>`
-          : ''
-      }
+      <p class="text-sm whitespace-pre-wrap">${escHtml(preferredText(ts))}</p>
+      ${renderOtherTranslations(label, ts)}
     </div>`;
+}
+
+/**
+ * The one-line version of the active periods, for the page header. The full
+ * list is still rendered below in its own section.
+ */
+function activeWindow(alert: ServiceAlert): string {
+  const periods = activePeriods(alert);
+  if (periods.length === 0) return 'always active';
+
+  const now = Date.now() / 1000;
+  const current = periods.find(p => (p.start ?? -Infinity) <= now && (p.end ?? Infinity) >= now);
+  const upcoming = periods.find(p => p.start !== undefined && p.start > now);
+
+  let phrase: string;
+  if (current) {
+    phrase =
+      current.end === undefined
+        ? 'active, open-ended'
+        : `active until ${formatAbsolute(current.end)}`;
+  } else if (upcoming) {
+    phrase = `starts ${formatAbsolute(upcoming.start!)}`;
+  } else {
+    const last = periods[periods.length - 1];
+    phrase = last.end === undefined ? 'not active' : `ended ${formatAbsolute(last.end)}`;
+  }
+
+  return periods.length > 1 ? `${phrase}, ${periods.length} periods` : phrase;
 }
 
 /**
@@ -194,12 +224,17 @@ export function renderAlertPage(
 
   return `
     <div class="space-y-4">
-      <div class="space-y-2">
-        <div class="flex items-center gap-2">
+      <div class="space-y-1">
+        <h2 class="text-lg font-semibold leading-tight whitespace-pre-wrap">${escHtml(
+          preferredText(alert.headerText) || record.id,
+        )}</h2>
+        <div class="flex items-center gap-2 flex-wrap text-xs opacity-60">
           ${statusBadge(record)}
-          <span class="text-xs opacity-60">${escHtml(ALERT_LEVEL_LABELS[alertLevel(record)])}</span>
+          <span>${escHtml(ALERT_LEVEL_LABELS[alertLevel(record)])}</span>
+          <span>·</span>
+          <span>${escHtml(activeWindow(alert))}</span>
         </div>
-        ${renderTranslations('Header', alert.headerText)}
+        ${renderOtherTranslations('Header', alert.headerText)}
       </div>
 
       ${alert.descriptionText ? renderTranslations('Description', alert.descriptionText) : ''}

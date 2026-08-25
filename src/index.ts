@@ -17,6 +17,7 @@ import { clearLastFeed, readLastFeed, writeLastFeed } from './modules/last-feed'
 import { StatusPage } from './modules/status-page';
 import { AppState } from './modules/app-state';
 import { PanelRenderer } from './modules/panel-renderer';
+import { pageTitle } from './modules/breadcrumb-trail';
 import { SearchController } from './modules/search-controller';
 import { buildSearchEntries } from './modules/search-entries';
 import { ALERT_LEVEL_LABELS, alertLevel, isActiveNow, preferredText } from './modules/alerts';
@@ -87,8 +88,16 @@ const panelRenderer = new PanelRenderer(panelContent, session, {
 });
 panelRenderer.initialize();
 
+/** The tab title, set on navigation only — the panel re-renders every poll. */
+const DEFAULT_TITLE = document.title;
+function setDocumentTitle(state: PageState): void {
+  document.title =
+    state.type === 'home' ? DEFAULT_TITLE : pageTitle(appState.breadcrumbs, 'viz.rt.gtfs.zone');
+}
+
 const appState = new AppState(session, {
   onFocusChange: state => {
+    setDocumentTitle(state);
     const atHome = state.type === 'home';
     // The status page is the panel's home content; anything else takes it over.
     // Exactly one of the two owns `#panel-content` at a time, so neither can
