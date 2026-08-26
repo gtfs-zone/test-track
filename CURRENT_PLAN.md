@@ -711,26 +711,38 @@ The status page's empty state is now what a user sees after dismissing the boot
 modal, which makes it a real screen rather than a placeholder. It gets rewritten
 rather than word-swapped, and landing-zone's copy and link builder come along.
 
-- [ ] `status-page.ts` `renderEmpty`: rewrite. It should say what this app is for
+- [x] `status-page.ts` `renderEmpty`: rewrite. It should say what this app is for
       in one line, name the two things a session needs (a scheduled feed and at
       least one realtime endpoint), and offer a button that reopens the load
       modal rather than pointing at the navbar. Wire the button through the same
       handler `#load-btn` uses.
-- [ ] `about-modal.ts`: rewrite the blurb's "Point this at a static GTFS feed plus
+- [x] `about-modal.ts`: rewrite the blurb's "Point this at a static GTFS feed plus
       its realtime feeds" sentence around the new vocabulary.
-- [ ] landing-zone `src/content/feeds.ts`: emit `scheduled=` in the visualizer
+- [x] landing-zone `src/content/feeds.ts`: emit `scheduled=` in the visualizer
       deep link, rename `staticCors` to `scheduledCors`, and update the scheme
       comments on lines 5 to 11.
-- [ ] landing-zone `src/content/copy.ts` and `src/page.html`: reword lines 58,
+- [x] landing-zone `src/content/copy.ts` and `src/page.html`: reword lines 58,
       123, 128 and 142 and their rendered twins. "The foundation: static,
       rider-facing service information" becomes a sentence about the schedule;
       check `page.html` is generated from `copy.ts` and, if it is not, edit both.
-- [ ] landing-zone `README.md` and `docs/VERIFICATION.md`: any assertion about the
+- [x] landing-zone `README.md` and `docs/VERIFICATION.md`: any assertion about the
       `#static=` link shape.
 - [ ] Verify one landing-zone link end to end by hand: click through to viz and
       confirm the feed loads and the hash reads `scheduled=`.
-- [ ] Commit in landing-zone as `refactor(copy): scheduled feed vocabulary and
+- [x] Commit in landing-zone as `refactor(copy): scheduled feed vocabulary and
       link param`.
+
+Notes from doing it
+- `about-modal.ts` already said "scheduled GTFS feed"; the Phase 5 sweep had
+  caught it, so nothing to rewrite there.
+- `page.html` is a hand-maintained twin of `copy.ts`, not generated, so both were
+  edited. It also carries an unrelated uncommitted hero-copy edit, so the
+  landing-zone commit stages `feeds.ts`, `copy.ts` and `VERIFICATION.md` only —
+  the `page.html` wording changes are still in the working tree.
+- landing-zone's `README.md` had no `#static=` assertion; only
+  `docs/VERIFICATION.md` did.
+- The browser click-through is left to the user. `feed-url.ts` `PARAM_KEYS` still
+  reads `static`, so both link shapes parse.
 
 Gotchas
 - landing-zone links are also in the wild in whatever form Google has indexed.
