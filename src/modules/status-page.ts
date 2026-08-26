@@ -483,12 +483,17 @@ function renderShare(session: FeedSession): string {
 
 function renderEmpty(): string {
   return `
-    <div class="h-full flex flex-col items-center justify-center text-center gap-2 py-12">
-      <p class="text-sm opacity-60">No feed loaded.</p>
-      <p class="text-xs opacity-40 max-w-xs">
-        Press <span class="font-medium">Load</span> to pick a scheduled GTFS feed and a
-        realtime feed. Both are required.
+    <div class="h-full flex flex-col items-center justify-center text-center gap-3 py-12">
+      <p class="text-sm opacity-70 max-w-xs">
+        Watch a transit agency's vehicles, predictions and alerts on a live map.
       </p>
+      <p class="text-xs opacity-40 max-w-xs">
+        A session needs a scheduled GTFS feed for the routes and stops, and at
+        least one realtime endpoint for what is happening on them now.
+      </p>
+      <button type="button" id="status-empty-load" class="btn btn-primary btn-sm">
+        Pick a feed
+      </button>
     </div>`;
 }
 
@@ -568,6 +573,11 @@ export class StatusPage {
 
     if (!this.session.selection) {
       this.host.innerHTML = renderEmpty();
+      this.host
+        .querySelector<HTMLButtonElement>('#status-empty-load')
+        ?.addEventListener('click', () => {
+          document.getElementById('load-btn')?.click();
+        });
       return;
     }
 
