@@ -1,807 +1,415 @@
-# Plan: Boot into the feed picker, scheduled-feed vocabulary, vendored breadcrumbs, page titles
+# Plan: Read `schedule_relationship` and stop reporting added trips as gaps
 
 ## Summary
 
-Five changes, spread across four frontend repos, in ten phases.
+The MBTA vehicles feed carries trips like `ADDED-1584879515` whose
+`TripDescriptor.schedule_relationship` is `ADDED`. The producer stated, explicitly,
+that this trip is not in the static schedule and never will be.
 
-1. **viz boots into the load modal.** Today an empty hash lands on a status page
-   whose only content is a sentence telling you to press Load. The modal opens
-   instead, led by a "Continue with ..." card fed from a last-selection record in
-   localStorage. It stays dismissable, and closing it lands on the same empty
-   status page as today.
-2. **The load modal leads with its search.** Continue card, search, results,
-   warning notes, then the Scheduled GTFS block and the Realtime block at the
-   bottom as the escape hatches they are.
-3. **The trash button leaves viz.** A viz feed is a URL, Load reopens seeded, and
-   the boot modal now covers "I want a different feed". Clearing one to look at
-   an empty map is not a thing anyone wants.
-4. **"Static" becomes "Scheduled" everywhere in the frontends.** Strings,
-   identifiers, filenames, and the `static=` hash param, which gains a
-   back-compat read. Backends are explicitly out of scope: `cafe-car`,
-   `railroad-club`, `schedule-foamer` and `trip-updogger` keep `static` in their
-   tables, models and API fields, so `static_url` off the catalog API is mapped
-   at the boundary and named `scheduledUrl` from there inward.
-5. **Breadcrumbs become one vendored module, and page titles come with them.**
-   coloring-book owns the canonical file: the item type, the type-label table,
-   the two-line crumb markup, and a `pageTitle(state)` that drives both
-   `document.title` and each page's header eyebrow.
+test-track never reads that field. `schedule_relationship` appears **nowhere** in
+`src/`, `scripts/`, this file, or `CHANGELOG.md`. So the only thing the app knows is
+that `feed.trips.get('ADDED-1584879515')` missed, and it renders that as:
 
-**Chosen approach and tradeoffs:**
+- `src/modules/pages/route-page.ts:111` — unplaced, reason `trip ADDED-1584879515 is not in the schedule`
+- `src/modules/pages/vehicle-page.ts:95` — `Route: trip not in the schedule` in dimmed text
+- `src/modules/pages/stop-page.ts:82,93` — ghost badge in place of a route
+- `src/modules/layer-manager.ts:1067` — counted as `vehiclesUnmatched`, painted `CONFIG.VEHICLE_UNMATCHED_COLOR`
 
-- **Upstream first, then one re-vendor.** `load-modal.ts`, `feed-selection.ts`
-  and `examples.ts` are `verbatim` rows in this repo's VENDORED.md. Every change
-  to them lands in coloring-book and is copied down, so the rows stay `verbatim`
-  and the two apps keep rendering the same modal. Phases 1 to 3 are coloring-book
-  commits; Phase 4 is the single sync into test-track.
-- **The canonical breadcrumb file is a builder shell, not a builder.**
-  "Port test-track's sync builder up" does not survive contact with
-  coloring-book, whose labels come out of IndexedDB and are inherently async.
-  What is genuinely shared is the item shape, the type vocabulary, the render,
-  and the title format. So the vendored module owns those and takes a
-  per-app `BreadcrumbLookup`; test-track's and yard-master's lookups are
-  synchronous reads wrapped in resolved values, coloring-book's is its existing
-  `gtfs-breadcrumb-lookup.ts`. Each app's variant switch stays local, because the
-  variant sets genuinely differ (five here, nine in coloring-book, six in
-  yard-master after NEXT_PLAN3).
-- **A crumb carries its type above its name.** Two lines per crumb: a dim
-  uppercase type eyebrow over the label. The same type label feeds the panel
-  header eyebrow and `document.title`, so a page cannot call itself one thing in
-  the trail and another in the tab.
-- **The last selection is persisted, the focus is not.** localStorage holds the
-  `FeedSelection` plus a small summary for the card. A focus belongs to a link,
-  not to a browser profile, so continuing lands on the feed status page.
-- **The hash param renames with a fallback read.** `scheduled=` is written;
-  `static=` is still read, forever, because links are already in the wild and in
-  landing-zone's markup. landing-zone is updated to emit the new name in the same
-  round.
-- **yard-master is not edited here.** It is mid-NEXT_PLAN3 (Phases 6 and 7 open)
-  with `breadcrumbs.ts` already rewritten as a `modified` row. It re-vendors the
-  canonical file as part of its own Phase 7 settle, which already has a
-  VENDORED.md step. Phase 10 is the handoff note, not the work.
+An added trip is therefore indistinguishable from a stale or broken trip reference.
+That inverts the tool's own rule, stated at `src/modules/render-utils.ts:247-252` and
+`src/modules/status-page.ts:274-284`: report what the feed said, mark only what
+test-track inferred, and render a legitimate-but-different encoding neutral rather
+than as a defect. Here the app reports an inference ("missing") where the feed made
+a statement ("ADDED").
 
-## Relevant context
+Five phases plus a wrap-up. Capture `schedule_relationship` at both the trip and
+stop-time level, label it, and use it to restate the three places that currently read
+as defects. Purely additive: no existing row, column, section or layout moves for a
+feed whose trips are all `SCHEDULED`.
 
-### This repo (test-track / viz.rt.gtfs.zone)
+### Deliberately out of scope
 
-Boot and loading
-- `src/index.ts`: shell setup, `showFeedControls` / `hideFeedControls`
-  (lines ~117-145), the `load-btn` handler and `handleLoadResult` (~155-180),
-  the reload handler, the clear handler (~204-216), and the boot tail
-  `void appState.boot().then(...)` (~147).
-- `src/modules/app-state.ts`: `boot()` (line ~81) reads the hash, loads a
-  complete selection, applies the pending focus, and returns whether a feed
-  loaded. Returns false with a warning when the hash names a partial selection.
-- `src/modules/feed-url.ts`: `PARAM_KEYS` (line 19), `selectionToParams`,
-  `paramsToSelection`, `isReproducible`, `labelForUrl`. The `static` key lives
-  here and nowhere else.
-- `src/modules/feed-selection.ts` (vendored): `FeedSelection.static`,
-  `StaticSource`, `isComplete`, `describeMissing`, `describeSelection`,
-  `resolveStaticUrl`.
-- `src/modules/load-modal.ts` (vendored): the body template (line ~450), the
-  Static GTFS section (~452-470), `rtSection` (~430), the search input (476) and
-  `#load-results` (477), `ModalAction` / `extraActions` (~94), the `Static` badge
-  in a result row (~269), the `'Static GTFS'` label (~351).
-- `src/index.html`: `#clear-feed-btn` (line ~127), `#load-btn`, `#reload-feed-btn`,
-  `#edit-feed-btn`, and the `<title>` / og tags (lines 6-13).
-
-Pages and navigation
-- `src/modules/breadcrumbs.ts`: `HOME`, `routeLabel`, `stopLabel`,
-  `vehicleLabel`, `alertLabel`, `stopAncestors`, `vehicleRouteId`, `alertParent`,
-  `buildBreadcrumbs`, `validateState`. Not in VENDORED.md today; yard-master
-  vendors it from here.
-- `src/modules/panel-renderer.ts`: `renderBreadcrumbs` (line 31) and the
-  `data-nav` click delegation it depends on; `show(state, breadcrumbs)` (94).
-- `src/types/page-state.ts` (vendored, `modified`): five variants,
-  `BreadcrumbItem { label, pageState }` (line ~32).
-- `src/modules/pages/route-page.ts` header block (line ~432): badge plus
-  `ROUTE_TYPE_LABELS` eyebrow, then `<h2>`, then agency.
-- `src/modules/pages/stop-page.ts` header block (line ~314): `LOCATION_TYPE_LABELS`
-  eyebrow, `<h2>`, mono id, "Part of ..." line.
-- `src/modules/pages/vehicle-page.ts` header (line ~221): hardcoded `Vehicle`
-  eyebrow.
-- `src/modules/pages/alert-page.ts`: `renderAlertList` (47) and the alert page;
-  no header eyebrow today.
-- `src/modules/status-page.ts`: `renderStaticSection` (247, heading
-  `Static feed`), `renderEmpty` (485), `renderShare`'s uploaded-file sentence
-  (477), `render()` (566).
-
-### coloring-book (upstream)
-
-- `src/modules/load-modal.ts`: same file as ours at SHA `e328ab1`, plus its own
-  `CURRENT_PLAN.md` Phase 8 (boot into the modal, `continueWith`) and Phase 9
-  (search-first reorder), both still unchecked.
-- `src/modules/page-state-manager.ts`: `BreadcrumbLookup` (line 28),
-  `setBreadcrumbLookup` (74), `getBreadcrumbs` (147), and the async build
-  (260-450) that this plan lifts out.
-- `src/modules/gtfs-breadcrumb-lookup.ts`: the DB-backed lookup implementation.
-- `src/modules/browse-navigation.ts`: `renderBreadcrumbs` (542) and the
-  `.breadcrumb-item` click handler (589).
-- `src/types/page-state.ts`: nine variants including `agency`, `timetable`,
-  `pathway`, `zone`, `location_group`.
-- `src/index.html`: `<title>edit.gtfs.zone - GTFS Transit Data Editor</title>`.
-
-### yard-master (downstream, in flight)
-
-- `NEXT_PLAN3.md`: Phase 1 rewrote `breadcrumbs.ts` to six variants and it is
-  checked off. Phase 3 already merged "Static load" and "Schedule source" into
-  one **GTFS Scheduled** section, which is where this rename's vocabulary comes
-  from. Phases 6 and 7 are open; Phase 7 already carries a VENDORED.md step and a
-  `pnpm vendor:check` step.
-- `VENDORED.md`: `breadcrumbs.ts` is `modified` from `test-track` at `fa12a57`,
-  and the `adopted` tier exists precisely for a file feature work has taken over.
-
-### landing-zone
-
-- `src/content/feeds.ts`: the deep-link builder. Line 6 documents
-  `#static=...&rt_vp=...`, line 82 emits `static: feed.feedUrl`, and
-  `staticCors` (25, 53, 61, 70, 80) drives the `s` cors flag.
-- `src/content/copy.ts` lines 58, 123, 128, 142 and the matching prose in
-  `src/page.html` (112, 270, 281, 325).
-
-### Invariants that constrain every phase
-
-- A `verbatim` VENDORED.md row means byte-identical apart from the banner. Any
-  edit to such a file either happens upstream first, or the row is demoted with
-  an `@changes` list. There is no third option.
-- `pnpm vendor:check` must be clean (bar deliberate `modified` rows) before a
-  phase is called done. `--strict` also fails on staleness.
-- Only `PageStateManager` writes the hash. Anything that changes the feed params
-  goes through `setFeedParams`.
-- The frontends never invent an API field name: whatever `cafe-car` sends is
-  what is read, and any renaming happens on our side of the boundary.
-- No browser automation. Every phase ends at `pnpm typecheck` and `pnpm build`,
-  then hands off for visual verification.
+Other unread GTFS-RT fields, listed here so the next pass has a starting point:
+`TripProperties` (trip_headsign / trip_short_name — would give an added trip a real
+name instead of a hex id), `StopTimeProperties.assigned_stop_id` (track assignments),
+`StopTimeEvent.uncertainty`, trip-level `TripUpdate.delay`, `occupancy_percentage`,
+`multi_carriage_details`, `congestion_level`, `vehicle.wheelchair_accessible`,
+`license_plate`, and the experimental entity types `shape` / `stop` /
+`trip_modifications`.
 
 ---
 
-## Phase 1: The scheduled-feed vocabulary, upstream in coloring-book
+## Relevant context
 
-The word "static" is GTFS spec jargon that means "not realtime", and it reads as
-"the file does not change" to everyone else. yard-master already settled on
-**GTFS Scheduled** in its NEXT_PLAN3 Phase 3, so that is the vocabulary the other
-frontends adopt. This phase does coloring-book, because three of the files
-involved are vendored down into this repo and one of them is the load modal that
-Phase 2 then rewrites.
+**The decoding trap.** `SCHEDULED = 0` and `StopTimeUpdate.SCHEDULED = 0`. protobufjs
+keeps proto2 defaults on the message *prototype*, so `msg.scheduleRelationship ?? undefined`
+can never be `undefined` and every trip in every feed would read as "SCHEDULED"
+whether or not the producer said so. Every new read **must** go through the existing
+own-property guard `present()` at `src/gtfs-rt.ts:38-40`. This is the same class of
+bug the file's comment at `:31-36` was written about.
 
-The rename is total inside the frontend: strings, types, fields, filenames. It
-stops at the network boundary. `cafe-car` keeps sending `static_url` and
-`static_feed`, and the catalog adapter keeps reading those names and assigning
-them to `scheduledUrl` on our side.
+**Where the enums live.** `node_modules/gtfs-realtime-bindings/gtfs-realtime.d.ts:1802-1809`
+(TripDescriptor) and `:730` (StopTimeUpdate).
 
-Naming decided once, here, so nothing drifts:
+| TripDescriptor | | StopTimeUpdate | |
+|---|---|---|---|
+| 0 | SCHEDULED | 0 | SCHEDULED |
+| 1 | ADDED (deprecated in favour of NEW/DUPLICATED) | 1 | SKIPPED |
+| 2 | UNSCHEDULED | 2 | NO_DATA |
+| 3 | CANCELED | 3 | UNSCHEDULED (experimental) |
+| 4 | REPLACEMENT (experimental) | | |
+| 5 | DUPLICATED (experimental) | | |
+| 6 | DELETED (experimental — "must not be shown to users") | | |
 
-| Today | After |
-|---|---|
-| `Static GTFS` (section heading, labels) | `Scheduled GTFS` |
-| `Static` (result-row badge) | `Scheduled` |
-| "a static feed" / "the static feed" (prose) | "a scheduled feed" / "the schedule" |
-| `StaticSource` | `ScheduledSource` |
-| `FeedSelection.static` | `FeedSelection.scheduled` |
-| `resolveStaticUrl` | `resolveScheduledUrl` |
-| `staticUrl` / `staticCors` (catalog rows) | `scheduledUrl` / `scheduledCors` |
-| `hasStatic` / `needStatic` locals | `hasScheduled` / `needScheduled` |
-| `static_url` (cafe-car JSON) | unchanged, mapped at the read |
+**Existing primitives to reuse, not reinvent:**
 
-- [x] `src/modules/feed-selection.ts`: rename `StaticSource` to
-      `ScheduledSource`, `FeedSelection.static` to `.scheduled`, and
-      `resolveStaticUrl` to `resolveScheduledUrl`. Update the module doc comment
-      and both `describeMissing` strings to "Choose a scheduled feed" and
-      "Choose a scheduled feed and a realtime feed".
-- [x] `src/modules/load-modal.ts`: rename the `'Static GTFS'` label and heading
-      to `Scheduled GTFS`, the result-row badge to `Scheduled`, the element ids
-      `#load-static-url` / `#load-static-label` to `#load-scheduled-url` /
-      `#load-scheduled-label`, `staticUrl` / `staticCors` on the row types to
-      `scheduledUrl` / `scheduledCors`, and `detachStatic` to `detachScheduled`.
-      Map `feed.static_url` to `scheduledUrl` at the catalog read (line ~138)
-      with a comment saying the API field name is deliberately unchanged.
-- [x] `src/modules/examples.ts`: rename `selection.static` uses and the
-      "Static only" comment; `realtime: null` entries now read "Schedule only".
-- [x] `src/modules/feed-url-resolve.ts` and `scripts/generate-atlas-data.ts`:
-      rename only what is ours. `--static-only` becomes `--schedule-only`, and
-      the atlas row kinds keep whatever the DMFR corpus calls them.
-- [x] Grep the whole of `src/` for `static` and triage every hit: JS keyword
-      uses (`static readonly`, `@staticmethod`-alikes), CSS `position: static`,
-      and the filename `gtfs-static.ts` are the only survivors, and
-      `gtfs-static.ts` is renamed too (see next item).
-- [x] ~~Rename `src/gtfs-static.ts`~~ — no such file in coloring-book. The
-      `GTFSStatic` class is test-track's; it renames in Phase 5, and
-      `route-source.ts`'s doc comment pointing at it is left alone until then.
-- [x] ~~`src/index.html` / `about-modal.ts`~~ — neither mentions "static".
-- [x] `pnpm typecheck`, `pnpm lint`, `pnpm build`. Commit as
-      `refactor(vocab): call a static feed a scheduled feed`.
+- `present()` / `presentNumber()` — `src/gtfs-rt.ts:38-62`
+- `badgeMark(label, title)` — `src/modules/render-utils.ts:253-255`, `badge badge-ghost badge-xs`.
+  Reserved for *inferred* values (`derived`, `ambiguous`); a feed-reported fact needs a
+  visually distinct sibling.
+- `VEHICLE_STATUS_LABELS` / `OCCUPANCY_LABELS` — `src/modules/render-utils.ts:180-196`, the
+  established enum-label-table pattern.
+- `prop()` / `propList()` — `src/modules/render-utils.ts:230-241`
+- Conditional-column pattern — `src/modules/pages/stop-page.ts:139,151-158` (`${isStation ? '<th>…' : ''}`)
+- `setFeedGapsProvider` wiring — `src/index.ts:127` → `src/modules/status-page.ts:515,528,587`
+- `renderFeedGaps` — `src/modules/status-page.ts:286-321`, the neutral-vs-warning card idiom
 
-Gotchas
-- `FeedSelection.static` is a property named with a reserved word in some
-  positions; after the rename `sel.scheduled` needs no bracket access anywhere,
-  so watch for `sel['static']` forms while grepping.
-- `resolveStaticUrl`'s doc comment explains why a path-only URL stays
-  same-origin. That reasoning is about where scheduled feeds come from, not about
-  the word, so rewrite it rather than word-swapping it.
-- Do not touch `src/gtfs-spec/`: the spec files quote the GTFS specification
-  verbatim, and the specification says "static". Verbatim means verbatim.
+**Constraint:** vendored files marked `verbatim` in `VENDORED.md` must change upstream
+first. None of the files below are in that set, but `pnpm vendor:check --strict` must be
+clean before finishing. Per `CLAUDE.md`, stop at `pnpm typecheck` / `pnpm build` — no
+browser automation.
 
+---
 
-Discoveries
-- The function is `resolvedStaticUrl`, not `resolveStaticUrl`; it became
-  `resolvedScheduledUrl`.
-- `AtlasRow.kind` stays `'static'` because it mirrors DMFR's `static_current`,
-  so `atlasRow` maps it to `provides: 'scheduled'` the same way `catalogRow`
-  maps `feed.static_url` to `scheduledUrl`. `AtlasRow.staticUrl` is ours, so it
-  did rename — which meant rewriting the key in the committed
-  `public/atlas-feeds.json` rather than refetching the corpus.
-- `package.json`'s `atlas` script passes the renamed `--schedule-only`.
+## Phase 1 — Capture the field
 
-## Phase 2: Load modal, search first, with a continue card
+Read the relationship on vehicles and on trip updates, through `present()`. Nothing
+renders yet; this phase alone is a no-op on screen.
 
-coloring-book's own plan has this as its Phase 9, and the `continueWith` option
-as part of its Phase 8. Both land here, in the shared file, so that this repo
-inherits them by copy in Phase 4 rather than forking the modal.
-
-The new body order, top to bottom: continue card, search input, results,
-warning notes, Scheduled GTFS section, Realtime section. Results stay the only
-scroller.
-
-- [x] Add `continueWith?: { label: string; sublabel: string }` to
-      `LoadModalOptions`, and render it as the first block in `body`: a full-width
-      `btn btn-primary` card with the label on one line and the count sublabel
-      dimmed beneath it. Only rendered when the option is present.
-- [x] Resolving the modal from the continue card returns a distinct sentinel so
-      the caller can tell "continue" from "the user picked this selection". Use a
-      discriminated result (`{ kind: 'continue' } | { kind: 'selection'; selection }
-      | null`) rather than a magic `FeedSelection`, and update both call sites.
-- [x] Reorder the `body` template: continue card, `#load-search`,
-      `#load-results`, the notes, the Scheduled GTFS section, `rtSection`.
-- [x] Keep every section `shrink-0` and keep `#load-results` as
-      `min-h-0 flex-1 overflow-y-auto`, so the fixed-height column still has
-      exactly one scroller.
-- [x] Keep `autofocus` on the search input. It is now also the first focusable
-      element, so walk the tab order once: continue card, search, results,
-      Scheduled block, Realtime block, action bar.
-- [x] A result-row click still fills the Scheduled and Realtime slots, which are
-      now below the fold. Scroll the Scheduled section into view (or flash its
-      label) on a row click so the click visibly registers.
-- [x] Verify the realtime variant does not overflow: four more URL fields sit
-      below the results list now, and the results list is the flexible one, so it
-      should shrink rather than push the action bar off. Check at 720px height.
-- [x] Commit as `feat(load): lead the modal with search and a continue card`.
-
-Gotchas
-- The `continueWith` sublabel is built by the caller, not the modal. coloring-book
-  counts routes/stops/trips from its `feedSummary` record; test-track counts from
-  its own stored summary in Phase 6. The modal formats nothing.
-- coloring-book's Phase 8 also moves its boot sequence around. That is its work,
-  not this plan's; this phase only adds the option the boot sequence will pass.
-
-
-Discoveries
-- coloring-book had already landed its own Phase 8 and 9 in `eca835c` and
-  `28c6964`, so the continue card, the body reorder, the `shrink-0` sections and
-  the single `#load-results` scroller were all in place before this phase
-  started. The `flashSection` helper that answers "the click landed" already
-  fires for both the Scheduled and the Realtime slot on a row click, so no
-  scroll-into-view was needed on top of it.
-- The one thing those commits did differently from this plan was the result
-  type: they used a `CONTINUE_STORED` string sentinel unioned with
-  `FeedSelection`, which made every call site compare by identity. That is now
-  the discriminated union the plan called for, and `ui.ts` switches on `kind` in
-  both `openLoadModal` and `openBootLoadModal`.
-- The modal title is already conditional: `Open a Feed` with a continue card,
-  `Load Feed` without one.
-
-## Phase 3: The canonical breadcrumb and title module
-
-Extract one file that all three frontends carry: the item type, the type-label
-vocabulary, the two-line crumb markup, the trail render, and the title format.
-What stays per-app is the variant switch that decides which crumbs a page has,
-because the variant sets genuinely differ.
-
-New file `src/modules/breadcrumb-trail.ts` in coloring-book, exporting:
+**`src/map-controller.ts:10-51`** — add to the `VehiclePosition` interface:
 
 ```ts
-export interface BreadcrumbItem {
-  /** Dim uppercase eyebrow, e.g. "Route", "Station", "Service alert". */
-  typeLabel: string;
-  label: string;
-  pageState: PageState;
-}
-
-export function renderBreadcrumbTrail(
-  items: BreadcrumbItem[],
-  href: (s: PageState) => string,
-): string;
-
-export function pageTitle(items: BreadcrumbItem[], appName: string): string;
-export function pageHeaderEyebrow(item: BreadcrumbItem): string;
+/** TripDescriptor.schedule_relationship, or undefined when the producer omitted it. */
+scheduleRelationship?: number;
 ```
 
-- [x] Write the two-line crumb markup: each `<li>` renders
-      `<span class="block text-[10px] uppercase tracking-wide opacity-50">` for
-      the type over the label, all crumbs but the last as an `<a href>` carrying
-      the app's own nav hook attribute. Keep daisyUI's `breadcrumbs` container so
-      the separators come for free, and set `items-start` so the separator sits
-      against the label line rather than centred across two lines.
-- [x] Wrap the trail so it wraps rather than scrolls: a long chain of two-line
-      crumbs in a 320px panel has to reflow, not clip.
-- [x] `pageTitle(items, appName)` returns `<typeLabel> <label> | <appName>` for
-      the last item, `<appName>` when the trail is empty. One format, three apps.
-- [x] `pageHeaderEyebrow(item)` returns the same eyebrow markup the crumb uses,
-      so a page header and its crumb cannot disagree.
-- [x] The nav hook differs (`data-nav` here, `data-breadcrumb-index` in
-      coloring-book's `browse-navigation.ts`). Settle on `data-nav` carrying the
-      serialized page state, since it is the one that does not depend on the
-      trail's array index surviving a re-render, and update
-      `browse-navigation.ts`'s delegation to match.
-- [x] Move coloring-book's async build out of `PageStateManager` and into a local
-      `breadcrumbs.ts` that calls the shared render, keeping `BreadcrumbLookup`
-      as the seam it already is. `PageStateManager.getBreadcrumbs` delegates.
-- [x] Give every coloring-book variant a type label: Agency, Route, Timetable,
-      Stop / Station / Entrance / Node / Boarding area (from `location_type`),
-      Service, Pathway, Zone, Location group.
-- [x] Set `document.title` from `pageTitle` on every navigation, with
-      `edit.gtfs.zone` as the app name.
-- [x] Add the file to coloring-book's own inventory if it keeps one, and commit as
-      `feat(nav): verbose two-line breadcrumbs and page titles`.
+**`src/gtfs-rt.ts:302-306`** — populate it beside `directionId`, with the same null-trip
+guard that line already uses:
 
-Gotchas
-- `escHtml` lives in a different module in each app. The shared file must take
-  its escaping from a local import that all three provide, or inline a private
-  copy. Inline it: one twelve-line function beats a fourth vendored row.
-- The last crumb is not a link, but it still carries the eyebrow. A page whose
-  header repeats the same eyebrow directly below the trail looks doubled; check
-  it visually and drop the header eyebrow if it does (Phase 8 decides per page).
-- daisyUI's `breadcrumbs` sets `white-space: nowrap` on its `<ul>` in some
-  versions. Override it explicitly rather than relying on the theme.
+```ts
+scheduleRelationship: v.trip
+  ? present(v.trip, 'scheduleRelationship', v.trip.scheduleRelationship)
+  : undefined,
+```
 
-Discoveries
-- `BreadcrumbItem` moved out of `page-state.ts` and into `breadcrumb-trail.ts`,
-  since the item now carries `typeLabel` and the render that reads it. Both
-  vendored rows change as a result, so Phase 4 syncs `page-state.ts` too.
-- `BreadcrumbLookup` moved with the build into coloring-book's new local
-  `breadcrumbs.ts`; `page-state-manager.ts` re-exports the type so
-  `gtfs-breadcrumb-lookup.ts` and every other importer keep working. The manager
-  is 278 lines lighter and `getBreadcrumbs` is a one-line delegate.
-- Stop crumbs need `location_type`, which the lookup did not expose. Ancestor
-  entries became a named `StopAncestor` carrying it, and `getStopLocationType`
-  was added for the leaf stop. A `stops` row stores the field as a string, so
-  `parseLocationType` treats blank as a plain stop.
-- The shared file owns the GTFS stop vocabulary (`STOP_TYPE_LABELS`,
-  `stopTypeLabel`) because `location_type` is spec, not app opinion. Every other
-  type label is decided by each app's own variant switch.
-- `pageHeaderEyebrow` takes a `string`, not a `BreadcrumbItem`: page headers
-  have a type label before they have a crumb, and the caller has the label
-  either way.
-- Home renders no trail at all now, rather than the old lone "Home" crumb in a
-  bordered bar, so the home page does not open with an empty header strip.
-- daisyUI's nowrap row is overridden on the container with
-  `[&>ul]:flex-wrap [&>ul]:items-start [&>ul]:whitespace-normal` plus
-  `overflow-x-visible`.
-- `pnpm typecheck`, `pnpm lint`, `pnpm knip` and `pnpm build` are all clean in
-  coloring-book. Committed as `fcb17b2`.
+**`src/modules/rt-index.ts:18-30`** — add two fields to `Prediction`:
 
-## Phase 4: Re-vendor sweep into test-track
+```ts
+/** TripDescriptor.schedule_relationship of the enclosing trip update. */
+tripScheduleRelationship?: number;
+/** StopTimeUpdate.schedule_relationship for this stop: SKIPPED, NO_DATA, … */
+scheduleRelationship?: number;
+```
 
-One sync commit that pulls Phases 1 to 3 down, plus the one row that was already
-stale before this plan started.
+**`src/modules/rt-index.ts:103-140`** — in `ingestUpdate`, read the trip-level value once
+before the loop and the stop-level value per `stu`, both via `presentNumber` (already
+imported at `:12`):
 
-Done. Two commits: `7d39be9` for the flex row, `ecb40b2` for the sweep.
+```ts
+const tripRelationship = presentNumber(update.trip, 'scheduleRelationship');
+// …inside the stopTimeUpdate loop:
+scheduleRelationship: presentNumber(stu, 'scheduleRelationship'),
+tripScheduleRelationship: tripRelationship,
+```
 
-Discoveries:
-- `feed-url-resolve.ts` had no upstream commits since `e328ab1`, so its copy is
-  unchanged and only its banner and row SHA moved.
-- `public/atlas-feeds.json` is checked in and carried the old `staticUrl` key.
-  The re-vendored `load-modal.ts` reads `scheduledUrl`, so every atlas scheduled
-  row would have loaded an empty URL until the file was regenerated. Ran
-  `pnpm atlas` against the local `../transitland-atlas` corpus in the same
-  commit; coloring-book did the same in its own rename commit.
-- `generate-atlas-data.ts` carries no vendor banner in either repo, and
-  `vendor-check` compares it whole. Left it banner-less rather than starting a
-  convention on one file.
-- The local divergence in `gtfs-flex.ts` was already exactly upstream-minus-the-
-  helpers, so the re-sync was a SHA bump; the `@changes` banner was reworded
-  because `isFlexStopTime` no longer exists upstream to be dropped.
-- `showLoadModal` now returns a `LoadModalResult` union. The load button unwraps
-  `{ kind: 'selection' }` and treats everything else as a dismissal, which is
-  the adapt-don't-spread move: Phase 6 is what routes `{ kind: 'continue' }`.
-- `ContinueOffer` requires an `edits` count and the card reads "Continue editing
-  <name>", both of which are editor-shaped. Phase 6 has to either pass `edits: 0`
-  or take the wording back upstream; deciding that is Phase 6's call, not a
-  reason to demote a `verbatim` row here.
+### Gotchas
 
-- [x] `src/types/gtfs-flex.ts`: re-sync against `52baec7` (dead flex/extension
-      helpers and the file presence enum dropped upstream). It is a `modified`
-      row, so re-apply the local divergence its banner lists.
-- [x] Copy down `load-modal.ts`, `feed-selection.ts`, `examples.ts`,
-      `feed-url-resolve.ts` and `scripts/generate-atlas-data.ts` at coloring-book
-      HEAD, re-add each banner, and bump every SHA in VENDORED.md.
-- [x] Copy down the new `breadcrumb-trail.ts` and add a `verbatim` row for it,
-      with a note saying the per-app variant switch stays in each repo's own
-      `breadcrumbs.ts`.
-- [x] Fix the call sites the rename breaks in this repo's non-vendored files
-      without renaming anything else yet: that is Phase 5's job, so this commit
-      compiles by adapting, not by spreading.
-- [x] `pnpm typecheck`, `pnpm build`, `pnpm vendor:check` clean of drift.
-      `--strict` is **not** clean and cannot be at this phase: four `modified`
-      rows are still behind. `basemap-control.ts` and `layer-manager.ts` are
-      editor-map work unrelated to this plan and were stale before it started;
-      `page-state.ts` and `page-state-manager.ts` are behind `fcb17b2` and
-      `eca835c`, which are exactly what Phases 6 and 8 land here. Phase 10 is
-      where `--strict` goes green.
-- [x] Commit as `chore(vendor): re-sync the load modal, feed selection and crumbs`.
+- Reading either field without `present` / `presentNumber` makes every trip in every
+  feed report `SCHEDULED`, which is worse than not reading it at all.
+- `v.trip` is nullable, so the vehicle read needs the ternary guard that `directionId`
+  already carries at `gtfs-rt.ts:302`.
+- An added trip has no `stop_times`, so a `StopTimeUpdate` carrying only `stop_sequence`
+  and no `stop_id` is silently dropped by the existing `if (!stopId) continue` at
+  `rt-index.ts:117`. **Record this as a comment there; do not fix it in this plan.** MBTA
+  sends `stop_id`, so it does not bite today.
 
-Gotchas
-- `generate-atlas-data.ts` is invoked with `--static-only` by coloring-book and
-  not at all by us, but the flag rename still has to land in both copies or the
-  file is not `verbatim`.
-- Do the flex re-sync as its own commit inside this phase. Mixing an unrelated
-  stale row into the rename sync makes the next `git log --follow` unreadable.
+### Checklist
 
-## Phase 5: The scheduled-feed vocabulary in test-track
+- [x] `VehiclePosition.scheduleRelationship` added and populated
+- [x] `Prediction.scheduleRelationship` / `.tripScheduleRelationship` added and populated
+- [x] Both reads go through `present` / `presentNumber`
+- [x] Comment added at the `!stopId` drop about sequence-only updates on added trips
+- [x] `pnpm typecheck`
 
-Phase 1's table, applied to this repo's own files, plus the hash param.
+---
 
-- [x] `src/gtfs-static.ts` becomes `src/gtfs-scheduled.ts`, `GTFSStatic` becomes
-      `GTFSScheduled`, via `git mv`. Update every import, including
-      `gtfs-static-route-source.ts`, which becomes
-      `gtfs-scheduled-route-source.ts`.
-- [x] `src/modules/feed-session.ts`: `staticFeed` becomes `scheduledFeed`,
-      `staticLoadedAt` becomes `scheduleLoadedAt`, `staticError` becomes
-      `scheduleError`, and the `staticloaded` event becomes `scheduleloaded`.
-- [x] `src/modules/feed-url.ts`: write `scheduled=` and read `scheduled` first,
-      falling back to `static`. Keep both in `PARAM_KEYS` so a legacy-only hash
-      is still recognised as naming a feed. Rewrite the scheme comment.
-- [x] `src/modules/status-page.ts`: `renderStaticSection` becomes
-      `renderScheduledSection` with the heading `Scheduled feed`, and the
-      uploaded-file sentence in `renderShare` is reworded.
-- [x] `src/index.ts`: the `staticSrc` local and the editor-link comment, the
-      notify strings, and the `scheduleloaded` listener.
-- [x] ~~`src/index.html`~~ — nothing in the head or the tooltip says "static"
-      (see discoveries).
-- [x] Grep `src/` for `static` and triage to zero, same rule as Phase 1.
-- [x] Note the rewrite in the module comment, because it means an old link
-      silently upgrades. Left for hand verification: a `#static=...` link still
-      loads and the address bar rewrites itself to `#scheduled=...`.
-- [x] Commit as `refactor(vocab): call a static feed a scheduled feed`.
+## Phase 2 — Labels and a "the feed said this" badge
 
-Gotchas
-- `PageStateManager.setFeedParams` diffs the params it is handed. Handing it
-  `scheduled` where it previously held `static` must clear the old key rather
-  than leaving both in the hash; check `buildHash` drops unknown leftovers.
-- `feed-selection.ts` is vendored and already renamed by Phase 4. Do not rename
-  it again here, and do not let a stray edit demote the row.
-- The `staticloaded` event name is listened for in three places
-  (`index.ts`, `app-state.ts`, `panel-renderer.ts`). An event name is a string,
-  so the compiler will not catch a missed one. Grep, do not trust.
+**`src/modules/render-utils.ts:196`** — two label tables next to `OCCUPANCY_LABELS`, in
+the same shape. Cover every value including the experimental ones; the fallback at each
+call site is `String(value)`, so an unknown number still renders honestly.
 
-Discoveries
-- The rewrite is immediate, not deferred to the next focus change.
-  `session.load` fires `change`, `AppState`'s handler calls
-  `setFeedParams(selectionToParams(...))`, and `setFeedParams` writes the hash
-  straight away. So a `#static=` link upgrades to `#scheduled=` the moment the
-  feed finishes loading.
-- The `buildHash` gotcha is a non-issue: it builds a fresh `URLSearchParams`
-  from `feedParams`, and `setFeedParams` replaces that record wholesale, so the
-  old `static` key cannot survive a write.
-- `src/index.html` needed no edit. The title, og tags and both descriptions talk
-  about GTFS Realtime and never say "static", and the `#edit-feed-btn` tooltip
-  already read "Edit schedule in coloring-book". Phase 8 owns the titles anyway.
-- `route-source.ts` is a `verbatim` row whose doc comment named `GTFSStatic`,
-  which Phase 1 deliberately left for this phase. Editing it here would have
-  demoted the row, so the one-line comment fix landed upstream as coloring-book
-  `d7dd8e0` and was re-vendored in the same commit.
-- `feed-session.ts`'s progress-indicator keys (`static-download` /
-  `static-parse`) were not in the plan's list. They are strings the compiler
-  cannot check, same class of hazard as the event name, and they renamed too.
-- Three `modified` vendored files carry the old names in prose or types
-  (`layer-manager.ts`, `route-colors.ts`, `types/gtfs-flex.ts`). Their local
-  divergence is what the rename touches, so they were edited in place and the
-  matching VENDORED.md notes were updated with them.
-- `pnpm vendor:check` reports 22 verbatim entries matching and no drift; the
-  four rows behind HEAD are the same `modified` four Phase 4 listed.
+```ts
+export const TRIP_SCHEDULE_RELATIONSHIP_LABELS: Record<number, string> = {
+  0: 'SCHEDULED', 1: 'ADDED', 2: 'UNSCHEDULED', 3: 'CANCELED',
+  4: 'REPLACEMENT', 5: 'DUPLICATED', 6: 'DELETED',
+};
 
-## Phase 6: Boot into the load modal, with a continue card
+export const STOP_TIME_SCHEDULE_RELATIONSHIP_LABELS: Record<number, string> = {
+  0: 'SCHEDULED', 1: 'SKIPPED', 2: 'NO_DATA', 3: 'UNSCHEDULED',
+};
+```
 
-An empty hash currently renders a status page whose entire content is a sentence
-telling the user to press Load. Open the modal instead. A last-selection record
-in localStorage makes "continue" a one-click path, and the modal stays
-dismissable so the empty status page remains reachable.
+**A sibling of `badgeMark`, at `src/modules/render-utils.ts:255`.** `badgeMark` means
+"test-track worked this out"; this means the opposite — "the producer stated this" — so it
+must not share the ghost styling. Use `badge badge-outline badge-xs`:
 
-Behavior:
-- Hash names a complete selection: load it, no modal, exactly as today.
-- Hash names a partial selection: warn as today, then open the modal seeded with
-  what the hash did name.
-- Hash names nothing: open the modal. If a stored selection exists, it leads with
-  "Continue with <label>" and a sublabel of its counts.
-- Dismissing the modal leaves the app in its empty state on the status page.
+```ts
+/**
+ * Marks a fact the feed reported, as against `badgeMark`'s inferred values. The two
+ * must stay visually distinct: a reader has to be able to tell what the producer said
+ * from what test-track worked out.
+ */
+export function feedMark(label: string, title: string): string { … }
+```
 
-- [x] Add `src/modules/last-feed.ts`: `readLastFeed()` / `writeLastFeed(selection,
-      summary)` / `clearLastFeed()` over one localStorage key
-      (`viz:last-feed`), storing `{ selection, summary: { label, routes, stops,
-      trips }, savedAt }`. Version the record with a `v: 1` field and treat any
-      other shape as absent, so a future change never has to migrate.
-- [x] Write the record after every successful load, from the one place that
-      already knows a load succeeded (`handleLoadResult` and `AppState.boot`'s
-      success path). Counts come from the parsed feed, so write it on
-      `scheduleloaded` rather than at the call site, and keep the selection and
-      the counts in one write.
-- [x] A file-backed scheduled source cannot be restored from localStorage. Store
-      the record only when `isReproducible(selection)`, matching the rule the
-      share link already uses.
-- [x] Restructure the boot tail in `index.ts`: `await appState.boot()`, and when
-      it returns false, open the load modal with `continueWith` built from
-      `readLastFeed()`.
-- [x] Route the modal's `{ kind: 'continue' }` result through the same
-      `handleLoadResult` path as a fresh selection, using the stored selection.
-      There is no separate restore path in this app, which is the whole reason
-      this is cheaper here than it is in coloring-book.
-- [x] Dismissal returns null and does nothing: no notify, no state change. The
-      status page's empty state is the fallback, so Phase 9's rewrite of that copy
-      matters more now than it did.
-- [x] A stored selection that fails to load clears the record and re-opens the
-      modal with an error toast, so a dead feed cannot trap boot in a loop.
-      Guard with a "this is the second attempt" flag rather than recursion.
-- [x] Log the chosen path: `[boot] hash selection loaded`,
-      `[boot] modal opened, stored feed available`, `[boot] modal opened, nothing
-      stored`, `[boot] modal dismissed`.
-- [x] Commit as `feat(boot): open the load modal when no feed is in the link`.
+**One shared explainer per relationship**, so the wording is written once and the `title=`
+is identical everywhere the badge appears — the approach `DERIVED_STOP_SEQUENCE_TITLE`
+already takes at `render-utils.ts:258`:
 
-Gotchas
-- `showFeedControls()` currently runs only on the `boot().then` success path and
-  in `handleLoadResult`. The continue path goes through `handleLoadResult`, so it
-  is covered, but check that a dismissed modal leaves the controls hidden.
-- The modal is opened before the map has necessarily settled its first render.
-  It is a `<dialog>` over the map, so this is fine, but do not move the
-  `mapCtrl.initialize` call behind it: an empty map behind a dismissable modal is
-  the intended background.
-- `notify` toasts stack above the modal's backdrop. A boot-time warning about a
-  partial hash plus an open modal is two things at once; sequence the warning
-  before the modal opens so it reads as context for it.
-- localStorage can throw (private mode, quota). Wrap every read and write, and
-  treat a throw as "no stored feed".
+```ts
+const TRIP_RELATIONSHIP_TITLES: Record<number, string> = {
+  1: 'The feed reports this trip as ADDED: it is not in the static schedule by design, not by omission.',
+  2: 'The feed reports this trip as UNSCHEDULED: a frequency-based trip with exact_times=0.',
+  3: 'The feed reports this trip as CANCELED.',
+  …
+};
 
-Discoveries
-- The `edits` question Phase 4 left open was answered upstream. `ContinueOffer`
-  now has `edits?: number` and the card drops the count when it is unset, and
-  its title reads "Continue with <name>" rather than "Continue editing <name>",
-  which is what this plan's summary specified in the first place. That is
-  coloring-book `6a20621`, re-vendored here in `7cd6453`, so `load-modal.ts`
-  stays `verbatim` and viz never prints "0 edits".
-- The partial-hash seed needed a channel out of `boot()`. `AppState.bootSeed`
-  holds the incomplete selection the hash named, and boot passes it as the
-  modal's `current`, so a half link is completed in the form rather than
-  retyped. The warning still fires inside `boot()`, before the modal opens.
-- `handleLoadResult` now returns a boolean, which is what makes the retry guard
-  a loop rather than recursion: the continue path reloads once, and on failure
-  clears the record and goes round exactly one more time.
-- The record is written from the `scheduleloaded` listener, which fires inside
-  `session.load`, so it also covers the reload button and the status page's
-  inline URL edit. `writeLastFeed` re-checks `isReproducible` itself and clears
-  a stale record when a file upload replaces a URL feed.
-- `readLastFeed` re-checks `isReproducible` on the way out too: a `File` cannot
-  survive `JSON.stringify`, so a record holding a file source would deserialise
-  as `{ kind: 'file' }` with no file and is treated as absent.
-- A dismissed modal leaves the feed controls hidden, because `showFeedControls`
-  is still only reachable from a successful load.
+/** The badge for a trip's schedule_relationship, or '' when it is SCHEDULED or unreported. */
+export function tripRelationshipMark(relationship: number | undefined): string { … }
+export function stopTimeRelationshipMark(relationship: number | undefined): string { … }
+```
 
-## Phase 7: Drop the trash button
+### Gotchas
 
-A viz feed is a URL. Load reopens seeded with the current selection, the boot
-modal now covers switching feeds, and clearing to an empty map is not a state
-anyone wants to reach on purpose.
+- Both mark helpers return `''` for `undefined` **and** for `0`. That single rule is what
+  keeps the whole change additive: a well-formed all-`SCHEDULED` feed renders exactly as
+  it does today.
+- Do not reuse `badgeMark` for these. Its doc comment reserves the ghost badge for values
+  test-track inferred; collapsing the two registers would make the page unable to say
+  which is which.
 
-- [x] Delete `#clear-feed-btn` from `src/index.html`.
-- [x] Delete the `clearBtn` binding, its click handler, and its lines in
-      `showFeedControls` / `hideFeedControls` in `src/index.ts`.
-- [x] Keep `FeedSession.clear()`: `session.load()` still needs to reset state
-      between feeds, and the boot error path in Phase 6 uses it. Confirm it has a
-      caller after the button is gone; if it does not, that is a sign the load
-      path is leaking old state and is worth checking before deleting it.
-- [x] `renderTrashIcon` in `modal-utils.ts` is a vendored file. Leave it alone:
-      coloring-book uses it, and this repo carrying an unused export is not a
-      reason to demote a `verbatim` row.
-- [x] Commit as `feat(nav): drop the clear feed button`.
+### Checklist
 
-`FeedSession.clear()` has no caller left: Phase 6's boot error path forgets the
-stored record and reopens the modal rather than clearing the session, and
-`load()` already resets everything itself — `loadScheduled` replaces
-`scheduledFeed`, and `startPoller` replaces the poller and resets the counts and
-the vehicle/alert/tripUpdate maps. So the unused `clear()` is not a sign of a
-leak; it is kept as session API per the plan.
+- [x] Both label tables added
+- [x] `feedMark` added, visually distinct from `badgeMark`
+- [x] `tripRelationshipMark` / `stopTimeRelationshipMark` added, returning `''` for undefined and 0
+- [x] `pnpm typecheck`
 
-Gotchas
-- `hideFeedControls` was unreachable once the clear handler went, so it was
-  deleted too. The feed controls now only ever appear.
+---
 
-## Phase 8: Verbose breadcrumbs and consistent titles in test-track
+## Phase 3 — Vehicle page
 
-Rebuild this repo's `breadcrumbs.ts` on the vendored module, then make every page
-header and the browser tab agree with it.
+**`src/modules/pages/vehicle-page.ts:62-114`, `renderTripSection`.**
 
-Type labels, decided once:
+Add a `schedule_relationship` row to the Trip property list, following the "this region
+reports the wire" convention already used for `current_stop_sequence` at `:261` — an
+omitted field still reads as omitted:
 
-| Page state | Type label |
-|---|---|
-| `home` | Feed status |
-| `route` | Route |
-| `stop`, `location_type` 0 | Stop |
-| `stop`, `location_type` 1 | Station |
-| `stop`, `location_type` 2 | Entrance |
-| `stop`, `location_type` 3 | Node |
-| `stop`, `location_type` 4 | Boarding area |
-| `vehicle` | Vehicle |
-| `alert` | Service alert |
+```ts
+prop('schedule_relationship',
+  vehicle.scheduleRelationship === undefined
+    ? '<span class="opacity-40">not reported</span>'
+    : escHtml(TRIP_SCHEDULE_RELATIONSHIP_LABELS[vehicle.scheduleRelationship]
+        ?? String(vehicle.scheduleRelationship))),
+```
 
-- [x] `src/modules/breadcrumbs.ts`: keep the variant switch, the label helpers,
-      `stopAncestors`, `vehicleRouteId`, `alertParent` and `validateState`. Every
-      returned item now carries `typeLabel`. Import the labels from the vendored
-      module so `LOCATION_TYPE_LABELS` has one home.
-- [x] Add a `breadcrumbs.ts` row to this repo's VENDORED.md as an **origin**
-      note: not vendored itself, but the file yard-master vendors, and now a
-      consumer of `breadcrumb-trail.ts`. The table is the place someone looks
-      when diffing, and an origin file being absent from it is why yard-master's
-      copy drifted.
-- [x] `panel-renderer.ts`: delete the local `renderBreadcrumbs` and call
-      `renderBreadcrumbTrail(items, ctx.href)`. The `data-nav` delegation is
-      unchanged, which is why that hook was the one chosen in Phase 3.
-- [x] `src/types/page-state.ts`: `BreadcrumbItem` now comes from the vendored
-      module. Re-export it from here if that keeps import sites short, and note
-      the move in the file's `@changes` banner.
-- [x] Set `document.title` on every focus change, from `pageTitle(breadcrumbs,
-      'viz.rt.gtfs.zone')`. Home and the no-feed state keep the full marketing
-      title from `index.html`.
-- [x] Normalize the four page headers onto one shape: eyebrow (from
-      `pageHeaderEyebrow`), `<h2>` name, then a dim subtitle line.
-      - Route: eyebrow `Route`, and move the `route_type` label into the subtitle
-        next to the agency name, since the eyebrow now says what kind of object
-        this is and `route_type` says what kind of route it is.
-      - Stop: eyebrow from `location_type`, which is what it already renders, now
-        via the shared helper. Subtitle keeps the mono id and the "Part of" line.
-      - Vehicle: eyebrow `Vehicle`, unchanged in content, now shared.
-      - Alert: gains a header block it does not have today, eyebrow
-        `Service alert`, `<h2>` of the preferred header text, subtitle of the
-        alert level and its active window.
-- [x] Decide the doubling question from Phase 3's gotcha by looking at it: if the
-      trail's last crumb and the header eyebrow read as a stutter, drop the header
-      eyebrow and keep the trail's. Do not keep both because the plan listed both.
-- [x] Commit as `feat(nav): two-line breadcrumbs, page titles and shared headers`.
+Rewrite the `Route` fallback at **`:95`**. Today it is a flat dimmed `trip not in the
+schedule`. When the feed explained why, say so instead of implying a gap — and keep
+`vehicle.routeId` visible, which the current branch throws away even though an added trip
+usually carries one:
 
-Gotchas
-- The trail is rebuilt on every `show()`, and `show()` runs on every realtime
-  poll for a vehicle page. Setting `document.title` on an unchanged title is a
-  no-op in every browser, but building the string every 15 seconds is still
-  waste; set it from the navigation handler, not the render.
-- A vehicle's label comes from the last poll. A vehicle that disappears keeps its
-  crumb until the focus is invalidated, so the title can name a vehicle the feed
-  no longer has. That is correct and matches the "gone" banner the page already
-  renders; do not paper over it.
-- `alertLabel` falls back to `Alert <id>`. With a type eyebrow now saying "Service
-  alert", the fallback reads as "Service alert / Alert 42". Change the fallback to
-  the bare id.
+- Relationship is ADDED / UNSCHEDULED / REPLACEMENT / DUPLICATED → render
+  `vehicle.routeId` (linked if the route resolves in the schedule, plain mono if not)
+  followed by `tripRelationshipMark(...)`, with the explanation in the badge title. No
+  `opacity-50`; this is not missing data.
+- Relationship absent or SCHEDULED → keep today's exact string and styling.
 
-Discoveries
-- The home crumb needed a label once it had an eyebrow: `Feed status` over
-  `Feed status` is not a crumb. It now names the loaded feed via
-  `describeSelection`, falling back to `No feed`, so the root reads like every
-  other crumb — type over object.
-- The doubling question answered itself in the markup rather than the browser:
-  the trail's last crumb is the current page, so it already renders exactly the
-  type-over-name pair each page header was about to render six pixels below it.
-  Every header eyebrow is dropped and the trail carries the type. That leaves
-  `pageHeaderEyebrow` used by the trail alone here, which is fine — it is a
-  vendored file and the other two apps have header blocks with no trail above
-  them. Worth a look: if the trail reads as too weak a type indicator on its
-  own, putting one eyebrow back is a one-line change per page.
-- `LOCATION_TYPE_LABELS` is gone from `render-utils.ts`. Its wording differed
-  from the module's (`Stop / platform` vs `Stop`, `Generic node` vs `Node`), so
-  the platform list and the stop header both shifted to the shorter spec words.
-- The alert header block forced `renderTranslations` apart: the preferred text
-  is now the `<h2>`, so the header's other-language block is its own
-  `renderOtherTranslations`, which `renderTranslations` also calls. Description
-  still renders through the full helper.
-- `activeWindow` is the one-line form of the active periods for the subtitle;
-  the full `Active periods` section below is unchanged.
-- `origin` is a new `@status` value in VENDORED.md for a file this repo owns and
-  another vendors from. `vendor-check.ts` skips those rows — an em dash in the
-  SHA column was being fed to `git log` as a revision.
-- `pnpm typecheck`, `pnpm build` and `pnpm vendor:check` are clean. Committed as
-  `83d2150`.
+Add the trip badge to `pageHeader`'s `extra` slot at **`:229-235`** alongside `routeBadge`,
+so the relationship is visible without scrolling.
 
-## Phase 9: Empty-state copy and landing-zone
+**`renderPredictions`, `:117-168` — a conditional `Rel` column.** Render the sixth column
+only when at least one prediction in the table has a defined, non-zero stop-level
+relationship. This follows the `isStation` pattern at `stop-page.ts:139,151` and means the
+common case is untouched — importantly, it does not undo commit `8796708`, which just
+widened the Stop column.
 
-The status page's empty state is now what a user sees after dismissing the boot
-modal, which makes it a real screen rather than a placeholder. It gets rewritten
-rather than word-swapped, and landing-zone's copy and link builder come along.
+The `<colgroup>` at `:132-138` is hardcoded and must be re-derived. Today's widths are
+1/11, 4/11, 2/11, 2/11, 2/11. With the extra column, switch to twelfths:
 
-- [x] `status-page.ts` `renderEmpty`: rewrite. It should say what this app is for
-      in one line, name the two things a session needs (a scheduled feed and at
-      least one realtime endpoint), and offer a button that reopens the load
-      modal rather than pointing at the navbar. Wire the button through the same
-      handler `#load-btn` uses.
-- [x] `about-modal.ts`: rewrite the blurb's "Point this at a static GTFS feed plus
-      its realtime feeds" sentence around the new vocabulary.
-- [x] landing-zone `src/content/feeds.ts`: emit `scheduled=` in the visualizer
-      deep link, rename `staticCors` to `scheduledCors`, and update the scheme
-      comments on lines 5 to 11.
-- [x] landing-zone `src/content/copy.ts` and `src/page.html`: reword lines 58,
-      123, 128 and 142 and their rendered twins. "The foundation: static,
-      rider-facing service information" becomes a sentence about the schedule;
-      check `page.html` is generated from `copy.ts` and, if it is not, edit both.
-- [x] landing-zone `README.md` and `docs/VERIFICATION.md`: any assertion about the
-      `#static=` link shape.
-- [ ] Verify one landing-zone link end to end by hand: click through to viz and
-      confirm the feed loads and the hash reads `scheduled=`.
-- [x] Commit in landing-zone as `refactor(copy): scheduled feed vocabulary and
-      link param`.
+| | Seq | Stop | Arr | Dep | Delay | Rel |
+|---|---|---|---|---|---|---|
+| without Rel (unchanged) | 9.09% | 36.36% | 18.18% | 18.18% | 18.18% | — |
+| with Rel | 8.33% | 33.33% | 16.67% | 16.67% | 16.67% | 8.33% |
 
-Notes from doing it
-- `about-modal.ts` already said "scheduled GTFS feed"; the Phase 5 sweep had
-  caught it, so nothing to rewrite there.
-- `page.html` is a hand-maintained twin of `copy.ts`, not generated, so both were
-  edited. It also carries an unrelated uncommitted hero-copy edit, so the
-  landing-zone commit stages `feeds.ts`, `copy.ts` and `VERIFICATION.md` only —
-  the `page.html` wording changes are still in the working tree.
-- landing-zone's `README.md` had no `#static=` assertion; only
-  `docs/VERIFICATION.md` did.
-- The browser click-through is left to the user. `feed-url.ts` `PARAM_KEYS` still
-  reads `static`, so both link shapes parse.
+A `SKIPPED` row additionally gets `opacity-50` and `line-through` on the stop name — the
+producer said the vehicle will not call there, so the times on that row are not times
+anyone can catch. `NO_DATA` gets the badge only.
 
-Gotchas
-- landing-zone links are also in the wild in whatever form Google has indexed.
-  The back-compat read in Phase 5 is what protects them; do not remove `static`
-  from `PARAM_KEYS` as a tidy-up in a later phase.
-- The editor deep link is `#load=<url>` and belongs to coloring-book. It is not
-  affected by this rename and must not be touched.
+### Gotchas
 
-## Phase 10: Settle, and the yard-master handoff
+- The Live property region is the "what the wire said" region. `schedule_relationship`
+  belongs to the trip, so its row goes in the Trip section, not Live — but it keeps the
+  same `not reported` treatment.
+- The Stop cell is `max-w-0 truncate`; a badge placed inside it will be clipped. That is
+  why the relationship gets its own column rather than riding along in the stop name.
+- The colgroup percentages must sum to ~100 or `table-fixed` distributes the remainder
+  unpredictably.
 
-- [x] `pnpm typecheck`, `pnpm build`, `pnpm vendor:check --strict` in this repo
-      and in coloring-book.
-- [x] VENDORED.md in this repo: every SHA bumped, the new `breadcrumb-trail.ts`
-      row added, the `breadcrumbs.ts` origin note added, and every note that says
-      "static" reworded.
-- [ ] Hand off for visual verification: boot with an empty hash, boot with a
-      legacy `#static=` link, boot with a `#scheduled=` link, dismiss the modal,
-      continue from the stored feed, and walk route, stop, vehicle and alert pages
-      checking the trail, the header and the tab title on each.
-- [x] Write the yard-master note into its `NEXT_PLAN3.md` Phase 7 checklist
-      rather than into its code:
-      - re-vendor `breadcrumb-trail.ts` from coloring-book as `verbatim`, and
-        rebuild its own `breadcrumbs.ts` on it, keeping its six variants and its
-        tracker/managed-object labels;
-      - promote its `breadcrumbs.ts` row to `adopted` if the rebuild leaves it far
-        enough from this repo's copy, which is what the `adopted` tier is for;
-      - apply the scheduled vocabulary to its remaining "Static load" strings.
-        Its Phase 3 already merged the section into "GTFS Scheduled", so this is
-        a sweep, not a redesign;
-      - add `pageTitle` with `manage.rt.gtfs.zone` as the app name.
-- [x] Do not edit yard-master in this plan. Phases 6 and 7 of NEXT_PLAN3 are open
-      and both touch the same files.
+### Checklist
 
-Notes from doing it
-- test-track: `typecheck`, `build` and `vendor:check --strict` all run clean apart
-  from two rows that were already stale before this plan: `basemap-control.ts`
-  (two commits, a projection-icon swap and the route-geometry toggle removal) and
-  `layer-manager.ts` (one commit, keeping a new stop on a small feed clickable).
-  Both are `modified` rows with real upstream changes to port, so their SHAs were
-  left alone rather than bumped to claim a sync that has not happened.
-- coloring-book: `typecheck` and `build` clean. It has no `vendor:check` script,
-  being the origin repo.
-- The SHA bumps this plan earned were `page-state.ts` and `page-state-manager.ts`
-  to `fcb17b2`. The `breadcrumb-trail.ts` row and the `breadcrumbs.ts` `origin`
-  row were already added in Phases 4 and 8, and no VENDORED.md note still said
-  "static".
-- `page-state-manager.ts` gained a skip bullet for `eca835c`'s
-  `peekURLPageState`: boot here reads the hash through `feed-url.ts` and
-  `AppState.boot()`, so no unvalidated page state is needed.
-- The yard-master handoff went into `NEXT_PLAN3.md` Phase 7 and its
-  `VENDORED.md` breadcrumbs row, committed there as
-  `docs(vendor): queue the shared breadcrumb shell adoption`. No code touched.
-- The visual walk is left for the user.
+- [x] `schedule_relationship` prop row added to the Trip section
+- [x] `:95` Route fallback restated; `vehicle.routeId` surfaced; badge attached
+- [x] Trip relationship badge in `pageHeader`
+- [x] Conditional `Rel` column with re-derived colgroup widths
+- [x] SKIPPED rows dimmed and struck through
+- [x] `pnpm typecheck`
 
-Gotchas
-- yard-master's `VENDORED.md` pins `breadcrumbs.ts` to `test-track` at `fa12a57`.
-  After Phase 8 that row is stale by design. Say so in the row's note now, so its
-  next `vendor:check` reports a known state rather than a surprise.
-- coloring-book's own CURRENT_PLAN has Phases 2 to 9 still open, including its
-  boot rework. Phase 2 here adds the option that plan's Phase 8 consumes, and
-  does not implement its boot flow. Do not check off anything in coloring-book's
-  plan from this one.
+---
+
+## Phase 4 — Route page
+
+**`src/modules/pages/route-page.ts:105-115`.** Keep added vehicles in the existing
+`Unplaced vehicles` section — no new section, no layout change — but restate the reason
+and attach the badge. `Unplaced` at `:59-63` gains an optional field so `renderUnplaced`
+can render the mark:
+
+```ts
+interface Unplaced {
+  vehicle: VehiclePosition;
+  reason: string;
+  /** Trip schedule_relationship, when the feed gave one that explains the placement. */
+  relationship?: number;
+}
+```
+
+At `:108-113`, when `vehicle.scheduleRelationship` is a defined non-zero value, the reason
+becomes the feed's statement rather than test-track's observation:
+
+```
+trip ADDED-1584879515 is not in the schedule; the feed reports it as ADDED
+```
+
+versus today's bare `trip ADDED-1584879515 is not in the schedule`. The other four
+unplaced reasons (`:112`, `:121`, `:131`, `:138`) are untouched.
+
+`renderUnplaced` at **`:374-388`** renders `tripRelationshipMark(u.relationship)` after the
+label. It stays a plain section, not a warning card.
+
+Add the same mark to `vehicleChip` at **`:189-212`**, beside the existing status /
+occupancy / `stopSequenceMark` markers, so a placed-but-added vehicle is marked on the
+strip too.
+
+### Gotchas
+
+- An added trip still reaches this page: `rt-index.ts:145` falls back to `vehicle.routeId`
+  when the trip is not in the schedule, so the vehicle is in `vehiclesByRoute` already.
+- Do not turn the section's border to `warning`. The rule in the `renderFeedGaps` doc
+  comment (`status-page.ts:274-284`) is that a legitimate-but-different encoding renders
+  neutral; only inference and failure earn the warning treatment.
+
+### Checklist
+
+- [x] `Unplaced.relationship` added and populated
+- [x] Reason text restated for non-SCHEDULED trips only
+- [x] Badge rendered in `renderUnplaced` and in `vehicleChip`
+- [x] Section stays neutral (no warning border)
+- [x] `pnpm typecheck`
+
+---
+
+## Phase 5 — Status page roll-up
+
+A feed-wide count of non-SCHEDULED trips, alongside `renderFeedGaps`. Neutral border
+throughout: an added trip is a fact about the feed, not a defect.
+
+**`src/modules/rt-index.ts`** — a tally computed in the constructor next to `gaps`, over
+both vehicles and trip updates:
+
+```ts
+export interface ScheduleRelationshipCounts {
+  /** Vehicles and trip updates whose TripDescriptor carried the field at all. */
+  reported: number;
+  /** Count per relationship value, SCHEDULED included. */
+  trips: Map<number, number>;
+  /** StopTimeUpdates by relationship: SKIPPED and NO_DATA are the interesting ones. */
+  stopTimes: Map<number, number>;
+}
+```
+
+**`src/index.ts:127`** — a second provider beside the existing one, same idiom:
+
+```ts
+statusPage.setScheduleRelationshipsProvider(() => panelRenderer.rtIndex.relationships);
+```
+
+**`src/modules/status-page.ts`** — `setScheduleRelationshipsProvider` (mirroring `:515,528`),
+`renderScheduleRelationships`, and a call at `:587` after `renderFeedGaps`. Heading:
+**"Trips outside the schedule"**, with one counted row per non-zero relationship and a
+prose note that these are producer statements, not gaps — and that `CANCELED` and
+`SKIPPED` mean the times shown are not times anyone can catch.
+
+### Gotchas
+
+- The section renders nothing when every non-SCHEDULED count is zero, the same
+  self-hiding rule `renderIssueCard` uses (`src/utils/issue-card.ts:99`). Without that,
+  every feed grows a new empty card.
+- A vehicle and a trip update for the same trip are two separate entities in the tally;
+  say which is being counted in the row labels rather than implying a trip count.
+
+### Checklist
+
+- [x] `ScheduleRelationshipCounts` computed on `RtIndex`
+- [x] Provider wired in `src/index.ts`
+- [x] `renderScheduleRelationships` added, neutral, self-hiding
+- [x] `pnpm typecheck`
+
+---
+
+## Phase 6 — Finish
+
+### Checklist
+
+- [x] `CHANGELOG.md` entry
+- [ ] `pnpm vendor:check --strict` clean — pre-existing staleness in `basemap-control.ts` /
+      `layer-manager.ts`, unrelated to this plan; see note below
+- [x] `pnpm typecheck` and `pnpm build` clean
+- [x] Conventional commits as each phase lands, no `Co-Authored-By` trailer
+
+---
+
+## Verification
+
+No browser automation (`CLAUDE.md`). Build, then hand off for visual check.
+
+```
+pnpm typecheck && pnpm build && pnpm vendor:check --strict
+pnpm dev
+```
+
+Load the MBTA feed and check, in order:
+
+1. **Vehicle page for an `ADDED-…` trip** (e.g. train 1630 → `ADDED-1584879515`). Trip
+   section shows `schedule_relationship: ADDED`; the Route row shows the route id with an
+   `ADDED` badge rather than dimmed `trip not in the schedule`; the badge title explains
+   it. The raw `VehiclePosition (decoded)` dump at `vehicle-page.ts:289` already showed
+   `scheduleRelationship` before this change — use it to confirm the parsed value matches.
+2. **Route page for that vehicle's route.** It is still in `Unplaced vehicles`, reason now
+   ends `…; the feed reports it as ADDED`, with a badge. The section border stays neutral.
+3. **Status page.** "Trips outside the schedule" appears with a non-zero ADDED count.
+4. **The no-op regression check — the important one.** Load a feed with no non-SCHEDULED
+   trips (any other catalog feed). Every page must look exactly as it does today: no
+   badges, no `Rel` column, no status section, predictions colgroup unchanged, and the
+   Stop column as wide as commit `8796708` made it.
+5. **SKIPPED / NO_DATA**, if a catalog feed carries them: the `Rel` column appears,
+   SKIPPED rows are struck through, the colgroup rebalances without overflowing the panel.

@@ -1,3 +1,16 @@
+## v0.8.0 (2026-08-27)
+
+### Feat
+
+- **rt**: capture TripDescriptor and StopTimeUpdate schedule_relationship
+- **render-utils**: add labels and a feed-reported badge for schedule_relationship
+- **vehicle-page**: show schedule_relationship on the trip, route and predictions
+- **status**: roll up schedule_relationship counts on the status page
+
+### Fix
+
+- **route-page**: restate added-trip vehicles as feed statements, not gaps
+
 ## v0.7.1 (2026-08-21)
 
 ### Perf
