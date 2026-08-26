@@ -304,6 +304,9 @@ export class GTFSRealtime extends EventTarget {
           : undefined,
         startDate: v.trip?.startDate ?? undefined,
         startTime: v.trip?.startTime ?? undefined,
+        scheduleRelationship: v.trip
+          ? present(v.trip, 'scheduleRelationship', v.trip.scheduleRelationship)
+          : undefined,
         currentStopSequence: present(v, 'currentStopSequence', v.currentStopSequence),
         stopId: present(v, 'stopId', v.stopId),
         currentStatus: present(v, 'currentStatus', v.currentStatus),

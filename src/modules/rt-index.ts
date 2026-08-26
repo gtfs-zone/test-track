@@ -27,6 +27,10 @@ export interface Prediction {
   delay?: number;
   /** The best time to sort and display by. */
   time?: number;
+  /** TripDescriptor.schedule_relationship of the enclosing trip update. */
+  tripScheduleRelationship?: number;
+  /** StopTimeUpdate.schedule_relationship for this stop: SKIPPED, NO_DATA, … */
+  scheduleRelationship?: number;
 }
 
 /**
@@ -107,6 +111,7 @@ export class RtIndex {
 
     const times = feed?.stopTimesByTrip.get(tripId);
     const predictions: Prediction[] = [];
+    const tripRelationship = presentNumber(update.trip, 'scheduleRelationship');
 
     for (const stu of update.stopTimeUpdate ?? []) {
       // Producers may give `stop_id`, `stop_sequence`, or both. When only the
@@ -115,6 +120,9 @@ export class RtIndex {
       const sequence = presentNumber(stu, 'stopSequence');
       const stopId =
         stu.stopId ?? (sequence !== undefined ? times?.find(t => t.stop_sequence === sequence)?.stop_id : undefined);
+      const stopRelationship = presentNumber(stu, 'scheduleRelationship');
+      // A trip with no scheduled stop_times cannot resolve a sequence-only
+      // update, so those stop time updates are dropped here.
       if (!stopId) continue;
 
       // Every one of these is a proto2 default away from being a lie: an absent
@@ -132,6 +140,8 @@ export class RtIndex {
         departure,
         delay,
         time: departure ?? arrival,
+        scheduleRelationship: stopRelationship,
+        tripScheduleRelationship: tripRelationship,
       });
     }
 

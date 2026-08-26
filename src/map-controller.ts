@@ -33,6 +33,8 @@ export interface VehiclePosition {
   directionId?: string;
   startDate?: string;
   startTime?: string;
+  /** TripDescriptor.schedule_relationship, or undefined when the producer omitted it. */
+  scheduleRelationship?: number;
   /**
    * The GTFS `stop_sequence` value of the stop the vehicle is working on — not
    * an index into the trip's stop list. Absent in many feeds, which is why the
