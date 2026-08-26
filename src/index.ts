@@ -18,6 +18,7 @@ import { StatusPage } from './modules/status-page';
 import { AppState } from './modules/app-state';
 import { PanelRenderer } from './modules/panel-renderer';
 import { pageTitle } from './modules/breadcrumb-trail';
+import { alertLabel } from './modules/breadcrumbs';
 import { SearchController } from './modules/search-controller';
 import { buildSearchEntries } from './modules/search-entries';
 import { ALERT_LEVEL_LABELS, alertLevel, isActiveNow, preferredText } from './modules/alerts';
@@ -125,6 +126,7 @@ new SearchController<PageState>({
 statusPage.setShareUrlProvider(() => appState.shareableUrl());
 statusPage.setMapIssuesProvider(() => mapCtrl.issues);
 statusPage.setFeedGapsProvider(() => panelRenderer.rtIndex.gaps);
+statusPage.setScheduleRelationshipsProvider(() => panelRenderer.rtIndex.relationships);
 statusPage.initialize();
 
 // Clicking a stop, route, or vehicle on the map focuses it in the panel; the

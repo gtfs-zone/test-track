@@ -64,6 +64,23 @@ export interface FeedGaps {
 }
 
 /**
+ * Feed-wide tally of `schedule_relationship`, counted for the status page. A
+ * vehicle and a trip update for the same trip are two separate entities here —
+ * kept in separate maps so a row can say which one it is counting rather than
+ * implying a trip count.
+ */
+export interface ScheduleRelationshipCounts {
+  /** Vehicles and trip updates whose TripDescriptor carried the field at all. */
+  reported: number;
+  /** Vehicles' TripDescriptor.schedule_relationship, by value. SCHEDULED included. */
+  vehicleTrips: Map<number, number>;
+  /** Trip updates' TripDescriptor.schedule_relationship, by value. SCHEDULED included. */
+  updateTrips: Map<number, number>;
+  /** StopTimeUpdates by relationship: SKIPPED and NO_DATA are the interesting ones. */
+  stopTimes: Map<number, number>;
+}
+
+/**
  * A prediction this many seconds in the past still counts as the stop the
  * vehicle is working on: `current_stop_sequence` under `STOPPED_AT` names the
  * stop the vehicle is *at*, which a producer may have already timestamped as
@@ -84,6 +101,12 @@ export class RtIndex {
     missingStopSequence: 0,
     resolvedFromStopId: 0,
     stopSequenceDerived: 0,
+  };
+  readonly relationships: ScheduleRelationshipCounts = {
+    reported: 0,
+    vehicleTrips: new Map(),
+    updateTrips: new Map(),
+    stopTimes: new Map(),
   };
 
   /** Derivation is per-trip, and several vehicles can share a trip. */
@@ -112,6 +135,10 @@ export class RtIndex {
     const times = feed?.stopTimesByTrip.get(tripId);
     const predictions: Prediction[] = [];
     const tripRelationship = presentNumber(update.trip, 'scheduleRelationship');
+    if (tripRelationship !== undefined) {
+      this.relationships.reported++;
+      bump(this.relationships.updateTrips, tripRelationship);
+    }
 
     for (const stu of update.stopTimeUpdate ?? []) {
       // Producers may give `stop_id`, `stop_sequence`, or both. When only the
@@ -121,6 +148,7 @@ export class RtIndex {
       const stopId =
         stu.stopId ?? (sequence !== undefined ? times?.find(t => t.stop_sequence === sequence)?.stop_id : undefined);
       const stopRelationship = presentNumber(stu, 'scheduleRelationship');
+      if (stopRelationship !== undefined) bump(this.relationships.stopTimes, stopRelationship);
       // A trip with no scheduled stop_times cannot resolve a sequence-only
       // update, so those stop time updates are dropped here.
       if (!stopId) continue;
@@ -156,6 +184,10 @@ export class RtIndex {
     if (routeId) push(this.vehiclesByRoute, routeId, vehicle);
 
     this.gaps.vehicles++;
+    if (vehicle.scheduleRelationship !== undefined) {
+      this.relationships.reported++;
+      bump(this.relationships.vehicleTrips, vehicle.scheduleRelationship);
+    }
     if (vehicle.currentStopSequence === undefined) {
       this.gaps.missingStopSequence++;
       const source = this.stopSequenceFor(vehicle)?.source;
@@ -322,4 +354,8 @@ function push<T>(map: Map<string, T[]>, key: string, value: T): void {
   let list = map.get(key);
   if (!list) map.set(key, (list = []));
   list.push(value);
+}
+
+function bump(map: Map<number, number>, key: number): void {
+  map.set(key, (map.get(key) ?? 0) + 1);
 }

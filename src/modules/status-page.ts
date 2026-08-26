@@ -1,9 +1,13 @@
 import type { EndpointStatus } from '../gtfs-rt';
 import type { FeedSession } from './feed-session';
 import type { MapDataIssues } from './layer-manager';
-import type { FeedGaps } from './rt-index';
+import type { FeedGaps, ScheduleRelationshipCounts } from './rt-index';
 import type { RealtimeEndpointName } from './feed-selection';
 import { REALTIME_ENDPOINTS, REALTIME_ENDPOINT_LABELS } from './feed-selection';
+import {
+  TRIP_SCHEDULE_RELATIONSHIP_LABELS,
+  STOP_TIME_SCHEDULE_RELATIONSHIP_LABELS,
+} from './render-utils';
 import { localClock } from './feed-time';
 import { isReproducible } from './feed-url';
 import { isLocalUrl, resolveRealtimeUrl } from './feed-url-resolve';
@@ -321,6 +325,55 @@ function renderFeedGaps(gaps: FeedGaps | null): string {
 }
 
 /**
+ * Feed-wide count of trips and stop times the producer took outside SCHEDULED.
+ * These are statements the feed made about specific trips, not gaps in what it
+ * reported, so the border stays neutral — the same rule `renderFeedGaps` follows
+ * for `stop_id`-only feeds.
+ *
+ * A vehicle and a trip update for the same trip are counted separately, and the
+ * row label says which is being counted rather than implying a trip count.
+ *
+ * Self-hides when every count is SCHEDULED or absent, the same rule
+ * `renderIssueCard` uses.
+ */
+function renderScheduleRelationships(counts: ScheduleRelationshipCounts | null): string {
+  if (!counts) return '';
+
+  const line = (label: string, n: number): string => `
+    <div class="flex justify-between gap-2 text-xs">
+      <span>${escHtml(label)}</span>
+      <span class="tabular-nums font-semibold">${n}</span>
+    </div>`;
+
+  const rows: string[] = [];
+  for (const [relationship, n] of counts.vehicleTrips) {
+    if (relationship === 0) continue;
+    const label = TRIP_SCHEDULE_RELATIONSHIP_LABELS[relationship] ?? String(relationship);
+    rows.push(line(`${n} vehicle${n === 1 ? '' : 's'} reporting trip ${label}`, n));
+  }
+  for (const [relationship, n] of counts.updateTrips) {
+    if (relationship === 0) continue;
+    const label = TRIP_SCHEDULE_RELATIONSHIP_LABELS[relationship] ?? String(relationship);
+    rows.push(line(`${n} trip update${n === 1 ? '' : 's'} reporting trip ${label}`, n));
+  }
+  for (const [relationship, n] of counts.stopTimes) {
+    if (relationship === 0) continue;
+    const label = STOP_TIME_SCHEDULE_RELATIONSHIP_LABELS[relationship] ?? String(relationship);
+    rows.push(line(`${n} stop time${n === 1 ? '' : 's'} reporting ${label}`, n));
+  }
+  if (rows.length === 0) return '';
+
+  return `
+    <section class="space-y-2">
+      <h3 class="font-semibold text-sm">Trips outside the schedule</h3>
+      <div class="rounded-lg border border-base-300 p-3 space-y-2">
+        ${rows.join('')}
+        <p class="text-xs opacity-50">These are statements the feed made about specific trips, not gaps in what it reported. CANCELED and SKIPPED mean the times shown are not times anyone can catch.</p>
+      </div>
+    </section>`;
+}
+
+/**
  * What the map could not draw. Surfacing these is the point of the tool: a stop
  * with no id or a vehicle pointing at a route the schedule never declares is
  * a feed bug, not a rendering one.
@@ -513,6 +566,7 @@ export class StatusPage {
   private shareUrl: (() => string) | null = null;
   private mapIssues: (() => MapDataIssues) | null = null;
   private feedGaps: (() => FeedGaps) | null = null;
+  private scheduleRelationships: (() => ScheduleRelationshipCounts) | null = null;
 
   /** Supplied by AppState, which is the only thing that knows the full hash. */
   setShareUrlProvider(fn: () => string): void {
@@ -527,6 +581,11 @@ export class StatusPage {
   /** Supplied by PanelRenderer, which owns the realtime read-model. */
   setFeedGapsProvider(fn: () => FeedGaps): void {
     this.feedGaps = fn;
+  }
+
+  /** Supplied by PanelRenderer, which owns the realtime read-model. */
+  setScheduleRelationshipsProvider(fn: () => ScheduleRelationshipCounts): void {
+    this.scheduleRelationships = fn;
   }
 
   /** Called by AppState when focus moves to or away from home. */
@@ -585,6 +644,7 @@ export class StatusPage {
       <div class="space-y-4">
         ${renderCounts(this.session)}
         ${renderFeedGaps(this.feedGaps?.() ?? null)}
+        ${renderScheduleRelationships(this.scheduleRelationships?.() ?? null)}
         ${renderMapIssues(this.mapIssues?.() ?? null)}
         ${renderStationIssues(this.session)}
         ${renderPaddedColumns(this.session)}
