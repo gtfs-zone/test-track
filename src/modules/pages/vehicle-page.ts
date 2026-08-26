@@ -4,12 +4,14 @@
  */
 
 import type { VehiclePosition } from '../../map-controller';
+import type { GTFSScheduled } from '../../gtfs-scheduled';
 import type { PageState } from '../../types/page-state';
 import { alertsForTrip } from '../alerts';
 import type { RtIndex } from '../rt-index';
 import type { RenderContext } from '../render-utils';
 import {
   OCCUPANCY_LABELS,
+  TRIP_SCHEDULE_RELATIONSHIP_LABELS,
   VEHICLE_STATUS_LABELS,
   entityLink,
   escHtml,
@@ -22,7 +24,9 @@ import {
   routeBadge,
   section,
   stopSequenceMark,
+  stopTimeRelationshipMark,
   timestampWithAge,
+  tripRelationshipMark,
   vehicleDisplayName,
 } from '../render-utils';
 import { localClock, zoneLabel } from '../feed-time';
@@ -36,6 +40,9 @@ import { renderAlertList } from './alert-page';
  * interesting thing about it.
  */
 const lastSeen = new Map<string, { vehicle: VehiclePosition; at: number }>();
+
+/** Relationship values under which a trip legitimately has no static-schedule entry. */
+const ADDED_LIKE_RELATIONSHIPS = new Set([1, 2, 4, 5]);
 
 /**
  * The `current_stop_sequence` row of the raw property region: exactly what the
@@ -59,6 +66,29 @@ function renderStopSequenceValue(rt: RtIndex, vehicle: VehiclePosition): string 
   return `${absent} <span class="opacity-60">— ${note}</span>`;
 }
 
+/**
+ * The Route row when the trip is not in the static schedule. When the feed
+ * explained why (ADDED / UNSCHEDULED / REPLACEMENT / DUPLICATED), say so and
+ * still surface `vehicle.routeId` rather than dimming the row into a gap.
+ */
+function renderAddedTripRoute(
+  ctx: RenderContext,
+  feed: GTFSScheduled | null | undefined,
+  vehicle: VehiclePosition,
+): string {
+  const rel = vehicle.scheduleRelationship;
+  if (rel === undefined || !ADDED_LIKE_RELATIONSHIPS.has(rel)) {
+    return prop('Route', '<span class="opacity-50">trip not in the schedule</span>');
+  }
+  const route = vehicle.routeId ? feed?.routes.get(vehicle.routeId) : undefined;
+  const routeHtml = !vehicle.routeId
+    ? '<span class="opacity-50">no route_id reported</span>'
+    : route
+      ? entityLink(ctx, { type: 'route', route_id: route.id }, route.short_name || route.long_name || route.id)
+      : `<span class="font-mono">${escHtml(vehicle.routeId)}</span>`;
+  return prop('Route', `${routeHtml} ${tripRelationshipMark(rel)}`);
+}
+
 function renderTripSection(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosition): string {
   const feed = ctx.session.scheduledFeed;
   const trip = vehicle.tripId ? feed?.trips.get(vehicle.tripId) : undefined;
@@ -79,20 +109,31 @@ function renderTripSection(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosi
   // The whole section hangs off the stop, so the mark rides with the value.
   const mark = current ? ` ${stopSequenceMark(vehicle, current)}` : '';
 
+  const routeProp = trip
+    ? prop(
+        'Route',
+        entityLink(
+          ctx,
+          { type: 'route', route_id: trip.route_id, direction_id: trip.direction_id || undefined },
+          feed?.routes.get(trip.route_id)?.short_name || trip.route_id,
+        ),
+      )
+    : renderAddedTripRoute(ctx, feed, vehicle);
+
   return section(
     'Trip',
     propList([
       prop('trip_id', `<span class="font-mono">${escHtml(vehicle.tripId)}</span>`),
-      trip
-        ? prop(
-            'Route',
-            entityLink(
-              ctx,
-              { type: 'route', route_id: trip.route_id, direction_id: trip.direction_id || undefined },
-              feed?.routes.get(trip.route_id)?.short_name || trip.route_id,
+      routeProp,
+      prop(
+        'schedule_relationship',
+        vehicle.scheduleRelationship === undefined
+          ? '<span class="opacity-40">not reported</span>'
+          : escHtml(
+              TRIP_SCHEDULE_RELATIONSHIP_LABELS[vehicle.scheduleRelationship] ??
+                String(vehicle.scheduleRelationship),
             ),
-          )
-        : prop('Route', '<span class="opacity-50">trip not in the schedule</span>'),
+      ),
       trip?.headsign ? prop('Headsign', escHtml(trip.headsign)) : '',
       currentStop
         ? prop(
@@ -125,30 +166,34 @@ function renderPredictions(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosi
   }
   const feed = ctx.session.scheduledFeed;
   const current = rt.stopSequenceFor(vehicle);
+  const showRel = predictions.some(p => p.scheduleRelationship);
 
   return section(
     'Predictions',
     `<table class="table table-xs table-fixed">
       <colgroup>
-        <col style="width: 9.09%" />
-        <col style="width: 36.36%" />
-        <col style="width: 18.18%" />
-        <col style="width: 18.18%" />
-        <col style="width: 18.18%" />
+        <col style="width: ${showRel ? '8.33%' : '9.09%'}" />
+        <col style="width: ${showRel ? '33.33%' : '36.36%'}" />
+        <col style="width: ${showRel ? '16.67%' : '18.18%'}" />
+        <col style="width: ${showRel ? '16.67%' : '18.18%'}" />
+        <col style="width: ${showRel ? '16.67%' : '18.18%'}" />
+        ${showRel ? '<col style="width: 8.33%" />' : ''}
       </colgroup>
       <thead><tr>
         <th class="text-right">Seq</th><th>Stop</th>
         <th class="text-right">Arr ${escHtml(zoneLabel())}</th>
         <th class="text-right">Dep ${escHtml(zoneLabel())}</th>
         <th class="text-right">Delay</th>
+        ${showRel ? '<th class="text-right">Rel</th>' : ''}
       </tr></thead>
       <tbody>${predictions
         .map(p => {
           const stop = feed?.stops.get(p.stop_id);
           const isCurrent = current !== undefined && p.stop_sequence === current.sequence;
+          const skipped = p.scheduleRelationship === 1;
           return `<tr class="${isCurrent ? 'bg-base-200' : ''}">
             <td class="text-right tabular-nums opacity-60">${escHtml(String(p.stop_sequence ?? '—'))}</td>
-            <td class="max-w-0 truncate">${
+            <td class="max-w-0 truncate${skipped ? ' opacity-50 line-through' : ''}">${
               stop
                 ? entityLink(ctx, { type: 'stop', stop_id: stop.id }, stop.name || stop.id)
                 : escHtml(p.stop_id)
@@ -160,6 +205,7 @@ function renderPredictions(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosi
               formatEpochTime(p.departure, false),
             )}</td>
             <td class="text-right whitespace-nowrap">${formatDelay(p.delay)}</td>
+            ${showRel ? `<td class="text-right whitespace-nowrap">${stopTimeRelationshipMark(p.scheduleRelationship)}</td>` : ''}
           </tr>`;
         })
         .join('')}</tbody>
@@ -231,7 +277,7 @@ export function renderVehiclePage(
         // The feed's own name for it, falling back to the entity that carried
         // it — the Identity props below keep the two apart.
         vehicle.vehicleId || vehicle.entityId,
-        route ? routeBadge(ctx, route) : '',
+        `${route ? routeBadge(ctx, route) : ''} ${tripRelationshipMark(vehicle.scheduleRelationship)}`.trim(),
       )}
 
       ${section(
