@@ -1,6 +1,8 @@
 import type { PageState } from '../types/page-state';
 import type { BreadcrumbItem } from './breadcrumb-trail';
 import { stopTypeLabel } from './breadcrumb-trail';
+import { EXAMPLES } from './examples';
+import type { FeedSelection } from './feed-selection';
 import { describeSelection } from './feed-selection';
 import type { FeedSession } from './feed-session';
 import { vehicleDisplayName } from './render-utils';
@@ -12,15 +14,50 @@ import { vehicleDisplayName } from './render-utils';
  * interface. Our whole model is in memory, so both of these are plain reads.
  */
 
+/** The curated name for a selection whose scheduled URL we ship an entry for. */
+function exampleName(selection: FeedSelection | null): string | null {
+  const scheduled = selection?.scheduled;
+  if (scheduled?.kind !== 'url') return null;
+  const match = EXAMPLES.find(
+    example =>
+      example.selection.scheduled?.kind === 'url' &&
+      example.selection.scheduled.url === scheduled.url,
+  );
+  return match?.name ?? null;
+}
+
+/**
+ * What to call the loaded feed.
+ *
+ * A selection restored from a link carries no name, so it falls back to its
+ * host — a URL where a name belongs. Once the schedule parses, the feed names
+ * itself, so ask it first and only walk back towards the URL from there.
+ */
+function feedName(session: FeedSession): string | null {
+  const feed = session.scheduledFeed;
+
+  const publisher = feed?.feedInfo[0]?.publisher_name.trim();
+  if (publisher) return publisher;
+
+  const named = (feed?.agencies ?? []).filter(agency => agency.name.trim());
+  if (named.length === 1) return named[0].name.trim();
+  if (named.length > 1) return `${named[0].name.trim()} +${named.length - 1} more`;
+
+  const example = exampleName(session.selection);
+  if (example) return example;
+
+  const described = session.selection ? describeSelection(session.selection) : null;
+  return described && described !== 'feeds' ? described : null;
+}
+
 /**
  * The root crumb. Its eyebrow says what the page is, its label names the feed
  * being looked at, so the crumb reads like every other one: type over object.
  */
 function home(session: FeedSession): BreadcrumbItem {
-  const label = session.selection ? describeSelection(session.selection) : null;
   return {
-    typeLabel: 'Feed status',
-    label: label && label !== 'feeds' ? label : 'No feed',
+    typeLabel: 'Feed',
+    label: feedName(session) ?? 'No feed',
     pageState: { type: 'home' },
   };
 }

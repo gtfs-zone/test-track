@@ -45,6 +45,7 @@ import {
   formatDuration,
   formatEpochTime,
   missing,
+  pageHeader,
   prop,
   propList,
   renderRawFields,
@@ -429,21 +430,11 @@ export function renderRoutePage(
 
   return `
     <div class="space-y-4">
-      <div class="space-y-1">
-        <div class="flex items-center gap-2">
-          ${routeBadge(ctx, route)}
-          <h2 class="text-lg font-semibold leading-tight">${escHtml(
-            route.long_name || route.short_name || route.id,
-          )}</h2>
-        </div>
-        <p class="text-xs opacity-60">${[
-          ROUTE_TYPE_LABELS[route.type] ?? `route_type ${route.type}`,
-          agency?.name,
-        ]
-          .filter(Boolean)
-          .map(part => escHtml(part as string))
-          .join(' · ')}</p>
-      </div>
+      ${pageHeader(
+        route.long_name || route.short_name || route.id,
+        route.id,
+        routeBadge(ctx, route),
+      )}
 
       ${renderAlertList(ctx, feedWideAlerts(ctx.session), 'Feed-wide alerts')}
       ${renderAlertList(ctx, alertsForRoute(ctx.session, route.id), 'Route alerts')}
@@ -456,7 +447,8 @@ export function renderRoutePage(
       ${section(
         'Route',
         propList([
-          prop('route_id', escHtml(route.id)),
+          prop('Mode', escHtml(ROUTE_TYPE_LABELS[route.type] ?? `route_type ${route.type}`)),
+          agency?.name ? prop('Agency', escHtml(agency.name)) : '',
           prop('Trips', String((feed.tripsByRoute.get(route.id) ?? []).length)),
           prop('Vehicles in feed', String((rt.vehiclesByRoute.get(route.id) ?? []).length)),
           prop('Stops on strip', String(sequence.stops.length)),

@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/breadcrumb-trail.ts
-   @sha fcb17b2
+   @sha 138a116
    @status verbatim */
 /**
  * Breadcrumb trail markup, page titles, and the crumb type vocabulary.
@@ -47,9 +47,14 @@ function escHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/** The dim uppercase type line, shared by crumbs and page headers. */
+/**
+ * The dim uppercase type line, shared by crumbs and page headers.
+ *
+ * `leading-4` fixes the line box at 1rem; the trail's separator offset is
+ * measured off it, so the two move together.
+ */
 export function pageHeaderEyebrow(typeLabel: string): string {
-  return `<span class="block text-[10px] uppercase tracking-wide opacity-50">${escHtml(
+  return `<span class="block text-[10px] leading-4 uppercase tracking-wide opacity-50">${escHtml(
     typeLabel
   )}</span>`;
 }
@@ -58,9 +63,10 @@ export function pageHeaderEyebrow(typeLabel: string): string {
  * The trail: every crumb but the last is a link carrying its serialized page
  * state in `data-nav`, which each app delegates a click handler to.
  *
- * The wrapping overrides matter: daisyUI's `breadcrumbs` scrolls a nowrap row,
- * which clips a chain of two-line crumbs in a narrow panel instead of
- * reflowing it.
+ * Deliberately not daisyUI's `breadcrumbs`: it lays out `li` and `li > *` as
+ * centred flex rows, which flattens each crumb's type-over-name stack into a
+ * row and spaces it inconsistently (a gap on the linked crumbs, none on the
+ * last). Plain flex wrapping here, so nothing has to be overridden.
  */
 export function renderBreadcrumbTrail(
   items: BreadcrumbItem[],
@@ -70,23 +76,29 @@ export function renderBreadcrumbTrail(
     return '';
   }
 
+  // `pt-4` matches the eyebrow's `leading-4`, dropping the separator onto the
+  // name line rather than floating it between the two lines.
+  const separator =
+    '<li aria-hidden="true" class="pt-4 opacity-40 select-none">/</li>';
+
   const crumbs = items.map((item, index) => {
-    const inner = `${pageHeaderEyebrow(item.typeLabel)}<span class="block">${escHtml(
+    const inner = `${pageHeaderEyebrow(item.typeLabel)}<span class="block leading-tight break-words">${escHtml(
       item.label
     )}</span>`;
+    const lead = index === 0 ? '' : separator;
 
     if (index === items.length - 1) {
-      return `<li>${inner}</li>`;
+      return `${lead}<li class="flex min-w-0 flex-col" aria-current="page">${inner}</li>`;
     }
 
-    return `<li><a href="${escHtml(href(item.pageState))}" data-nav="${escHtml(
-      JSON.stringify(item.pageState)
-    )}">${inner}</a></li>`;
+    return `${lead}<li class="flex min-w-0 flex-col"><a class="flex flex-col hover:underline" href="${escHtml(
+      href(item.pageState)
+    )}" data-nav="${escHtml(JSON.stringify(item.pageState))}">${inner}</a></li>`;
   });
 
   return `
-    <nav class="breadcrumbs text-sm overflow-x-visible [&>ul]:flex-wrap [&>ul]:items-start [&>ul]:whitespace-normal">
-      <ul>${crumbs.join('')}</ul>
+    <nav aria-label="Breadcrumb" class="text-sm">
+      <ol class="flex flex-wrap items-start gap-x-2 gap-y-2">${crumbs.join('')}</ol>
     </nav>`;
 }
 

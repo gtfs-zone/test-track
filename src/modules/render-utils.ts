@@ -208,6 +208,24 @@ export const ROUTE_TYPE_LABELS: Record<number, string> = {
   12: 'Monorail',
 };
 
+/**
+ * The header every entity page opens with: the name, then the feed's own id
+ * for it. One shape across pages, so the id is always in the same place and
+ * the facts about the entity live in its properties region instead.
+ *
+ * `extra` is for a marker that has to sit with the name, e.g. a route badge.
+ */
+export function pageHeader(title: string, id: string, extra = ''): string {
+  const heading = `<h2 class="text-lg font-semibold leading-tight whitespace-pre-wrap">${escHtml(
+    title,
+  )}</h2>`;
+  return `
+    <div class="space-y-1">
+      ${extra ? `<div class="flex items-center gap-2">${extra}${heading}</div>` : heading}
+      <p class="text-xs opacity-60 font-mono break-words">${escHtml(id)}</p>
+    </div>`;
+}
+
 /** A definition list row, used by every page's properties region. */
 export function prop(label: string, valueHtml: string): string {
   return `

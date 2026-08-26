@@ -26,6 +26,7 @@ import {
   formatEpochTime,
   formatScheduledTime,
   missing,
+  pageHeader,
   prop,
   propList,
   renderRawFields,
@@ -314,8 +315,7 @@ export function renderStopPage(
   return `
     <div class="space-y-4">
       <div class="space-y-1">
-        <h2 class="text-lg font-semibold leading-tight">${escHtml(stop.name || stop.id)}</h2>
-        <p class="text-xs opacity-60 font-mono">${escHtml(stop.id)}</p>
+        ${pageHeader(stop.name || stop.id, stop.id)}
         ${
           parent
             ? `<p class="text-xs">Part of ${entityLink(

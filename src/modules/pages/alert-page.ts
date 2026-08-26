@@ -23,6 +23,7 @@ import {
   formatAbsolute,
   formatDuration,
   missing,
+  pageHeader,
   prop,
   propList,
   renderRawJson,
@@ -225,15 +226,7 @@ export function renderAlertPage(
   return `
     <div class="space-y-4">
       <div class="space-y-1">
-        <h2 class="text-lg font-semibold leading-tight whitespace-pre-wrap">${escHtml(
-          preferredText(alert.headerText) || record.id,
-        )}</h2>
-        <div class="flex items-center gap-2 flex-wrap text-xs opacity-60">
-          ${statusBadge(record)}
-          <span>${escHtml(ALERT_LEVEL_LABELS[alertLevel(record)])}</span>
-          <span>·</span>
-          <span>${escHtml(activeWindow(alert))}</span>
-        </div>
+        ${pageHeader(preferredText(alert.headerText) || record.id, record.id)}
         ${renderOtherTranslations('Header', alert.headerText)}
       </div>
 
@@ -247,7 +240,8 @@ export function renderAlertPage(
       ${section(
         'Properties',
         propList([
-          prop('Entity id', `<span class="font-mono">${escHtml(record.id)}</span>`),
+          prop('Status', `${statusBadge(record)} ${escHtml(activeWindow(alert))}`),
+          prop('Level', escHtml(ALERT_LEVEL_LABELS[alertLevel(record)])),
           prop('Cause', escHtml(CAUSE_LABELS[alert.cause as number] ?? String(alert.cause ?? '—'))),
           prop('Effect', escHtml(EFFECT_LABELS[alert.effect as number] ?? String(alert.effect ?? '—'))),
           prop(

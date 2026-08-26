@@ -15,6 +15,7 @@ import {
   escHtml,
   formatDelay,
   formatEpochTime,
+  pageHeader,
   prop,
   propList,
   renderRawJson,
@@ -218,13 +219,13 @@ export function renderVehiclePage(
     <div class="space-y-4">
       ${goneBanner}
       ${sharedIdBanner}
-      <div class="space-y-1">
-        <h2 class="text-lg font-semibold leading-tight">${escHtml(vehicleDisplayName(feed, vehicle))}</h2>
-        <div class="flex items-center gap-2 flex-wrap">
-          ${route ? routeBadge(ctx, route) : ''}
-          ${trip?.headsign ? `<span class="text-xs opacity-60">${escHtml(trip.headsign)}</span>` : ''}
-        </div>
-      </div>
+      ${pageHeader(
+        vehicleDisplayName(feed, vehicle),
+        // The feed's own name for it, falling back to the entity that carried
+        // it — the Identity props below keep the two apart.
+        vehicle.vehicleId || vehicle.entityId,
+        route ? routeBadge(ctx, route) : '',
+      )}
 
       ${section(
         'Live',
