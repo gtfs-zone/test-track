@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/layer-manager.ts
-   @sha a4b5ee1
+   @sha c15807b
    @status modified
    @changes
    - Fed from the in-memory `GTFSScheduled` model instead of `GTFSParser` /
@@ -24,7 +24,12 @@
    - Skipped `69dd3f6` (timetable stop focus), `1dbef88` / `63af1c9` /
      `26b87e2` (GTFS Flex zones and location groups) and `c48eede` / `b5e30d1`
      (transfer edges and table-row hover): test-track ingests none of that
-     data. */
+     data.
+   - Took `424cbdf`'s small-feed stop-fade exemption (`stopFadeDisabled`,
+     `refreshStopFade`, `clickAreaRadius`) as-is; wired into `setScheduledFeed`
+     rather than `addStopsLayer`/`updateStopsData`, since stops here only ever
+     change on a new feed. Dropped the camera-ease-to-new-stop half of that
+     commit: test-track has no live-editing flow that creates a stop. */
 
 import type maplibregl from 'maplibre-gl';
 import type {
@@ -36,7 +41,6 @@ import type {
 import { CONFIG } from '../config';
 import type { GTFSScheduled } from '../gtfs-scheduled';
 import type { VehiclePosition } from '../map-controller';
-import type { ShapeMode } from './basemap-control';
 import { routeSortKey } from './route-sort';
 import { casingColor } from '../utils/route-colors';
 import { clearThemeColorCache, resolveThemeColor } from '../utils/theme-color';
@@ -188,9 +192,8 @@ const EMPTY: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: 
 export class LayerManager {
   private map: MapLibreMap;
   private feed: GTFSScheduled | null = null;
-  private shapeMode: ShapeMode = 'shapes';
 
-  /** Built once per feed / shape-mode change and re-used on style rebuilds. */
+  /** Built once per feed and re-used on style rebuilds. */
   private stopsData: GeoJSON.FeatureCollection = EMPTY;
   private routesData: GeoJSON.FeatureCollection = EMPTY;
   private vehiclesData: GeoJSON.FeatureCollection = EMPTY;
@@ -201,6 +204,8 @@ export class LayerManager {
   private hoveredStopId: string | null = null;
   /** Stops that *should* carry the `onRoute` feature-state on the map. */
   private wantedRouteStopIds: string[] = [];
+  /** True while the feed is small enough that both zoom fade bands are skipped. */
+  private stopFadeDisabled = false;
   /** Armed while feature state is waiting for a source to finish loading. */
   private retry: (() => void) | null = null;
 
@@ -258,19 +263,13 @@ export class LayerManager {
     this.routesData = feed ? this.buildRoutes(feed) : EMPTY;
     this.pushData('stops', this.stopsData);
     this.pushData('routes', this.routesData);
+    this.refreshStopFade(this.stopsData.features.length);
     // A new feed almost never contains the old focus; AppState clears it
     // separately, but the map's own spotlight and feature state have to go now
     // either way. setFocus(null) wipes every source's feature state, so a stale
     // `focused`/`onRoute` cannot survive into the new feed.
     this.hoveredStopId = null;
     this.setFocus(null);
-  }
-
-  setShapeMode(mode: ShapeMode): void {
-    if (this.shapeMode === mode) return;
-    this.shapeMode = mode;
-    this.routesData = this.feed ? this.buildRoutes(this.feed) : EMPTY;
-    this.pushData('routes', this.routesData);
   }
 
   setVehicles(positions: VehiclePosition[]): void {
@@ -417,6 +416,20 @@ export class LayerManager {
         this.stationFadeOpacity(dim),
       );
     }
+    if (this.map.getLayer('stops-clickarea')) {
+      this.map.setPaintProperty('stops-clickarea', 'circle-radius', this.clickAreaRadius());
+    }
+  }
+
+  /**
+   * Turn the zoom fade off for a feed with only a handful of stops, on again
+   * once it grows. Called whenever the stop data changes.
+   */
+  private refreshStopFade(stopCount: number): void {
+    const disabled = stopCount < CONFIG.STOP_FADE_MIN_STOPS;
+    if (disabled === this.stopFadeDisabled) return;
+    this.stopFadeDisabled = disabled;
+    this.applyStopDim();
   }
 
   /**
@@ -667,6 +680,7 @@ export class LayerManager {
    * spotlight active), non-special stops top out at `dim` rather than 1.
    */
   private stopFadeOpacity(dim: number | null): ExpressionSpecification {
+    if (this.stopFadeDisabled) return (dim === null ? 1 : specialOrDim(dim)) as unknown as ExpressionSpecification;
     const stationsOnly = [
       'case',
       SPECIAL_STOP,
@@ -697,6 +711,7 @@ export class LayerManager {
    * out at low zoom and leaves its black center dot floating.
    */
   private stationFadeOpacity(dim: number | null): ExpressionSpecification {
+    if (this.stopFadeDisabled) return (dim === null ? 1 : specialOrDim(dim)) as unknown as ExpressionSpecification;
     return [
       'interpolate',
       ['linear'],
@@ -768,41 +783,45 @@ export class LayerManager {
       source: 'stops',
       filter: STOPS_FILTER,
       paint: {
-        'circle-radius': [
-          'interpolate',
-          ['linear'],
-          ['zoom'],
-          CONFIG.STATION_FADE_ZOOM_MIN,
-          ['case', SPECIAL_STOP, STOP_CLICK_RADIUS, 0],
-          CONFIG.STATION_FADE_ZOOM_MAX,
-          [
-            'case',
-            SPECIAL_STOP,
-            STOP_CLICK_RADIUS,
-            ['==', ['get', 'location_type'], 0],
-            0,
-            STOP_CLICK_RADIUS,
-          ],
-          CONFIG.STOP_FADE_ZOOM_MIN,
-          [
-            'case',
-            SPECIAL_STOP,
-            STOP_CLICK_RADIUS,
-            ['==', ['get', 'location_type'], 0],
-            0,
-            STOP_CLICK_RADIUS,
-          ],
-          CONFIG.STOP_FADE_ZOOM_MAX,
-          STOP_CLICK_RADIUS,
-          // Stay larger than the biggest visual circle (focused station at high
-          // zoom) so the clickarea is the sole hit-test layer.
-          19,
-          STOP_CLICK_RADIUS * 1.6,
-        ] as unknown as ExpressionSpecification,
+        'circle-radius': this.clickAreaRadius(),
         'circle-color': 'transparent',
         'circle-opacity': 0,
       },
     });
+  }
+
+  /**
+   * Hit radius for the clickarea layer, mirroring `stopFadeOpacity` so an
+   * invisible stop is not hoverable. Under the small-feed exemption nothing
+   * fades, so the radius only grows with zoom.
+   */
+  private clickAreaRadius(): ExpressionSpecification {
+    // Stay larger than the biggest visual circle (focused station at high
+    // zoom) so the clickarea is the sole hit-test layer.
+    const highZoom = [CONFIG.STOP_FADE_ZOOM_MAX, STOP_CLICK_RADIUS, 19, STOP_CLICK_RADIUS * 1.6];
+    if (this.stopFadeDisabled) {
+      return ['interpolate', ['linear'], ['zoom'], ...highZoom] as unknown as ExpressionSpecification;
+    }
+    const stationsOnly = [
+      'case',
+      SPECIAL_STOP,
+      STOP_CLICK_RADIUS,
+      ['==', ['get', 'location_type'], 0],
+      0,
+      STOP_CLICK_RADIUS,
+    ];
+    return [
+      'interpolate',
+      ['linear'],
+      ['zoom'],
+      CONFIG.STATION_FADE_ZOOM_MIN,
+      ['case', SPECIAL_STOP, STOP_CLICK_RADIUS, 0],
+      CONFIG.STATION_FADE_ZOOM_MAX,
+      stationsOnly,
+      CONFIG.STOP_FADE_ZOOM_MIN,
+      stationsOnly,
+      ...highZoom,
+    ] as unknown as ExpressionSpecification;
   }
 
   private addVehicleLayers(): void {
@@ -1013,7 +1032,7 @@ export class LayerManager {
       const seen = new Set<string>();
 
       for (const trip of trips) {
-        if (this.shapeMode === 'shapes' && trip.shape_id) {
+        if (trip.shape_id) {
           if (seen.has(`shape:${trip.shape_id}`)) continue;
           const coords = feed.shapes.get(trip.shape_id);
           if (coords && coords.length >= 2) {

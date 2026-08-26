@@ -381,8 +381,10 @@ prose note that these are producer statements, not gaps — and that `CANCELED` 
 ### Checklist
 
 - [x] `CHANGELOG.md` entry
-- [ ] `pnpm vendor:check --strict` clean — pre-existing staleness in `basemap-control.ts` /
-      `layer-manager.ts`, unrelated to this plan; see note below
+- [x] `pnpm vendor:check --strict` clean — re-vendored `basemap-control.ts` (route
+      geometry shape toggle dropped, matching upstream) and `layer-manager.ts`
+      (small-feed stop-fade exemption), both unrelated to this plan but blocking
+      the strict check
 - [x] `pnpm typecheck` and `pnpm build` clean
 - [x] Conventional commits as each phase lands, no `Co-Authored-By` trailer
 

@@ -104,7 +104,6 @@ function restoreView(): MapView {
 export class MapController {
   private map!: maplibregl.Map;
   private layers!: LayerManager;
-  private basemap!: BasemapControl;
   private resizeTimeout: ReturnType<typeof setTimeout> | null = null;
   private viewSaveTimeout: ReturnType<typeof setTimeout> | null = null;
   /** Height of the mobile bottom sheet, kept out of the camera's way. */
@@ -166,12 +165,10 @@ export class MapController {
     };
     this.layers.onEmptySelect = () => this.onEmptySelect?.();
 
-    this.basemap = new BasemapControl(this.map, {
+    new BasemapControl(this.map, {
       initial: appearance,
-      onRenderModeChange: mode => this.layers.setShapeMode(mode),
       onAppearanceChange: next => writeStored(CONFIG.MAP_APPEARANCE_KEY, next),
     });
-    this.layers.setShapeMode(this.basemap.getShapeMode());
 
     this.map.once('load', () => {
       this.layers.rebuild();

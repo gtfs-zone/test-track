@@ -1,17 +1,14 @@
 /* @vendored-from coloring-book:src/modules/basemap-control.ts
-   @sha a4b5ee1
+   @sha c15807b
    @status modified
    @changes
-   - Constructor takes an options object (initial basemap / projection / shape
-     mode plus an `onAppearanceChange` callback) so the caller can restore and
-     persist appearance; upstream hardcodes `standard` + `globe` and persists
-     nothing.
+   - Constructor takes an options object (initial basemap / projection plus an
+     `onAppearanceChange` callback) so the caller can restore and persist
+     appearance; upstream hardcodes `standard` + `globe` and persists nothing.
    - The projection/sky block was duplicated three times upstream; it is now one
      `styleWithProjection()` helper.
    - `rebuildControl()` no longer leaks a `<style>` element per rebuild — the
      stylesheet is injected once, keyed by id.
-   - `ShapeToggleControl` gained an initial mode and `setMode()`, needed to
-     restore the persisted mode at boot.
    - Dropped the dead `parent` lookup in `rebuildControl` and the no-op keydown
      handler on the main FAB. */
 
@@ -22,19 +19,16 @@
 import { Map as MapLibreMap, StyleSpecification } from 'maplibre-gl';
 import { basemapStyles, getBasemapStyle } from './basemap-styles';
 
-export type ShapeMode = 'shapes' | 'stops';
 export type Projection = 'mercator' | 'globe';
 
 export interface MapAppearance {
   basemap: string;
   projection: Projection;
-  shapeMode: ShapeMode;
 }
 
 export interface BasemapControlOptions {
   initial?: Partial<MapAppearance>;
-  onRenderModeChange?: (mode: ShapeMode) => void;
-  /** Fired whenever any of basemap / projection / shape mode changes. */
+  /** Fired whenever either basemap or projection changes. */
   onAppearanceChange?: (appearance: MapAppearance) => void;
 }
 
@@ -77,68 +71,11 @@ export function initialMapStyle(appearance: Partial<MapAppearance>): StyleSpecif
 
 const CONTROL_STYLE_ID = 'basemap-control-styles';
 
-/**
- * Toggle control for switching route render mode between GTFS shapes and
- * straight stop-to-stop lines. Owned by BasemapControl so it survives
- * basemap rebuilds with its state intact.
- */
-export class ShapeToggleControl {
-  private currentMode: ShapeMode;
-  private readonly onModeChange: (mode: ShapeMode) => void;
-
-  constructor(onModeChange: (mode: ShapeMode) => void, initialMode: ShapeMode = 'shapes') {
-    this.onModeChange = onModeChange;
-    this.currentMode = initialMode;
-  }
-
-  public getMode(): ShapeMode {
-    return this.currentMode;
-  }
-
-  public setMode(mode: ShapeMode): void {
-    this.currentMode = mode;
-  }
-
-  /** Returns the HTML string to inject into the BasemapControl container. */
-  public render(): string {
-    const checked = this.currentMode === 'shapes' ? 'checked' : '';
-    return `
-      <label class="swap swap-rotate btn btn-lg btn-circle btn-neutral shape-toggle-swap" title="Toggle route geometry (shapes / straight lines)">
-        <input type="checkbox" class="shape-toggle-input" ${checked} />
-        <!-- Shapes icon: wavy line (shown when checked = shapes mode) -->
-        <svg class="swap-on w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M3 12c1.5-6 3-6 4.5 0s3 6 4.5 0 3-6 4.5 0 3 6 4.5 0"/>
-        </svg>
-        <!-- Stops icon: straight polyline with nodes (shown when unchecked = stops mode) -->
-        <svg class="swap-off w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M4 17l8-10 8 5"/>
-          <circle cx="4" cy="17" r="1.5" fill="currentColor" stroke="none"/>
-          <circle cx="12" cy="7" r="1.5" fill="currentColor" stroke="none"/>
-          <circle cx="20" cy="12" r="1.5" fill="currentColor" stroke="none"/>
-        </svg>
-      </label>
-    `;
-  }
-
-  /** Wire up the change listener after render() HTML has been inserted into the DOM. */
-  public attachListener(container: HTMLElement): void {
-    const input = container.querySelector('.shape-toggle-input') as HTMLInputElement | null;
-    if (!input) {
-      return;
-    }
-    input.addEventListener('change', e => {
-      this.currentMode = (e.target as HTMLInputElement).checked ? 'shapes' : 'stops';
-      this.onModeChange(this.currentMode);
-    });
-  }
-}
-
 export class BasemapControl {
   private map: MapLibreMap;
   private container: HTMLElement | null = null;
   private currentBasemap: string;
   private currentProjection: Projection;
-  private shapeToggleControl: ShapeToggleControl | null = null;
   private onAppearanceChange: ((appearance: MapAppearance) => void) | null;
 
   constructor(map: MapLibreMap, options: BasemapControlOptions = {}) {
@@ -146,14 +83,6 @@ export class BasemapControl {
     this.currentBasemap = options.initial?.basemap ?? 'standard';
     this.currentProjection = options.initial?.projection ?? 'globe';
     this.onAppearanceChange = options.onAppearanceChange ?? null;
-
-    if (options.onRenderModeChange) {
-      const onChange = options.onRenderModeChange;
-      this.shapeToggleControl = new ShapeToggleControl(mode => {
-        onChange(mode);
-        this.emitAppearance();
-      }, options.initial?.shapeMode ?? 'shapes');
-    }
 
     this.createControl();
     this.applyInitialProjection();
@@ -163,12 +92,7 @@ export class BasemapControl {
     return {
       basemap: this.currentBasemap,
       projection: this.currentProjection,
-      shapeMode: this.shapeToggleControl?.getMode() ?? 'shapes',
     };
-  }
-
-  public getShapeMode(): ShapeMode {
-    return this.shapeToggleControl?.getMode() ?? 'shapes';
   }
 
   private emitAppearance(): void {
@@ -246,21 +170,21 @@ export class BasemapControl {
           .join('')}
       </div>
 
-      <!-- Globe/Mercator projection toggle -->
-      <label class="swap swap-rotate btn btn-lg btn-circle btn-neutral projection-swap" title="Toggle projection">
+      <!-- Globe/flat projection toggle -->
+      <label class="swap swap-rotate btn btn-lg btn-circle btn-neutral projection-swap" title="Toggle globe / flat projection" aria-label="Toggle globe / flat projection">
         <input type="checkbox" class="projection-toggle" ${this.currentProjection === 'globe' ? 'checked' : ''} />
         <!-- Globe icon (when checked) -->
         <svg class="swap-on w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
+          <circle cx="12" cy="12" r="9" />
+          <path stroke-linecap="round" d="M3 12h18" />
+          <path d="M12 3a4.5 9 0 010 18a4.5 9 0 010-18" />
         </svg>
-        <!-- Mercator/Map icon (when unchecked) -->
+        <!-- Flat graticule icon (when unchecked) -->
         <svg class="swap-off w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M9 6.75V15m6-6v8.25m.503 3.498l4.875-2.437c.381-.19.622-.58.622-1.006V4.82c0-.836-.88-1.38-1.628-1.006l-3.869 1.934c-.317.159-.69.159-1.006 0L9.503 3.252a1.125 1.125 0 00-1.006 0L3.622 5.689C3.24 5.88 3 6.27 3 6.695V19.18c0 .836.88 1.38 1.628 1.006l3.869-1.934c.317-.159.69.159 1.006 0l4.994 2.497c.317.158.69.158 1.006 0z" />
+          <rect x="3" y="5" width="18" height="14" rx="2" />
+          <path stroke-linecap="round" d="M9 5v14M15 5v14M3 9.667h18M3 14.333h18" />
         </svg>
       </label>
-
-      <!-- Shapes/Stops render mode toggle -->
-      ${this.shapeToggleControl ? this.shapeToggleControl.render() : ''}
     `;
 
     this.injectStyles();
@@ -301,10 +225,6 @@ export class BasemapControl {
         flex-shrink: 0;
         pointer-events: auto;
       }
-
-      .basemap-control .shape-toggle-swap {
-        pointer-events: auto;
-      }
     `;
     document.head.appendChild(style);
   }
@@ -334,11 +254,6 @@ export class BasemapControl {
         const isGlobe = (e.target as HTMLInputElement).checked;
         this.changeProjection(isGlobe ? 'globe' : 'mercator');
       });
-    }
-
-    // Shape/stops render mode toggle
-    if (this.shapeToggleControl) {
-      this.shapeToggleControl.attachListener(this.container);
     }
   }
 
