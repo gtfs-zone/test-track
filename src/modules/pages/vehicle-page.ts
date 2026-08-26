@@ -128,7 +128,14 @@ function renderPredictions(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosi
 
   return section(
     'Predictions',
-    `<table class="table table-xs">
+    `<table class="table table-xs table-fixed">
+      <colgroup>
+        <col style="width: 9.09%" />
+        <col style="width: 36.36%" />
+        <col style="width: 18.18%" />
+        <col style="width: 18.18%" />
+        <col style="width: 18.18%" />
+      </colgroup>
       <thead><tr>
         <th class="text-right">Seq</th><th>Stop</th>
         <th class="text-right">Arr ${escHtml(zoneLabel())}</th>
