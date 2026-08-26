@@ -195,6 +195,23 @@ export const OCCUPANCY_LABELS: Record<number, string> = {
   8: 'Not boardable',
 };
 
+export const TRIP_SCHEDULE_RELATIONSHIP_LABELS: Record<number, string> = {
+  0: 'SCHEDULED',
+  1: 'ADDED',
+  2: 'UNSCHEDULED',
+  3: 'CANCELED',
+  4: 'REPLACEMENT',
+  5: 'DUPLICATED',
+  6: 'DELETED',
+};
+
+export const STOP_TIME_SCHEDULE_RELATIONSHIP_LABELS: Record<number, string> = {
+  0: 'SCHEDULED',
+  1: 'SKIPPED',
+  2: 'NO_DATA',
+  3: 'UNSCHEDULED',
+};
+
 export const ROUTE_TYPE_LABELS: Record<number, string> = {
   0: 'Tram / light rail',
   1: 'Subway / metro',
@@ -252,6 +269,52 @@ export function missing(what: string): string {
  */
 export function badgeMark(label: string, title: string): string {
   return `<span class="badge badge-ghost badge-xs align-middle" title="${escHtml(title)}">${escHtml(label)}</span>`;
+}
+
+/**
+ * Marks a fact the feed reported, as against `badgeMark`'s inferred values. The two
+ * must stay visually distinct: a reader has to be able to tell what the producer said
+ * from what test-track worked out.
+ */
+export function feedMark(label: string, title: string): string {
+  return `<span class="badge badge-outline badge-xs align-middle" title="${escHtml(title)}">${escHtml(label)}</span>`;
+}
+
+/** One explanation per trip relationship, so the wording is written once. */
+const TRIP_RELATIONSHIP_TITLES: Record<number, string> = {
+  1: 'The feed reports this trip as ADDED: it is not in the static schedule by design, not by omission.',
+  2: 'The feed reports this trip as UNSCHEDULED: a frequency-based trip with exact_times=0.',
+  3: 'The feed reports this trip as CANCELED: it will not run.',
+  4: 'The feed reports this trip as REPLACEMENT: it replaces a scheduled trip (experimental).',
+  5: 'The feed reports this trip as DUPLICATED: it duplicates a scheduled trip at a new time (experimental).',
+  6: 'The feed reports this trip as DELETED: the producer states it should not be shown to users (experimental).',
+};
+
+/** One explanation per stop-time relationship. */
+const STOP_TIME_RELATIONSHIP_TITLES: Record<number, string> = {
+  1: 'The feed reports this stop as SKIPPED: the vehicle will not call there, so the times on this row are not times anyone can catch.',
+  2: 'The feed reports NO_DATA for this stop: no prediction is given, and any time shown comes from the schedule.',
+  3: 'The feed reports this stop as UNSCHEDULED: it is not in the static schedule for this trip (experimental).',
+};
+
+/** The badge for a trip's schedule_relationship, or '' when it is SCHEDULED or unreported. */
+export function tripRelationshipMark(relationship: number | undefined): string {
+  if (relationship === undefined || relationship === 0) return '';
+  const label = TRIP_SCHEDULE_RELATIONSHIP_LABELS[relationship] ?? String(relationship);
+  const title =
+    TRIP_RELATIONSHIP_TITLES[relationship] ??
+    `The feed reports this trip's schedule_relationship as ${label}.`;
+  return feedMark(label, title);
+}
+
+/** The badge for a stop_time_update's schedule_relationship, or '' when SCHEDULED or unreported. */
+export function stopTimeRelationshipMark(relationship: number | undefined): string {
+  if (relationship === undefined || relationship === 0) return '';
+  const label = STOP_TIME_SCHEDULE_RELATIONSHIP_LABELS[relationship] ?? String(relationship);
+  const title =
+    STOP_TIME_RELATIONSHIP_TITLES[relationship] ??
+    `The feed reports this stop's schedule_relationship as ${label}.`;
+  return feedMark(label, title);
 }
 
 /** The standard explanation behind every derived `current_stop_sequence`. */
