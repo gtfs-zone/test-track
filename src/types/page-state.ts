@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/types/page-state.ts
-   @sha a4b5ee1
+   @sha fcb17b2
    @status modified
    @changes
    - Page types reduced to test-track's four object pages plus home: dropped

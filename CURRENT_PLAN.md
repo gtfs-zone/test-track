@@ -753,16 +753,16 @@ Gotchas
 
 ## Phase 10: Settle, and the yard-master handoff
 
-- [ ] `pnpm typecheck`, `pnpm build`, `pnpm vendor:check --strict` in this repo
+- [x] `pnpm typecheck`, `pnpm build`, `pnpm vendor:check --strict` in this repo
       and in coloring-book.
-- [ ] VENDORED.md in this repo: every SHA bumped, the new `breadcrumb-trail.ts`
+- [x] VENDORED.md in this repo: every SHA bumped, the new `breadcrumb-trail.ts`
       row added, the `breadcrumbs.ts` origin note added, and every note that says
       "static" reworded.
 - [ ] Hand off for visual verification: boot with an empty hash, boot with a
       legacy `#static=` link, boot with a `#scheduled=` link, dismiss the modal,
       continue from the stored feed, and walk route, stop, vehicle and alert pages
       checking the trail, the header and the tab title on each.
-- [ ] Write the yard-master note into its `NEXT_PLAN3.md` Phase 7 checklist
+- [x] Write the yard-master note into its `NEXT_PLAN3.md` Phase 7 checklist
       rather than into its code:
       - re-vendor `breadcrumb-trail.ts` from coloring-book as `verbatim`, and
         rebuild its own `breadcrumbs.ts` on it, keeping its six variants and its
@@ -773,8 +773,29 @@ Gotchas
         Its Phase 3 already merged the section into "GTFS Scheduled", so this is
         a sweep, not a redesign;
       - add `pageTitle` with `manage.rt.gtfs.zone` as the app name.
-- [ ] Do not edit yard-master in this plan. Phases 6 and 7 of NEXT_PLAN3 are open
+- [x] Do not edit yard-master in this plan. Phases 6 and 7 of NEXT_PLAN3 are open
       and both touch the same files.
+
+Notes from doing it
+- test-track: `typecheck`, `build` and `vendor:check --strict` all run clean apart
+  from two rows that were already stale before this plan: `basemap-control.ts`
+  (two commits, a projection-icon swap and the route-geometry toggle removal) and
+  `layer-manager.ts` (one commit, keeping a new stop on a small feed clickable).
+  Both are `modified` rows with real upstream changes to port, so their SHAs were
+  left alone rather than bumped to claim a sync that has not happened.
+- coloring-book: `typecheck` and `build` clean. It has no `vendor:check` script,
+  being the origin repo.
+- The SHA bumps this plan earned were `page-state.ts` and `page-state-manager.ts`
+  to `fcb17b2`. The `breadcrumb-trail.ts` row and the `breadcrumbs.ts` `origin`
+  row were already added in Phases 4 and 8, and no VENDORED.md note still said
+  "static".
+- `page-state-manager.ts` gained a skip bullet for `eca835c`'s
+  `peekURLPageState`: boot here reads the hash through `feed-url.ts` and
+  `AppState.boot()`, so no unvalidated page state is needed.
+- The yard-master handoff went into `NEXT_PLAN3.md` Phase 7 and its
+  `VENDORED.md` breadcrumbs row, committed there as
+  `docs(vendor): queue the shared breadcrumb shell adoption`. No code touched.
+- The visual walk is left for the user.
 
 Gotchas
 - yard-master's `VENDORED.md` pins `breadcrumbs.ts` to `test-track` at `fa12a57`.

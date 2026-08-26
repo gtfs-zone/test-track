@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/page-state-manager.ts
-   @sha a4b5ee1
+   @sha fcb17b2
    @status modified
    @changes
    - Reduced to test-track's five page variants; all `agency` / `timetable` /
@@ -15,6 +15,9 @@
    - `CONFIG.MAX_NAVIGATION_HISTORY` inlined — test-track has no config module.
    - Dropped the module-level singleton (`getPageStateManager` /
      `initPageStateManager`); AppState owns the one instance.
+   - Skipped `eca835c`'s `peekURLPageState`: boot reads the hash through
+     `feed-url.ts` and `AppState.boot()`, so nothing needs an unvalidated page
+     state.
    - Skipped `136329b`: the `zone` and `location_group` branches in
      `getBreadcrumbs`, `pageStateToURL` and `urlToPageState`, plus the two
      `BreadcrumbLookup` name getters, are GTFS Flex pages test-track has no
