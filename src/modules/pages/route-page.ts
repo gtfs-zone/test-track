@@ -38,6 +38,7 @@ import type { RenderContext } from '../render-utils';
 import {
   OCCUPANCY_LABELS,
   ROUTE_TYPE_LABELS,
+  TRIP_SCHEDULE_RELATIONSHIP_LABELS,
   VEHICLE_STATUS_LABELS,
   entityLink,
   escHtml,
@@ -52,6 +53,7 @@ import {
   routeBadge,
   section,
   stopSequenceMark,
+  tripRelationshipMark,
   vehicleDisplayName,
 } from '../render-utils';
 import { renderAlertList } from './alert-page';
@@ -60,6 +62,8 @@ import { renderAlertList } from './alert-page';
 interface Unplaced {
   vehicle: VehiclePosition;
   reason: string;
+  /** Trip schedule_relationship, when the feed gave one that explains the placement. */
+  relationship?: number;
 }
 
 interface PlacedVehicle {
@@ -105,11 +109,19 @@ function placeVehicles(
     if (!trip) {
       // A vehicle whose trip we cannot resolve might belong to either
       // direction, so it is listed rather than guessed onto this one.
+      const relationship = vehicle.scheduleRelationship;
+      const reasonSuffix =
+        relationship !== undefined && relationship !== 0
+          ? `; the feed reports it as ${
+              TRIP_SCHEDULE_RELATIONSHIP_LABELS[relationship] ?? String(relationship)
+            }`
+          : '';
       unplaced.push({
         vehicle,
         reason: vehicle.tripId
-          ? `trip ${vehicle.tripId} is not in the schedule`
+          ? `trip ${vehicle.tripId} is not in the schedule${reasonSuffix}`
           : 'no trip_id reported',
+        relationship,
       });
       continue;
     }
@@ -208,6 +220,7 @@ function vehicleChip(
     ${status ? `<span class="opacity-40">·</span>${status}` : ''}
     ${occupancy ? `<span class="opacity-40">·</span>${occupancy}` : ''}
     ${stopSequenceMark(vehicle, current)}
+    ${tripRelationshipMark(vehicle.scheduleRelationship)}
   </div>`;
 }
 
@@ -380,7 +393,7 @@ function renderUnplaced(ctx: RenderContext, unplaced: Unplaced[]): string {
        .map(
          u => `<li class="text-xs flex justify-between gap-2">
            ${entityLink(ctx, { type: 'vehicle', vehicle_id: u.vehicle.key }, vehicleDisplayName(ctx.session.scheduledFeed, u.vehicle))}
-           <span class="opacity-60 text-right">${escHtml(u.reason)}</span>
+           <span class="opacity-60 text-right">${escHtml(u.reason)} ${tripRelationshipMark(u.relationship)}</span>
          </li>`,
        )
        .join('')}</ul>`,
