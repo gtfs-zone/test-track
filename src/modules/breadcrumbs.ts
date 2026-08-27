@@ -14,6 +14,15 @@ import { vehicleDisplayName } from './render-utils';
  * interface. Our whole model is in memory, so both of these are plain reads.
  */
 
+/**
+ * Cap a breadcrumb label's length. Some GTFS-RT producers put full sentences
+ * in an alert's `header_text` rather than a short title, which wraps a crumb
+ * across several lines and reads as body copy instead of a breadcrumb.
+ */
+function truncate(text: string, max = 40): string {
+  return text.length > max ? `${text.slice(0, max - 3)}...` : text;
+}
+
 /** The curated name for a selection whose scheduled URL we ship an entry for. */
 function exampleName(selection: FeedSelection | null): string | null {
   const scheduled = selection?.scheduled;
@@ -57,7 +66,7 @@ function feedName(session: FeedSession): string | null {
 function home(session: FeedSession): BreadcrumbItem {
   return {
     typeLabel: 'Feed',
-    label: feedName(session) ?? 'No feed',
+    label: truncate(feedName(session) ?? 'No feed'),
     pageState: { type: 'home' },
   };
 }
@@ -151,7 +160,7 @@ export function buildBreadcrumbs(session: FeedSession, state: PageState): Breadc
         home(session),
         {
           typeLabel: 'Route',
-          label: routeLabel(session, state.route_id),
+          label: truncate(routeLabel(session, state.route_id)),
           pageState: { type: 'route', route_id: state.route_id },
         },
       ];
@@ -161,12 +170,12 @@ export function buildBreadcrumbs(session: FeedSession, state: PageState): Breadc
         home(session),
         ...stopAncestors(session, state.stop_id).map(id => ({
           typeLabel: stopEyebrow(session, id),
-          label: stopLabel(session, id),
+          label: truncate(stopLabel(session, id)),
           pageState: { type: 'stop' as const, stop_id: id },
         })),
         {
           typeLabel: stopEyebrow(session, state.stop_id),
-          label: stopLabel(session, state.stop_id),
+          label: truncate(stopLabel(session, state.stop_id)),
           pageState: state,
         },
       ];
@@ -179,14 +188,14 @@ export function buildBreadcrumbs(session: FeedSession, state: PageState): Breadc
           ? [
               {
                 typeLabel: 'Route',
-                label: routeLabel(session, routeId),
+                label: truncate(routeLabel(session, routeId)),
                 pageState: { type: 'route' as const, route_id: routeId },
               },
             ]
           : []),
         {
           typeLabel: 'Vehicle',
-          label: vehicleLabel(session, state.vehicle_id),
+          label: truncate(vehicleLabel(session, state.vehicle_id)),
           pageState: state,
         },
       ];
@@ -201,17 +210,18 @@ export function buildBreadcrumbs(session: FeedSession, state: PageState): Breadc
               {
                 typeLabel:
                   parent.type === 'route' ? 'Route' : stopEyebrow(session, parent.stop_id),
-                label:
+                label: truncate(
                   parent.type === 'route'
                     ? routeLabel(session, parent.route_id)
                     : stopLabel(session, parent.stop_id),
+                ),
                 pageState: parent,
               },
             ]
           : []),
         {
           typeLabel: 'Service alert',
-          label: alertLabel(session, state.alert_id),
+          label: truncate(alertLabel(session, state.alert_id)),
           pageState: state,
         },
       ];

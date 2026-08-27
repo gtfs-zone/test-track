@@ -92,6 +92,13 @@ panelRenderer.initialize();
 /** The tab title, set on navigation only — the panel re-renders every poll. */
 const DEFAULT_TITLE = document.title;
 function setDocumentTitle(state: PageState): void {
+  // The breadcrumb trail truncates its labels to keep crumbs compact, but an
+  // alert's full header text is more useful in a tab title than a crumb, so
+  // the title is built from the untruncated label instead of the trail.
+  if (state.type === 'alert') {
+    document.title = `Service alert ${alertLabel(session, state.alert_id)} | viz.rt.gtfs.zone`;
+    return;
+  }
   document.title =
     state.type === 'home' ? DEFAULT_TITLE : pageTitle(appState.breadcrumbs, 'viz.rt.gtfs.zone');
 }
