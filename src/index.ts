@@ -3,7 +3,8 @@ import { MapController } from './map-controller';
 import type { VehiclePosition } from './map-controller';
 import type { GTFSScheduled } from './gtfs-scheduled';
 import type { AlertRecord } from './gtfs-rt';
-import { showAboutModal } from './modules/about-modal';
+import { showHelpModal, shouldShowHelpPage } from './modules/help-modal';
+import { setHelpRuntimeData } from './modules/help-pages';
 import { showLoadModal } from './modules/load-modal';
 import { notify } from './modules/notification-system';
 import { LoadCancelledError } from './modules/feed-download';
@@ -212,12 +213,19 @@ async function boot(): Promise<void> {
   }
 }
 
-void boot();
+async function start(): Promise<void> {
+  if (shouldShowHelpPage('welcome')) {
+    await showHelpModal('welcome');
+  }
+  await boot();
+}
+void start();
 
-// ─── About button ─────────────────────────────────────────────────────────────
+// ─── Help button ──────────────────────────────────────────────────────────────
 document.getElementById('app-version')!.textContent = __APP_VERSION__;
-document.getElementById('about-btn')!
-  .addEventListener('click', () => showAboutModal(__APP_VERSION__));
+setHelpRuntimeData({ version: __APP_VERSION__ });
+document.getElementById('help-btn')!
+  .addEventListener('click', () => void showHelpModal());
 
 
 // ─── Load ─────────────────────────────────────────────────────────────────────
