@@ -2,14 +2,26 @@
 
 ### Feat
 
-- **rt**: capture TripDescriptor and StopTimeUpdate schedule_relationship
-- **render-utils**: add labels and a feed-reported badge for schedule_relationship
-- **vehicle-page**: show schedule_relationship on the trip, route and predictions
+- **help**: vendor coloring-book's help modal, replacing the About modal
 - **status**: roll up schedule_relationship counts on the status page
+- **vehicle-page**: show schedule_relationship on the trip, route and predictions
+- **render-utils**: add labels and a feed-reported badge for schedule_relationship
+- **rt**: capture TripDescriptor and StopTimeUpdate schedule_relationship
+- **status**: rewrite the empty state around picking a feed
+- **nav**: two-line breadcrumbs, page titles and shared headers
+- **nav**: drop the clear feed button
+- **boot**: open the load modal when no feed is in the link
 
 ### Fix
 
+- **breadcrumbs**: truncate long crumb labels and use full text in alert tab titles
 - **route-page**: restate added-trip vehicles as feed statements, not gaps
+- **vehicle-page**: widen Stop column and narrow Seq in predictions table
+- **nav**: stack breadcrumb crumbs and standardize page headers
+
+### Refactor
+
+- **vocab**: call a static feed a scheduled feed
 
 ## v0.7.1 (2026-08-21)
 
