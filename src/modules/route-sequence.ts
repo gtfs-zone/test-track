@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/route-sequence.ts
-   @sha a4b5ee1
+   @sha 04f48c3
    @status verbatim */
 /**
  * The canonical stop order for one direction of one route, plus the mapping
@@ -325,7 +325,7 @@ function alignToSupersequence(
 /**
  * Whether `seq` already embeds in `supersequence`, by the same greedy leftmost
  * walk the alignment uses. Contained patterns cannot change a fold's result, so
- * this rejects them for the cost of one linear scan instead of the DP's O(n·m)
+ * this rejects them for the cost of one linear scan instead of the DP's O(n*m)
  * — which is what makes folding every pattern of a route affordable.
  */
 function isSubsequence(seq: string[], supersequence: string[]): boolean {

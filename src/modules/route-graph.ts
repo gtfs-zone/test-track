@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/route-graph.ts
-   @sha 9f1f986
+   @sha 04f48c3
    @status verbatim */
 /**
  * The branch structure of a route strip: which lane each stop sits in, and
@@ -166,7 +166,7 @@ function structuralEdges(
  * row the leftmost lane targeting it wins and the rest merge into it, then the
  * row's outgoing edges reserve lanes going down.
  *
- * A route whose only edges are `i → i+1` puts every row in lane 0 with nothing
+ * A route whose only edges are `i -> i+1` puts every row in lane 0 with nothing
  * passing through — which is what keeps an ordinary line looking exactly as it
  * did before any of this existed.
  */
