@@ -2,13 +2,15 @@
    @sha 2302e2e
    @status modified
    @changes
-   - Editor-only pages dropped (Getting Started/Shapes/Fares/Map Key/Keyboard
-     Shortcuts); HELP_PAGES is just [welcomePage, aboutPage]
+   - Editor-only pages dropped (Getting Started/Shapes/Fares/Keyboard
+     Shortcuts); HELP_PAGES is [welcomePage, aboutPage, mapKeyPage]
    - welcomePage copy rewritten for viz.rt.gtfs.zone (live vehicle map, not
      the GTFS editor)
    - ABOUT_APP replaced with test-track's existing AboutApp config, moved
      here from the old about-modal.ts
-   - setHelpRuntimeData narrowed to { version } only; no shortcuts registry */
+   - setHelpRuntimeData narrowed to { version } only; no shortcuts registry
+   - mapKeyPage rewritten for this app's own symbology (routes, vehicles,
+     stops) instead of coloring-book's pathways/stops */
 /**
  * The help page registry: what pages exist, their grouping, and their copy.
  *
@@ -147,7 +149,60 @@ const aboutPage: HelpPage = {
     ].join('\n'),
 };
 
-export const HELP_PAGES: HelpPage[] = [welcomePage, aboutPage];
+// ─── Reference: Map Key ────────────────────────────────────────────────────
+
+function circle(fill: string, stroke: string, dot?: boolean): string {
+  const inner = dot ? `<circle cx="7" cy="7" r="2.5" fill="#000000"/>` : '';
+  return `<svg width="14" height="14" viewBox="0 0 14 14" style="flex-shrink:0"><circle cx="7" cy="7" r="5" fill="${fill}" stroke="${stroke}" stroke-width="1.5"/>${inner}</svg>`;
+}
+
+function swatchLine(color: string): string {
+  return `<svg width="20" height="14" viewBox="0 0 20 14" style="flex-shrink:0"><line x1="2" y1="7" x2="18" y2="7" stroke="${color}" stroke-width="3" stroke-linecap="round"/></svg>`;
+}
+
+function triangle(color: string): string {
+  return `<svg width="14" height="14" viewBox="0 0 14 14" style="flex-shrink:0"><polygon points="7,1 12,12 2,12" fill="${color}" stroke="#0f172a" stroke-width="1"/></svg>`;
+}
+
+const mapKeyPage: HelpPage = {
+  id: 'map-key',
+  label: 'Map Key',
+  group: 'Reference',
+  title: 'Map Key',
+  render: () => {
+    const row = (swatch: string, label: string) =>
+      `<div class="flex items-center gap-2">${swatch}<span>${label}</span></div>`;
+
+    const stops = [
+      row(circle('#ffffff', '#000000'), 'Stop'),
+      row(circle('#ffffff', '#000000', true), 'Station'),
+      row(circle('#f59e0b', '#000000'), 'Entrance'),
+      row(circle('#8b5cf6', '#000000'), 'Generic node'),
+      row(circle('#10b981', '#000000'), 'Boarding area'),
+      row(circle('#ffffff', '#9ca3af'), "Inherits its station's location"),
+    ].join('');
+
+    const routesAndVehicles = [
+      row(swatchLine('#3b82f6'), "Route (the feed's color, or an assigned one)"),
+      row(circle('#3b82f6', '#0f172a'), 'Vehicle'),
+      row(triangle('#3b82f6'), 'Vehicle, with a known heading'),
+      row(circle('#94a3b8', '#0f172a'), "Vehicle, route couldn't be matched"),
+    ].join('');
+
+    return `
+      <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+        <div class="col-span-2 grid grid-cols-2 gap-x-6">
+          <div class="font-semibold text-xs opacity-60 mb-1">Stops</div>
+          <div class="font-semibold text-xs opacity-60 mb-1">Routes &amp; Vehicles</div>
+        </div>
+        <div class="flex flex-col gap-1">${stops}</div>
+        <div class="flex flex-col gap-1">${routesAndVehicles}</div>
+      </div>
+    `;
+  },
+};
+
+export const HELP_PAGES: HelpPage[] = [welcomePage, aboutPage, mapKeyPage];
 
 export function getHelpPage(id: string): HelpPage | undefined {
   return HELP_PAGES.find((page) => page.id === id);
