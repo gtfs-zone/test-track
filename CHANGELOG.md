@@ -1,3 +1,9 @@
+## v0.9.0 (2026-08-28)
+
+### Feat
+
+- **help**: add a Map Key page to Reference
+
 ## v0.8.0 (2026-08-27)
 
 ### Feat
