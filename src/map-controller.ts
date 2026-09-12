@@ -179,9 +179,9 @@ export class MapController {
       for (const fn of queued) fn();
     });
 
-    // setStyle drops every source and layer we own, so each basemap or
-    // projection change has to re-add them. This is the single highest-risk
-    // path in the map: without it, switching basemaps blanks all GTFS data.
+    // setStyle drops every source and layer we own, so each basemap change
+    // has to re-add them. This is the single highest-risk path in the map:
+    // without it, switching basemaps blanks all GTFS data.
     this.map.on('basemap:changed', () => this.layers.rebuild());
 
     this.map.on('moveend', () => this.queueViewSave());
