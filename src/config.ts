@@ -50,6 +50,13 @@ export const CONFIG = {
   // opacity than a long line to stay legible at the same visual weight.
   SPOTLIGHT_VEHICLE_DIM: 0.25,
 
+  // Map spotlight: zoom range over which the direction arrows on the single
+  // spotlighted route fade in, and their opacity once faded in. Sits above
+  // STOP_FADE_ZOOM_MAX so arrows are the last thing to appear as you zoom in.
+  ROUTE_ARROW_FADE_ZOOM_MIN: 12,
+  ROUTE_ARROW_FADE_ZOOM_MAX: 13.5,
+  ROUTE_ARROW_OPACITY: 0.85,
+
   // Map spotlight — line-sort-key applied to the focused route so it paints
   // above every other route. Far above any natural key (max ~90999).
   SPOTLIGHT_SORT_KEY: 1_000_000,

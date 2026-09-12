@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/basemap-control.ts
-   @sha c15807b
+   @sha dca23b3
    @status modified
    @changes
    - Constructor takes an options object (initial basemap / projection plus an
@@ -10,7 +10,12 @@
    - `rebuildControl()` no longer leaks a `<style>` element per rebuild — the
      stylesheet is injected once, keyed by id.
    - Dropped the dead `parent` lookup in `rebuildControl` and the no-op keydown
-     handler on the main FAB. */
+     handler on the main FAB.
+   - `a57ada5` (always use the globe projection) not taken: it deletes the
+     projection toggle, `changeProjection` and the projection state field.
+     This app persists the projection as half of `MapAppearance` and still
+     offers the toggle, so taking that commit would remove a feature rather
+     than re-sync one. Everything else through `dca23b3` is applied. */
 
 /**
  * Basemap control UI component using DaisyUI FAB and speed dial

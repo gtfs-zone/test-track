@@ -1,35 +1,31 @@
 /* @vendored-from coloring-book:src/modules/layer-manager.ts
-   @sha c15807b
-   @status modified
-   @changes
-   - Fed from the in-memory `GTFSScheduled` model instead of `GTFSParser` /
-     IndexedDB; no async, no coord resolver, no `onStopsDataUpdated` hook.
-   - Dropped pathways, levels, the Tutte coord embedding, `stops-highlight` /
-     `trip-highlight`, the editing affordances, and file-highlight mode.
-   - Absorbed the route layer stack from coloring-book's `route-renderer.ts`
-     (casing / line / clickarea, `zoomWidth`, `applySpotlight`), rebuilt as one
-     MultiLineString feature per route with `promoteId: 'route_id'` rather than
-     one feature per distinct geometry.
-   - `getCasingColor` is no longer local: both repos now import `casingColor`
-     from the vendored `utils/route-colors.ts`.
-   - Added the realtime `vehicles` stack, which has no upstream equivalent.
-   - Added `rebuild()`, called after a basemap change re-creates the style.
-   - Route layers are sorted by a `sortKey` feature property (see
-     `route-sort.ts`); `applySpotlight` lifts the focused route above it.
-   - Stop paint comes from the vendored `stop-layer-style.ts`.
-   - Took the theme-aware accent from `f7084c5`: the accent resolves from
-     `--color-primary` through the vendored `theme-color.ts` and repaints on
-     `refreshAccentColor()`, replacing the hardcoded red. The rest of that
-     commit is pathways, station hulls and map icons, none of which exist here.
-   - Skipped `69dd3f6` (timetable stop focus), `1dbef88` / `63af1c9` /
-     `26b87e2` (GTFS Flex zones and location groups) and `c48eede` / `b5e30d1`
-     (transfer edges and table-row hover): test-track ingests none of that
-     data.
-   - Took `424cbdf`'s small-feed stop-fade exemption (`stopFadeDisabled`,
-     `refreshStopFade`, `clickAreaRadius`) as-is; wired into `setScheduledFeed`
-     rather than `addStopsLayer`/`updateStopsData`, since stops here only ever
-     change on a new feed. Dropped the camera-ease-to-new-stop half of that
-     commit: test-track has no live-editing flow that creates a stop. */
+   @sha 0d38e50
+   @status adopted
+   Promoted from `modified` in Phase 8. The shared half of this file is now the
+   vendored `layer-specs.ts` (source ids, layer ids, filters, zoom ramps, fade
+   bands, spotlight expressions) and `stop-layer-style.ts` (how one stop circle
+   looks). What is left is this app's own half: which sources exist and what
+   fills them. Upstream's remaining manager is the editor's, built on
+   `GTFSParser` / IndexedDB with pathways, levels, flex zones, transfers and the
+   editing affordances; re-syncing against it has stopped being meaningful, so
+   the row is `adopted` and only the two spec files are checked.
+
+   Deliberately not taken from upstream, with reasons:
+   - Pathways, levels, the Tutte coord embedding for coord-less child stops,
+     `stops-highlight` / `trip-highlight`, the editing affordances and
+     file-highlight mode: no editor here.
+   - `1dbef88` / `63af1c9` / `26b87e2` (flex zones and location groups),
+     `c48eede` / `b5e30d1` / `8303357` / `dc1d421`'s transfer-edge half,
+     `1528c8d` / `5b61f37` (shapes and zones via geojson.io): test-track
+     ingests none of that data.
+   - `69dd3f6` / `34a2750` (timetable stop focus): no timetable here.
+   - The camera-ease-to-new-stop half of `7e77889`: no flow here creates a stop.
+
+   Taken from upstream: `aff09db` (the gentler station fade band), `7e77889`
+   (the small-feed fade exemption, which is the same change this repo already
+   carried from `424cbdf`), `dc1d421`'s hovered-stop highlight, `767ac02`'s
+   deduped focused expression, and `cef96c7`'s direction arrows on the single
+   spotlighted route, which is what gives the vendored `map-icons.ts` a caller. */
 
 import type maplibregl from 'maplibre-gl';
 import type {
@@ -44,6 +40,32 @@ import type { VehiclePosition } from '../map-controller';
 import { routeSortKey } from './route-sort';
 import { casingColor } from '../utils/route-colors';
 import { clearThemeColorCache, resolveThemeColor } from '../utils/theme-color';
+import { ensureMapIcons } from './map-icons';
+import {
+  NO_ROUTE_FILTER,
+  ROUTES_CASING_LAYER,
+  ROUTES_CLICKAREA_LAYER,
+  ROUTES_DIRECTION_LAYER,
+  ROUTES_SOURCE,
+  ROUTE_CASING_WIDTH_STOPS,
+  ROUTE_WIDTH_STOPS,
+  STOPS_BACKGROUND_LAYER,
+  STOPS_CLICKAREA_LAYER,
+  STOPS_SOURCE,
+  STOPS_STATION_DOT_LAYER,
+  TOP_LEVEL_STOPS_FILTER,
+  routeMatch,
+  routeSortKeyExpression,
+  routeSpotlightOpacity,
+  specialStop,
+  stationDotFilter,
+  stationFadeOpacity,
+  stopClickAreaRadius,
+  stopFadeOpacity,
+  zoomWidth,
+  type StopFadeBands,
+  type StopFeatureState,
+} from './layer-specs';
 import {
   STOP_FOCUS_HALO_LAYER,
   STOP_FOCUS_RING_LAYER,
@@ -78,40 +100,73 @@ export interface MapDataIssues {
   vehiclesDuplicateKeys: number;
 }
 
+/** This app's own realtime layers, which `layer-specs.ts` knows nothing about. */
+const VEHICLES_SOURCE = 'vehicles';
+const VEHICLES_HALO_LAYER = 'vehicles-halo';
+const VEHICLES_CASING_LAYER = 'vehicles-casing';
+const VEHICLES_DOT_LAYER = 'vehicles-dot';
+const VEHICLES_ARROW_LAYER = 'vehicles-arrow';
+const VEHICLES_CLICKAREA_LAYER = 'vehicles-clickarea';
+
+/** The colored route line. Upstream names this layer `routes-background`. */
+const ROUTES_LINE_LAYER = 'routes-line';
+
 /** Layer ids in paint order, bottom first. Used by `clear()` and ordering. */
 const LAYER_ORDER = [
-  'routes-casing',
-  'routes-line',
-  'routes-clickarea',
-  'stops-focus-halo',
-  'stops-focus-ring',
-  'stops-background',
-  'stops-focus-top',
-  'stops-station-dot',
-  'stops-clickarea',
-  'vehicles-halo',
-  'vehicles-casing',
-  'vehicles-dot',
-  'vehicles-arrow',
-  'vehicles-clickarea',
+  ROUTES_CASING_LAYER,
+  ROUTES_LINE_LAYER,
+  ROUTES_DIRECTION_LAYER,
+  ROUTES_CLICKAREA_LAYER,
+  STOP_FOCUS_HALO_LAYER,
+  STOP_FOCUS_RING_LAYER,
+  STOPS_BACKGROUND_LAYER,
+  STOP_FOCUS_TOP_LAYER,
+  STOPS_STATION_DOT_LAYER,
+  STOPS_CLICKAREA_LAYER,
+  VEHICLES_HALO_LAYER,
+  VEHICLES_CASING_LAYER,
+  VEHICLES_DOT_LAYER,
+  VEHICLES_ARROW_LAYER,
+  VEHICLES_CLICKAREA_LAYER,
 ] as const;
 
-const SOURCE_IDS = ['routes', 'stops', 'vehicles'] as const;
+const SOURCE_IDS = [ROUTES_SOURCE, STOPS_SOURCE, VEHICLES_SOURCE] as const;
 
 /**
  * Click priority, topmost first. A single map-level click handler queries these
  * in order rather than registering one handler per layer, so a vehicle sitting
  * on top of its own stop focuses the vehicle instead of firing both.
  */
-const HIT_LAYERS = ['vehicles-clickarea', 'stops-clickarea', 'routes-clickarea'] as const;
-
-const STOPS_FILTER: FilterSpecification = [
-  'any',
-  ['==', ['get', 'parent_station'], ''],
-  ['==', ['get', 'location_type'], 1],
-] as FilterSpecification;
+const HIT_LAYERS = [
+  VEHICLES_CLICKAREA_LAYER,
+  STOPS_CLICKAREA_LAYER,
+  ROUTES_CLICKAREA_LAYER,
+] as const;
 
 const STOP_CLICK_RADIUS = 15;
+
+/**
+ * The fade zooms this app resolves from its own config. `layer-specs.ts` takes
+ * them as an argument because each app tunes them separately.
+ */
+const FADE_BANDS: StopFadeBands = {
+  stationMin: CONFIG.STATION_FADE_ZOOM_MIN,
+  stationMax: CONFIG.STATION_FADE_ZOOM_MAX,
+  stopMin: CONFIG.STOP_FADE_ZOOM_MIN,
+  stopMax: CONFIG.STOP_FADE_ZOOM_MAX,
+};
+
+/**
+ * Which feature states exempt a stop from the zoom fade here: the clicked stop,
+ * the one hovered from the panel's route strip, and every stop on the
+ * spotlighted route. Hover counts so pointing at a strip row still shows you
+ * the stop when the map is zoomed out past where plain stops have faded. The
+ * editor's `kept` state has no counterpart in a viewer.
+ */
+const SPECIAL_STATES: readonly StopFeatureState[] = ['focused', 'hovered', 'onRoute'];
+const SPECIAL_STOP = specialStop(SPECIAL_STATES);
+
+const FOCUSED: ExpressionSpecification = ['boolean', ['feature-state', 'focused'], false];
 
 /**
  * Selection color, resolved from the active DaisyUI theme. Red is reserved for
@@ -132,54 +187,11 @@ function stopStyle(accent: string): StopStyleOptions {
     radius: 5.5,
   };
 }
+
 /** Hard-contrast edge for vehicles, so a route-colored marker reads on top of
  *  its own route line. Reads on light basemaps; on dark ones the dot keeps its
  *  white inner stroke and the arrow its route-colored fill. */
 const VEHICLE_CASING_COLOR = '#0f172a';
-
-const ROUTE_WIDTH_STOPS: Array<[number, number]> = [
-  [10, 1.5],
-  [13, 3.5],
-  [16, 7.5],
-];
-const CASING_WIDTH_STOPS: Array<[number, number]> = [
-  [10, 3],
-  [13, 5.5],
-  [16, 10.5],
-];
-
-const FOCUSED: ExpressionSpecification = ['boolean', ['feature-state', 'focused'], false];
-/** Set while the stop's row is hovered in the panel's route strip. */
-const HOVERED: ExpressionSpecification = ['boolean', ['feature-state', 'hovered'], false];
-
-/**
- * A stop is "special" when it must stay visible and clickable at any zoom:
- * either focused (clicked), hovered from the panel, or on the currently
- * spotlighted route. Hover counts so pointing at a strip row still shows you
- * the stop when the map is zoomed out past where plain stops have faded.
- */
-const SPECIAL_STOP = [
-  'any',
-  FOCUSED,
-  HOVERED,
-  ['boolean', ['feature-state', 'onRoute'], false],
-] as unknown as ExpressionSpecification;
-
-/**
- * Build a zoom-interpolated line-width expression. When `match` is given,
- * matched routes get their width multiplied by `bump` (the spotlight bump).
- */
-function zoomWidth(
-  widthStops: Array<[number, number]>,
-  match: ExpressionSpecification | null,
-  bump: number,
-): ExpressionSpecification {
-  const expr: unknown[] = ['interpolate', ['linear'], ['zoom']];
-  for (const [zoom, width] of widthStops) {
-    expr.push(zoom, match ? ['case', match, width * bump, width] : width);
-  }
-  return expr as unknown as ExpressionSpecification;
-}
 
 type FocusTarget =
   | { kind: 'stop'; id: string }
@@ -204,8 +216,8 @@ export class LayerManager {
   private hoveredStopId: string | null = null;
   /** Stops that *should* carry the `onRoute` feature-state on the map. */
   private wantedRouteStopIds: string[] = [];
-  /** True while the feed is small enough that both zoom fade bands are skipped. */
-  private stopFadeDisabled = false;
+  /** False while the feed is small enough that both zoom fade bands are skipped. */
+  private stopFadeActive = true;
   /** Armed while feature state is waiting for a source to finish loading. */
   private retry: (() => void) | null = null;
 
@@ -238,7 +250,7 @@ export class LayerManager {
     this.accent = accentColor();
     this.stopStyle = stopStyle(this.accent);
 
-    for (const id of [STOP_FOCUS_HALO_LAYER, STOP_FOCUS_RING_LAYER, 'vehicles-halo']) {
+    for (const id of [STOP_FOCUS_HALO_LAYER, STOP_FOCUS_RING_LAYER, VEHICLES_HALO_LAYER]) {
       if (!this.map.getLayer(id)) continue;
       this.map.setPaintProperty(id, 'circle-color', this.accent);
       this.map.setPaintProperty(id, 'circle-stroke-color', this.accent);
@@ -246,7 +258,7 @@ export class LayerManager {
     // Only the fill reads the accent on these two: the focused circle is
     // painted in it, everything else in the layer is accent-free.
     const fill = stopFillColor(this.accent, this.stopStyle.backgroundColor);
-    for (const id of ['stops-background', STOP_FOCUS_TOP_LAYER]) {
+    for (const id of [STOPS_BACKGROUND_LAYER, STOP_FOCUS_TOP_LAYER]) {
       if (!this.map.getLayer(id)) continue;
       this.map.setPaintProperty(id, 'circle-color', fill);
     }
@@ -261,8 +273,8 @@ export class LayerManager {
     this.feed = feed;
     this.stopsData = feed ? this.buildStops(feed) : EMPTY;
     this.routesData = feed ? this.buildRoutes(feed) : EMPTY;
-    this.pushData('stops', this.stopsData);
-    this.pushData('routes', this.routesData);
+    this.pushData(STOPS_SOURCE, this.stopsData);
+    this.pushData(ROUTES_SOURCE, this.routesData);
     this.refreshStopFade(this.stopsData.features.length);
     // A new feed almost never contains the old focus; AppState clears it
     // separately, but the map's own spotlight and feature state have to go now
@@ -277,7 +289,7 @@ export class LayerManager {
     this.vehiclesData = this.buildVehicles(positions);
     // setData rather than re-adding the source: re-adding on every 15s poll
     // flashes the markers and drops their feature state.
-    this.pushData('vehicles', this.vehiclesData);
+    this.pushData(VEHICLES_SOURCE, this.vehiclesData);
     this.syncFeatureState();
   }
 
@@ -293,9 +305,10 @@ export class LayerManager {
     // Route focus spotlights the route and its stops; anything else clears it.
     this.wantedRouteStopIds =
       target?.kind === 'route' ? this.stopIdsForRoute(target.id) : [];
+    const routeIds = target?.kind === 'route' ? [target.id] : null;
     this.applyStopDim();
-    this.applySpotlight(target?.kind === 'route' ? [target.id] : null);
-    this.applyVehicleDim(target?.kind === 'route' ? [target.id] : null);
+    this.applySpotlight(routeIds);
+    this.applyVehicleDim(routeIds);
     this.syncFeatureState();
   }
 
@@ -342,7 +355,7 @@ export class LayerManager {
       }
     }
 
-    if (this.sourceReady('stops')) {
+    if (this.sourceReady(STOPS_SOURCE)) {
       for (const id of this.wantedRouteStopIds) {
         this.setState('stop', id, { onRoute: true });
       }
@@ -357,8 +370,7 @@ export class LayerManager {
 
     const target = this.focus;
     if (target) {
-      const source = target.kind === 'route' ? 'routes' : `${target.kind}s`;
-      if (this.sourceReady(source)) {
+      if (this.sourceReady(sourceFor(target.kind))) {
         this.setState(target.kind, target.id, { focused: true });
       } else {
         settled = false;
@@ -389,7 +401,7 @@ export class LayerManager {
   }
 
   private setState(kind: 'stop' | 'route' | 'vehicle', id: string, state: object): void {
-    const source = kind === 'route' ? 'routes' : `${kind}s`;
+    const source = sourceFor(kind);
     if (!this.map.getSource(source)) return;
     try {
       this.map.setFeatureState({ source, id }, state);
@@ -404,21 +416,39 @@ export class LayerManager {
    */
   private applyStopDim(): void {
     const dim = this.wantedRouteStopIds.length > 0 ? CONFIG.SPOTLIGHT_STOP_DIM : null;
-    if (this.map.getLayer('stops-background')) {
-      const fade = this.stopFadeOpacity(dim);
-      this.map.setPaintProperty('stops-background', 'circle-opacity', fade);
-      this.map.setPaintProperty('stops-background', 'circle-stroke-opacity', fade);
+    if (this.map.getLayer(STOPS_BACKGROUND_LAYER)) {
+      const fade = this.stopFade(dim);
+      this.map.setPaintProperty(STOPS_BACKGROUND_LAYER, 'circle-opacity', fade);
+      this.map.setPaintProperty(STOPS_BACKGROUND_LAYER, 'circle-stroke-opacity', fade);
     }
-    if (this.map.getLayer('stops-station-dot')) {
+    if (this.map.getLayer(STOPS_STATION_DOT_LAYER)) {
       this.map.setPaintProperty(
-        'stops-station-dot',
+        STOPS_STATION_DOT_LAYER,
         'circle-opacity',
-        this.stationFadeOpacity(dim),
+        this.stationFade(dim),
       );
     }
-    if (this.map.getLayer('stops-clickarea')) {
-      this.map.setPaintProperty('stops-clickarea', 'circle-radius', this.clickAreaRadius());
+    if (this.map.getLayer(STOPS_CLICKAREA_LAYER)) {
+      this.map.setPaintProperty(STOPS_CLICKAREA_LAYER, 'circle-radius', this.clickAreaRadius());
     }
+  }
+
+  /** The three fade expressions, bound to this app's bands and exemption set. */
+  private stopFade(dim: number | null): ExpressionSpecification {
+    return stopFadeOpacity(SPECIAL_STOP, FADE_BANDS, this.stopFadeActive, dim);
+  }
+
+  private stationFade(dim: number | null): ExpressionSpecification {
+    return stationFadeOpacity(SPECIAL_STOP, FADE_BANDS, this.stopFadeActive, dim);
+  }
+
+  private clickAreaRadius(): ExpressionSpecification {
+    return stopClickAreaRadius(
+      SPECIAL_STOP,
+      FADE_BANDS,
+      this.stopFadeActive,
+      STOP_CLICK_RADIUS,
+    );
   }
 
   /**
@@ -426,9 +456,9 @@ export class LayerManager {
    * once it grows. Called whenever the stop data changes.
    */
   private refreshStopFade(stopCount: number): void {
-    const disabled = stopCount < CONFIG.STOP_FADE_MIN_STOPS;
-    if (disabled === this.stopFadeDisabled) return;
-    this.stopFadeDisabled = disabled;
+    const active = stopCount >= CONFIG.STOP_FADE_MIN_STOPS;
+    if (active === this.stopFadeActive) return;
+    this.stopFadeActive = active;
     this.applyStopDim();
   }
 
@@ -442,13 +472,8 @@ export class LayerManager {
    * focused, and a route focus never coexists with a vehicle focus.
    */
   private applyVehicleDim(routeIds: string[] | null): void {
-    const match =
-      routeIds && routeIds.length > 0
-        ? (['in', ['get', 'route_id'], ['literal', routeIds]] as unknown as ExpressionSpecification)
-        : null;
-    const opacity = (
-      match ? ['case', match, 1, CONFIG.SPOTLIGHT_VEHICLE_DIM] : 1
-    ) as unknown as ExpressionSpecification;
+    const match = routeMatch(routeIds);
+    const opacity = routeSpotlightOpacity(match, CONFIG.SPOTLIGHT_VEHICLE_DIM);
 
     // Vehicles have no natural paint order — one bucket of markers all drawn at
     // once — so the lift is a plain 1-or-0 rather than an offset off a base key.
@@ -456,64 +481,62 @@ export class LayerManager {
     // *greater* symbol-sort-key draws on top, matching circle-sort-key.
     const sortKey = (match ? ['case', match, 1, 0] : 0) as unknown as ExpressionSpecification;
 
-    if (this.map.getLayer('vehicles-casing')) {
-      this.map.setPaintProperty('vehicles-casing', 'circle-opacity', opacity);
-      this.map.setLayoutProperty('vehicles-casing', 'circle-sort-key', sortKey);
+    if (this.map.getLayer(VEHICLES_CASING_LAYER)) {
+      this.map.setPaintProperty(VEHICLES_CASING_LAYER, 'circle-opacity', opacity);
+      this.map.setLayoutProperty(VEHICLES_CASING_LAYER, 'circle-sort-key', sortKey);
     }
-    if (this.map.getLayer('vehicles-dot')) {
-      this.map.setPaintProperty('vehicles-dot', 'circle-opacity', opacity);
-      this.map.setPaintProperty('vehicles-dot', 'circle-stroke-opacity', opacity);
-      this.map.setLayoutProperty('vehicles-dot', 'circle-sort-key', sortKey);
+    if (this.map.getLayer(VEHICLES_DOT_LAYER)) {
+      this.map.setPaintProperty(VEHICLES_DOT_LAYER, 'circle-opacity', opacity);
+      this.map.setPaintProperty(VEHICLES_DOT_LAYER, 'circle-stroke-opacity', opacity);
+      this.map.setLayoutProperty(VEHICLES_DOT_LAYER, 'circle-sort-key', sortKey);
     }
-    if (this.map.getLayer('vehicles-arrow')) {
+    if (this.map.getLayer(VEHICLES_ARROW_LAYER)) {
       // icon-opacity covers the SDF fill and its halo together, so the arrow
       // fades as one mark rather than leaving a floating dark outline.
-      this.map.setPaintProperty('vehicles-arrow', 'icon-opacity', opacity);
-      this.map.setLayoutProperty('vehicles-arrow', 'symbol-sort-key', sortKey);
+      this.map.setPaintProperty(VEHICLES_ARROW_LAYER, 'icon-opacity', opacity);
+      this.map.setLayoutProperty(VEHICLES_ARROW_LAYER, 'symbol-sort-key', sortKey);
     }
     // Sorted with the drawn layers so a click on stacked vehicles resolves to
     // whichever one visually reads as on top.
-    if (this.map.getLayer('vehicles-clickarea')) {
-      this.map.setLayoutProperty('vehicles-clickarea', 'circle-sort-key', sortKey);
+    if (this.map.getLayer(VEHICLES_CLICKAREA_LAYER)) {
+      this.map.setLayoutProperty(VEHICLES_CLICKAREA_LAYER, 'circle-sort-key', sortKey);
     }
   }
 
   private applySpotlight(routeIds: string[] | null): void {
-    if (!this.map.getLayer('routes-line')) return;
+    if (!this.map.getLayer(ROUTES_LINE_LAYER)) return;
 
-    const match: ExpressionSpecification | null =
-      routeIds && routeIds.length > 0
-        ? (['in', ['get', 'route_id'], ['literal', routeIds]] as unknown as ExpressionSpecification)
-        : null;
-    const opacity = match
-      ? (['case', match, 1, CONFIG.SPOTLIGHT_ROUTE_DIM] as unknown as ExpressionSpecification)
-      : 1;
+    const match = routeMatch(routeIds);
+    const opacity = routeSpotlightOpacity(match, CONFIG.SPOTLIGHT_ROUTE_DIM);
 
-    this.map.setPaintProperty('routes-line', 'line-opacity', opacity);
-    this.map.setPaintProperty('routes-casing', 'line-opacity', opacity);
+    this.map.setPaintProperty(ROUTES_LINE_LAYER, 'line-opacity', opacity);
+    this.map.setPaintProperty(ROUTES_CASING_LAYER, 'line-opacity', opacity);
     this.map.setPaintProperty(
-      'routes-line',
+      ROUTES_LINE_LAYER,
       'line-width',
       zoomWidth(ROUTE_WIDTH_STOPS, match, CONFIG.SPOTLIGHT_LINE_BUMP),
     );
     this.map.setPaintProperty(
-      'routes-casing',
+      ROUTES_CASING_LAYER,
       'line-width',
-      zoomWidth(CASING_WIDTH_STOPS, match, CONFIG.SPOTLIGHT_CASING_BUMP),
+      zoomWidth(ROUTE_CASING_WIDTH_STOPS, match, CONFIG.SPOTLIGHT_CASING_BUMP),
     );
 
-    // Lift the spotlighted routes above everything else. line-sort-key is a
-    // layout property, so it cannot read feature state — but the same literal
-    // route_id match used for opacity works here unchanged. Layout changes
-    // force a tile re-layout, which is fine once per selection but must never
-    // be driven from hover.
-    const sortKey = (
-      match
-        ? ['case', match, CONFIG.SPOTLIGHT_SORT_KEY, ['get', 'sortKey']]
-        : ['get', 'sortKey']
-    ) as unknown as ExpressionSpecification;
-    for (const id of ['routes-casing', 'routes-line', 'routes-clickarea']) {
+    const sortKey = routeSortKeyExpression(match, CONFIG.SPOTLIGHT_SORT_KEY);
+    for (const id of [ROUTES_CASING_LAYER, ROUTES_LINE_LAYER, ROUTES_CLICKAREA_LAYER]) {
       if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'line-sort-key', sortKey);
+    }
+
+    // Direction arrows only when exactly one route is spotlighted: a stop click
+    // spotlights every route serving the stop, and arrows on all of them are
+    // noise.
+    if (this.map.getLayer(ROUTES_DIRECTION_LAYER)) {
+      this.map.setFilter(
+        ROUTES_DIRECTION_LAYER,
+        routeIds && routeIds.length === 1
+          ? (['==', ['get', 'route_id'], routeIds[0]] as unknown as FilterSpecification)
+          : (NO_ROUTE_FILTER as unknown as FilterSpecification),
+      );
     }
   }
 
@@ -560,12 +583,16 @@ export class LayerManager {
    */
   rebuild(): void {
     this.addArrowImage();
+    // Registered images are dropped with the style too, and the direction layer
+    // references `route-arrow` by name, so the glyphs have to be back first.
+    ensureMapIcons(this.map);
     this.addSources();
     this.addLayers();
     // Neither paint overrides nor feature state survive a style swap.
+    const routeIds = this.focus?.kind === 'route' ? [this.focus.id] : null;
     this.applyStopDim();
-    this.applySpotlight(this.focus?.kind === 'route' ? [this.focus.id] : null);
-    this.applyVehicleDim(this.focus?.kind === 'route' ? [this.focus.id] : null);
+    this.applySpotlight(routeIds);
+    this.applyVehicleDim(routeIds);
     this.syncFeatureState();
   }
 
@@ -586,22 +613,22 @@ export class LayerManager {
   private addSources(): void {
     // promoteId lifts the id out of properties so setFeatureState can address
     // string ids like "place-jfk"; without it every feature id would be 0.
-    if (!this.map.getSource('routes')) {
-      this.map.addSource('routes', {
+    if (!this.map.getSource(ROUTES_SOURCE)) {
+      this.map.addSource(ROUTES_SOURCE, {
         type: 'geojson',
         data: this.routesData,
         promoteId: 'route_id',
       });
     }
-    if (!this.map.getSource('stops')) {
-      this.map.addSource('stops', {
+    if (!this.map.getSource(STOPS_SOURCE)) {
+      this.map.addSource(STOPS_SOURCE, {
         type: 'geojson',
         data: this.stopsData,
         promoteId: 'stop_id',
       });
     }
-    if (!this.map.getSource('vehicles')) {
-      this.map.addSource('vehicles', {
+    if (!this.map.getSource(VEHICLES_SOURCE)) {
+      this.map.addSource(VEHICLES_SOURCE, {
         type: 'geojson',
         data: this.vehiclesData,
         promoteId: 'vehicle_id',
@@ -618,15 +645,15 @@ export class LayerManager {
   }
 
   private addRouteLayers(): void {
-    if (this.map.getLayer('routes-casing')) return;
+    if (this.map.getLayer(ROUTES_CASING_LAYER)) return;
 
     this.map.addLayer({
-      id: 'routes-casing',
+      id: ROUTES_CASING_LAYER,
       type: 'line',
-      source: 'routes',
+      source: ROUTES_SOURCE,
       paint: {
         'line-color': ['get', 'colorDark'],
-        'line-width': zoomWidth(CASING_WIDTH_STOPS, null, 1),
+        'line-width': zoomWidth(ROUTE_CASING_WIDTH_STOPS, null, 1),
       },
       layout: {
         'line-cap': 'round',
@@ -636,9 +663,9 @@ export class LayerManager {
     });
 
     this.map.addLayer({
-      id: 'routes-line',
+      id: ROUTES_LINE_LAYER,
       type: 'line',
-      source: 'routes',
+      source: ROUTES_SOURCE,
       paint: {
         'line-color': ['get', 'color'],
         'line-width': zoomWidth(ROUTE_WIDTH_STOPS, null, 1),
@@ -650,10 +677,48 @@ export class LayerManager {
       },
     });
 
+    // Direction chevrons for the single spotlighted route. Above the ribbon so
+    // it can never cover them, below every stop layer. Starts filtered to
+    // nothing; applySpotlight owns the filter. Each line in a route's
+    // MultiLineString runs in its own shape's travel direction, so a
+    // bidirectional route gets arrows pointing both ways, one set per shape.
     this.map.addLayer({
-      id: 'routes-clickarea',
+      id: ROUTES_DIRECTION_LAYER,
+      type: 'symbol',
+      source: ROUTES_SOURCE,
+      filter: NO_ROUTE_FILTER as unknown as FilterSpecification,
+      layout: {
+        'symbol-placement': 'line',
+        'symbol-spacing': ['interpolate', ['linear'], ['zoom'], 12, 80, 16, 140],
+        'icon-image': 'route-arrow',
+        'icon-rotation-alignment': 'map',
+        // An upright flip would reverse the arrow, the one thing this layer
+        // must never do.
+        'icon-keep-upright': false,
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 12, 0.5, 16, 1],
+        // Let collision detection interleave the arrows where two
+        // opposite-direction features share a corridor, rather than stacking
+        // them on top of each other.
+        'icon-allow-overlap': false,
+        'icon-ignore-placement': false,
+      },
+      paint: {
+        'icon-opacity': [
+          'interpolate',
+          ['linear'],
+          ['zoom'],
+          CONFIG.ROUTE_ARROW_FADE_ZOOM_MIN,
+          0,
+          CONFIG.ROUTE_ARROW_FADE_ZOOM_MAX,
+          CONFIG.ROUTE_ARROW_OPACITY,
+        ],
+      },
+    });
+
+    this.map.addLayer({
+      id: ROUTES_CLICKAREA_LAYER,
       type: 'line',
-      source: 'routes',
+      source: ROUTES_SOURCE,
       paint: { 'line-color': 'transparent', 'line-width': 15, 'line-opacity': 0 },
       // Sorted identically to the drawn layers so a click on overlapping routes
       // resolves to whichever one visually reads as on top.
@@ -666,122 +731,66 @@ export class LayerManager {
   }
 
   /**
-   * Opacity expression for the stops layers. Two nested fade bands, both
-   * driven by zoom:
-   *
-   *   < STATION_FADE_ZOOM_MIN   nothing but special stops
-   *   ~ STATION_FADE_ZOOM_MAX   stations and child nodes have faded in
-   *   ~ STOP_FADE_ZOOM_MAX      plain stops (location_type 0) have faded in
-   *
-   * Stations get the gentler band because they're far more spaced out, a
-   * zoomed-out view of them still reads as a network, where the same view of
-   * every plain stop reads as a pile of dots. Special stops (focused, or on the
-   * spotlighted route) are exempt at every zoom. When `dim` is set (route
-   * spotlight active), non-special stops top out at `dim` rather than 1.
-   */
-  private stopFadeOpacity(dim: number | null): ExpressionSpecification {
-    if (this.stopFadeDisabled) return (dim === null ? 1 : specialOrDim(dim)) as unknown as ExpressionSpecification;
-    const stationsOnly = [
-      'case',
-      SPECIAL_STOP,
-      1,
-      ['==', ['get', 'location_type'], 0],
-      0,
-      dim ?? 1,
-    ];
-    const fullZoom = dim === null ? 1 : specialOrDim(dim);
-    return [
-      'interpolate',
-      ['linear'],
-      ['zoom'],
-      CONFIG.STATION_FADE_ZOOM_MIN,
-      specialOnly(),
-      CONFIG.STATION_FADE_ZOOM_MAX,
-      stationsOnly,
-      CONFIG.STOP_FADE_ZOOM_MIN,
-      stationsOnly,
-      CONFIG.STOP_FADE_ZOOM_MAX,
-      fullZoom,
-    ] as unknown as ExpressionSpecification;
-  }
-
-  /**
-   * Opacity for the station-dot layer, which is filtered to location_type 1 and
-   * so only needs the station band. Without this the white station circle fades
-   * out at low zoom and leaves its black center dot floating.
-   */
-  private stationFadeOpacity(dim: number | null): ExpressionSpecification {
-    if (this.stopFadeDisabled) return (dim === null ? 1 : specialOrDim(dim)) as unknown as ExpressionSpecification;
-    return [
-      'interpolate',
-      ['linear'],
-      ['zoom'],
-      CONFIG.STATION_FADE_ZOOM_MIN,
-      specialOnly(),
-      CONFIG.STATION_FADE_ZOOM_MAX,
-      dim === null ? 1 : specialOrDim(dim),
-    ] as unknown as ExpressionSpecification;
-  }
-
-  /**
-   * Stop paint comes from the shared `stop-layer-style.ts`. Order matters: the
-   * halo and ring sit under the circles, the focus redraw sits over them so a
-   * neighbouring stop cannot paint over the selection, and the station dot goes
-   * last so a focused station keeps its center dot.
+   * Stop paint comes from the shared `stop-layer-style.ts`, the filters and the
+   * fade from `layer-specs.ts`. Order matters: the halo and ring sit under the
+   * circles, the focus redraw sits over them so a neighbouring stop cannot
+   * paint over the selection, and the station dot goes last so a focused
+   * station keeps its center dot.
    */
   private addStopLayers(): void {
-    if (this.map.getLayer('stops-background')) return;
+    if (this.map.getLayer(STOPS_BACKGROUND_LAYER)) return;
 
     this.map.addLayer({
       id: STOP_FOCUS_HALO_LAYER,
       type: 'circle',
-      source: 'stops',
-      filter: STOPS_FILTER,
+      source: STOPS_SOURCE,
+      filter: TOP_LEVEL_STOPS_FILTER,
       paint: focusHaloPaint(this.accent),
     });
 
     this.map.addLayer({
       id: STOP_FOCUS_RING_LAYER,
       type: 'circle',
-      source: 'stops',
-      filter: STOPS_FILTER,
+      source: STOPS_SOURCE,
+      filter: TOP_LEVEL_STOPS_FILTER,
       paint: focusRingPaint(this.accent),
     });
 
     this.map.addLayer({
-      id: 'stops-background',
+      id: STOPS_BACKGROUND_LAYER,
       type: 'circle',
-      source: 'stops',
-      filter: STOPS_FILTER,
-      paint: stopsBackgroundPaint(this.stopStyle, this.stopFadeOpacity(null)),
+      source: STOPS_SOURCE,
+      filter: TOP_LEVEL_STOPS_FILTER,
+      paint: stopsBackgroundPaint(this.stopStyle, this.stopFade(null)),
     });
 
     this.map.addLayer({
       id: STOP_FOCUS_TOP_LAYER,
       type: 'circle',
-      source: 'stops',
-      filter: STOPS_FILTER,
+      source: STOPS_SOURCE,
+      filter: TOP_LEVEL_STOPS_FILTER,
       paint: focusTopPaint(this.stopStyle),
     });
 
     this.map.addLayer({
-      id: 'stops-station-dot',
+      id: STOPS_STATION_DOT_LAYER,
       type: 'circle',
-      source: 'stops',
-      filter: ['==', ['get', 'location_type'], 1] as unknown as FilterSpecification,
-      paint: stationDotPaint(this.stationFadeOpacity(null)),
+      source: STOPS_SOURCE,
+      // This app never expands a station, so the stop filter is always the
+      // default one and the station-dot filter needs no composition.
+      filter: stationDotFilter(null),
+      paint: stationDotPaint(this.stationFade(null)),
     });
 
     // The hit radius mirrors the visible layer's fade: it collapses to 0 where
     // plain stops are fully faded out, so invisible stops are simply not
     // returned by queryRenderedFeatures: no JS-side visibility predicate to
-    // keep in sync. Adjust this and stopFadeOpacity together or stops become
-    // clickable while invisible, which reads as a ghost-click bug.
+    // keep in sync.
     this.map.addLayer({
-      id: 'stops-clickarea',
+      id: STOPS_CLICKAREA_LAYER,
       type: 'circle',
-      source: 'stops',
-      filter: STOPS_FILTER,
+      source: STOPS_SOURCE,
+      filter: TOP_LEVEL_STOPS_FILTER,
       paint: {
         'circle-radius': this.clickAreaRadius(),
         'circle-color': 'transparent',
@@ -790,51 +799,17 @@ export class LayerManager {
     });
   }
 
-  /**
-   * Hit radius for the clickarea layer, mirroring `stopFadeOpacity` so an
-   * invisible stop is not hoverable. Under the small-feed exemption nothing
-   * fades, so the radius only grows with zoom.
-   */
-  private clickAreaRadius(): ExpressionSpecification {
-    // Stay larger than the biggest visual circle (focused station at high
-    // zoom) so the clickarea is the sole hit-test layer.
-    const highZoom = [CONFIG.STOP_FADE_ZOOM_MAX, STOP_CLICK_RADIUS, 19, STOP_CLICK_RADIUS * 1.6];
-    if (this.stopFadeDisabled) {
-      return ['interpolate', ['linear'], ['zoom'], ...highZoom] as unknown as ExpressionSpecification;
-    }
-    const stationsOnly = [
-      'case',
-      SPECIAL_STOP,
-      STOP_CLICK_RADIUS,
-      ['==', ['get', 'location_type'], 0],
-      0,
-      STOP_CLICK_RADIUS,
-    ];
-    return [
-      'interpolate',
-      ['linear'],
-      ['zoom'],
-      CONFIG.STATION_FADE_ZOOM_MIN,
-      ['case', SPECIAL_STOP, STOP_CLICK_RADIUS, 0],
-      CONFIG.STATION_FADE_ZOOM_MAX,
-      stationsOnly,
-      CONFIG.STOP_FADE_ZOOM_MIN,
-      stationsOnly,
-      ...highZoom,
-    ] as unknown as ExpressionSpecification;
-  }
-
   private addVehicleLayers(): void {
-    if (this.map.getLayer('vehicles-dot')) return;
+    if (this.map.getLayer(VEHICLES_DOT_LAYER)) return;
 
     // Focus halo: a soft ring that only exists for the focused vehicle. The
     // arrow's size is a layout property and so cannot read feature-state; the
     // halo carries the emphasis instead. It scales with zoom so it reads at any
     // scale rather than being a flat pixel radius.
     this.map.addLayer({
-      id: 'vehicles-halo',
+      id: VEHICLES_HALO_LAYER,
       type: 'circle',
-      source: 'vehicles',
+      source: VEHICLES_SOURCE,
       paint: {
         'circle-radius': [
           'case',
@@ -854,9 +829,9 @@ export class LayerManager {
     // edge it disappears into the line. The casing is a slightly larger dark
     // circle drawn just under the dot (the arrow gets a dark halo instead).
     this.map.addLayer({
-      id: 'vehicles-casing',
+      id: VEHICLES_CASING_LAYER,
       type: 'circle',
-      source: 'vehicles',
+      source: VEHICLES_SOURCE,
       filter: ['==', ['get', 'has_bearing'], false] as unknown as FilterSpecification,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 7, 14, 9.5, 18, 13],
@@ -868,9 +843,9 @@ export class LayerManager {
     // arbitrarily-pointed arrow. Larger minimum size than the route casing so
     // the dot never reads as thinner than the line it sits on.
     this.map.addLayer({
-      id: 'vehicles-dot',
+      id: VEHICLES_DOT_LAYER,
       type: 'circle',
-      source: 'vehicles',
+      source: VEHICLES_SOURCE,
       filter: ['==', ['get', 'has_bearing'], false] as unknown as FilterSpecification,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 5, 14, 7.5, 18, 11],
@@ -881,9 +856,9 @@ export class LayerManager {
     });
 
     this.map.addLayer({
-      id: 'vehicles-arrow',
+      id: VEHICLES_ARROW_LAYER,
       type: 'symbol',
-      source: 'vehicles',
+      source: VEHICLES_SOURCE,
       filter: ['==', ['get', 'has_bearing'], true] as unknown as FilterSpecification,
       layout: {
         'icon-image': 'vehicle-arrow',
@@ -905,9 +880,9 @@ export class LayerManager {
     // Never smaller than the largest drawn vehicle (focused halo aside): the
     // clickarea is the sole hit-test layer, same contract as the stops one.
     this.map.addLayer({
-      id: 'vehicles-clickarea',
+      id: VEHICLES_CLICKAREA_LAYER,
       type: 'circle',
-      source: 'vehicles',
+      source: VEHICLES_SOURCE,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 12, 14, 15, 18, 20],
         'circle-color': 'transparent',
@@ -920,6 +895,9 @@ export class LayerManager {
    * A north-pointing arrow, drawn as an SDF so `icon-color` can tint it per
    * route. MapLibre reads the alpha channel as a distance field, so the shape
    * is blurred slightly to give the edge a ramp instead of a hard step.
+   *
+   * Separate from the vendored `map-icons.ts`: that file's `route-arrow` is a
+   * white-on-dark chevron laid along a line, not a tintable vehicle marker.
    */
   private addArrowImage(): void {
     if (this.map.hasImage('vehicle-arrow')) return;
@@ -967,13 +945,13 @@ export class LayerManager {
       const [feature] = this.map.queryRenderedFeatures(point, { layers: [layer] });
       if (!feature) continue;
       const props = feature.properties ?? {};
-      if (layer === 'vehicles-clickarea' && props.vehicle_id) {
+      if (layer === VEHICLES_CLICKAREA_LAYER && props.vehicle_id) {
         return { kind: 'vehicle', id: String(props.vehicle_id) };
       }
-      if (layer === 'stops-clickarea' && props.stop_id) {
+      if (layer === STOPS_CLICKAREA_LAYER && props.stop_id) {
         return { kind: 'stop', id: String(props.stop_id) };
       }
-      if (layer === 'routes-clickarea' && props.route_id) {
+      if (layer === ROUTES_CLICKAREA_LAYER && props.route_id) {
         return { kind: 'route', id: String(props.route_id) };
       }
     }
@@ -1137,23 +1115,17 @@ export class LayerManager {
     if (!feed) return stopId;
     const stop = feed.stops.get(stopId);
     if (!stop) return stopId;
-    // Drawn: a station, or a stop with no parent (STOPS_FILTER).
+    // Drawn: a station, or a stop with no parent (TOP_LEVEL_STOPS_FILTER).
     if (stop.location_type === 1 || !stop.parent_station) return stopId;
     const root = feed.stationRoot(stopId);
     return feed.stops.has(root) ? root : stopId;
   }
 }
 
-function specialOrDim(dim: number): ExpressionSpecification {
-  return ['case', SPECIAL_STOP, 1, dim] as unknown as ExpressionSpecification;
-}
-
-/**
- * Everything that isn't a special stop is gone. The bottom stop of both fade
- * bands, below which the map shows routes only.
- */
-function specialOnly(): ExpressionSpecification {
-  return ['case', SPECIAL_STOP, 1, 0] as unknown as ExpressionSpecification;
+/** The source a focus kind's features live in. */
+function sourceFor(kind: 'stop' | 'route' | 'vehicle'): string {
+  if (kind === 'route') return ROUTES_SOURCE;
+  return kind === 'stop' ? STOPS_SOURCE : VEHICLES_SOURCE;
 }
 
 function boundsOf(coords: [number, number][]): [[number, number], [number, number]] | null {

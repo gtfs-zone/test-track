@@ -11,7 +11,9 @@
      here from the old about-modal.ts
    - setHelpRuntimeData narrowed to { version } only; no shortcuts registry
    - mapKeyPage rewritten for this app's own symbology (routes, vehicles,
-     stops) instead of coloring-book's pathways/stops */
+     stops) instead of coloring-book's pathways/stops
+   - mapKeyPage gained a direction-of-travel row in Phase 8, when the
+     spotlighted route got its chevrons */
 /**
  * The help page registry: what pages exist, their grouping, and their copy.
  *
@@ -165,6 +167,13 @@ function triangle(color: string): string {
   return `<svg width="14" height="14" viewBox="0 0 14 14" style="flex-shrink:0"><polygon points="7,1 12,12 2,12" fill="${color}" stroke="#0f172a" stroke-width="1"/></svg>`;
 }
 
+/** The direction chevrons drawn along the selected route. */
+function chevronLine(color: string): string {
+  const chevron = (x: number) =>
+    `<polyline points="${x},4 ${x + 3},7 ${x},10" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`;
+  return `<svg width="20" height="14" viewBox="0 0 20 14" style="flex-shrink:0"><line x1="2" y1="7" x2="18" y2="7" stroke="${color}" stroke-width="4" stroke-linecap="round"/>${chevron(5)}${chevron(11)}</svg>`;
+}
+
 const mapKeyPage: HelpPage = {
   id: 'map-key',
   label: 'Map Key',
@@ -185,6 +194,7 @@ const mapKeyPage: HelpPage = {
 
     const routesAndVehicles = [
       row(swatchLine('#3b82f6'), "Route (the feed's color, or an assigned one)"),
+      row(chevronLine('#3b82f6'), 'Direction of travel, on the selected route'),
       row(circle('#3b82f6', '#0f172a'), 'Vehicle'),
       row(triangle('#3b82f6'), 'Vehicle, with a known heading'),
       row(circle('#94a3b8', '#0f172a'), "Vehicle, route couldn't be matched"),

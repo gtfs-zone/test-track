@@ -1,10 +1,6 @@
 /* @vendored-from coloring-book:src/utils/route-colors.ts
-   @sha a4b5ee1
-   @status modified
-   @changes
-   - `routeTextColor` (plus `luminance` and `TEXT_LUMINANCE_PIVOT`) kept: knip
-     dropped it upstream in `f456bbb` as unused there, but `gtfs-scheduled.ts`
-     still needs it for route badge text. */
+   @sha 3bb4772
+   @status verbatim */
 /**
  * Colors for a route on the map and in the UI.
  *
@@ -154,6 +150,11 @@ function luminance(hex: string): number {
  * an agency's own pairing is authoritative even when it's a poor one, and
  * otherwise picks black or white by luminance. Blindly defaulting to white is
  * what makes a badge on a pale feed color unreadable.
+ *
+ * No caller here: this app renders no route badge. Kept so the file stays one
+ * copy across the three apps rather than forking on an export.
+ *
+ * @lintignore
  */
 export function routeTextColor(fill: string, gtfsTextColor?: string): string {
   if (isGtfsColor(gtfsTextColor)) {

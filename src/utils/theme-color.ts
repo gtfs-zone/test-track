@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/utils/theme-color.ts
-   @sha a4b5ee1
+   @sha cbe72e1
    @status verbatim */
 /**
  * Resolve a DaisyUI theme token to an sRGB hex string MapLibre can parse.

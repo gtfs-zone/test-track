@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/route-sort.ts
-   @sha a4b5ee1
+   @sha b19718e
    @status verbatim */
 /**
  * Paint-order ranking for route lines.
