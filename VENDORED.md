@@ -63,6 +63,20 @@ screen, written against this app's session) are the app itself. No sibling
 vendors them and none should; they are named here so the table is a complete
 map of `src/` rather than only its shared half.
 
+**Upstream modules deliberately not vendored.** Three coloring-book modules have
+no row because nothing here can call them yet, and each is a re-read before the
+interlocking move rather than an oversight. `tooltip-position.ts` positions the
+`.field-tooltip-trigger` markup that `field-label.ts` / `field-component.ts`
+emit from the editor's field spec; neither is vendored, so it would install
+document listeners for triggers that never render. `keyboard-shortcuts.ts` takes
+an editor object whose `uiController` must supply `exportGTFS`, and its registry
+hard-codes undo/redo over `patchManager`; adopting it means shipping shortcuts
+that do nothing, so the fix is upstream (an app-supplied command list) and until
+then `help-pages.ts` has no Keyboard Shortcuts page. `modal-router.ts` reads the
+`state.modal` dimension this repo did not take and calls the
+`getPageStateManager()` singleton this repo dropped, and every `MODAL_TYPES`
+name is an editor modal.
+
 This table is the single place to look when diffing against a newer source repo.
 Run `pnpm vendor:check` to diff every `verbatim` entry below against its recorded
 SHA (rows whose sibling repo isn't checked out are skipped).
@@ -81,7 +95,7 @@ SHA (rows whose sibling repo isn't checked out are skipped).
 | `src/modules/route-sort.ts` | `coloring-book` | `src/modules/route-sort.ts` | b19718e | verbatim | Paint order for route lines. `routeTypeRank` maps a GTFS `route_type` (base or extended) to a rank — subway on top, bus at the bottom — and `routeSortKey` blends in a log-scaled trip count as the within-mode tiebreaker. Feeds `line-sort-key` on the three route layers |
 | `src/utils/route-colors.ts` | `coloring-book` | `src/utils/route-colors.ts` | 3bb4772 | verbatim | Route fill, line casing, and badge text color. A feed that omits `route_color` gets a hue hashed from `route_id`, rendered through OKLCH at fixed lightness/chroma so hashed routes read at one visual weight rather than HSL's wildly uneven ramp. `HASH_LIGHTNESS`/`HASH_CHROMA`/`HUE_STEP`/`CASING_FACTOR` are the tuning dials. Consumed by `GTFSScheduled.ingestRoutes` and `layer-manager.ts`. Off `modified` as of Phase 8: `3bb4772` restored `routeTextColor` upstream and tagged it `@lintignore`, which was the one thing this repo was keeping locally |
 | `src/utils/theme-color.ts` | `coloring-book` | `src/utils/theme-color.ts` | cbe72e1 | verbatim | Resolves a DaisyUI theme token to an sRGB hex MapLibre can parse, by painting the computed color into a 1x1 canvas. Cached per token, so `clearThemeColorCache()` has to run on every theme change |
-| `src/types/page-state.ts` | `coloring-book` | `src/types/page-state.ts` | 1c16f14 | modified | Five variants only; `vehicle`/`alert` added, `direction_id` on route; sync `StateValidator`; `pageStatesEqual`. `1c16f14`'s modal dimension not taken: every `MODAL_TYPES` name is an editor modal and nothing here hash-routes one yet, so it comes with Phase 7's hash-ownership answer |
+| `src/types/page-state.ts` | `coloring-book` | `src/types/page-state.ts` | 1c16f14 | modified | Five variants only; `vehicle`/`alert` added, `direction_id` on route; sync `StateValidator`; `pageStatesEqual`. `1c16f14`'s modal dimension not taken: every `MODAL_TYPES` name is an editor modal and nothing here hash-routes one. `modal-router.ts`, the only reader of the dimension, is not vendored either, so `page-state-manager.ts` is the sole hash writer; the two are taken together or not at all |
 | `src/modules/page-state-manager.ts` | `coloring-book` | `src/modules/page-state-manager.ts` | dca23b3 | modified | Breadcrumbs synchronous and injected; feed URLs merged into the hash; singleton dropped; `initializeFromURL` split into `pendingStateFromURL`/`adoptState`. `2287432`'s same-page guard not taken (`AppState.setFocus` already holds it), nor `1c16f14`'s modal dimension |
 | `src/modules/search-controller.ts` | `coloring-book` | `src/modules/search-controller.ts` | b19718e | verbatim | The map search box. Data-source agnostic: entries come from `search-entries.ts`, selection hands a `PageState` back to `AppState.setFocus`. Needs `#map-search` inside `#map-search-card`. `SearchEntry.priority` (lower sorts first) lets adapters bucket by type while `SearchController` stable-sorts within a bucket by uFuzzy quality |
 | `src/modules/load-modal.ts` | `coloring-book` | `src/modules/load-modal.ts` | 2ba42e2 | verbatim | The one way into a feed: examples, the TransitLand atlas, hand-typed URLs and file upload on one screen. `showLoadModal(current, { realtime })` is the only axis the two apps disagree on — with `realtime: false` (coloring-book) the RT section, its fields and every rt-only atlas row are not emitted and a scheduled source alone is complete. `extraActions` appends action-bar buttons (coloring-book puts "New Empty Feed" there). Returns a `LoadModalResult` union: `{ kind: 'selection' }`, `{ kind: 'continue' }` when the boot-only `continueWith` card is clicked, or null. Search and results lead the body; the Scheduled and Realtime URL blocks sit below and flash their border when a row click fills them |

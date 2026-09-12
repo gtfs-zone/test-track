@@ -4,7 +4,7 @@
    @changes
    - Editor-only rules dropped: the CodeMirror overrides (.cm-editor, .cm-focused),
      the schedule/timetable rules (`td input.input`, `#schedule-view thead`),
-     `.file-required`, the `#map-overlay` transition, and the cupcake/night themes.
+     `.file-required`, and the cupcake/night themes.
      The mobile scroll-gating selector is `.panel-scroll` rather than `.tab-content`
      for the same reason: there are no tabs here, just the single `#panel-content`
      host.

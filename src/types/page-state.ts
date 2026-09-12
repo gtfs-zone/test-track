@@ -18,9 +18,10 @@
      `isPageState` cases are GTFS Flex pages test-track has no data for.
    - Skipped `1c16f14`'s modal dimension (`MODAL_TYPES`, `ModalState`,
      `PageLocation` + `WithModal`, `isModalState`). Every name in `MODAL_TYPES` is
-     an editor modal, and nothing here hash-routes a modal yet; which of
-     `modal-router.ts` and `page-state-manager.ts` owns the hash is Phase 7's
-     question, and the dimension comes with whichever answer wins. */
+     an editor modal, and nothing here hash-routes a modal. `modal-router.ts`,
+     the only thing that would read the dimension, is not vendored either, so
+     `page-state-manager.ts` is the sole hash writer and the ownership question
+     does not arise. Take both together, or neither. */
 
 /**
  * Union of every page test-track can display. Each variant carries the minimal
