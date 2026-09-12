@@ -5,3 +5,6 @@
 node_modules/
 dist/
 .playwright-mcp/
+
+# Working plans are local scratch, not repo history.
+CURRENT_PLAN.md
