@@ -46,14 +46,6 @@ set stays canonical here. The same holds for the four page renderers and the
 panel dispatcher: they render GTFS-RT beside the schedule, which is a screen
 coloring-book does not have.
 
-Two `origin` rows are read at a path this repo no longer uses. `f54ae79`
-(`refactor(vocab): call a static feed a scheduled feed`) renamed
-`gtfs-static.ts` to `gtfs-scheduled.ts` and `gtfs-static-route-source.ts` to
-`gtfs-scheduled-route-source.ts`, and `feed-session.ts` moved from `src/` to
-`src/modules/`. yard-master's rows still name the old paths. They resolve today
-because each is pinned to a SHA where the old path existed; they break the
-moment those rows are re-vendored, and fixing them is yard-master's to do.
-
 **What is deliberately absent.** `src/index.ts` (this app's boot order),
 `src/config.ts` and `src/env.d.ts` (build and deployment constants),
 `src/modules/feed-url.ts` (the `?scheduled=`/`?realtime=` query contract, which
