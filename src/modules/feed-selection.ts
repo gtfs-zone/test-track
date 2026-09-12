@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/feed-selection.ts
-   @sha fcb17b2
+   @sha f91fd8a
    @status verbatim */
 /**
  * Feed selection model.

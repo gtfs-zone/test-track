@@ -1,3 +1,6 @@
+/* @vendored-from coloring-book:scripts/generate-atlas-data.ts
+   @sha f91fd8a
+   @status verbatim */
 /**
  * Build public/atlas-feeds.json from the transitland-atlas DMFR corpus.
  *

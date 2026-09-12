@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/feed-download.ts
-   @sha 2505f6c
+   @sha 43f3664
    @status verbatim */
 /**
  * Fetching a feed archive with real byte progress.
@@ -9,8 +9,8 @@
  * `feed-selection.ts` so the CORS-proxy hints come along), and the cancel
  * semantics.
  *
- * Cancel aborts the *fetch* only. Once the bytes are in hand the caller parses
- * them to completion, so no app can end up with a half-ingested feed.
+ * The `AbortSignal` covers this download and nothing beyond it: a caller that
+ * cancels the wider operation is responsible for the stages after the fetch.
  *
  * Progress callbacks are coalesced: a fetch chunk is 16-64 KB, so an unthrottled
  * callback turns a large feed into thousands of main-thread DOM writes that

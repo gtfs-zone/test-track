@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/utils/escape-html.ts
-   @sha a2bf4cf
+   @sha b19718e
    @status verbatim */
 /**
  * HTML escaping for the string-building renderers.
