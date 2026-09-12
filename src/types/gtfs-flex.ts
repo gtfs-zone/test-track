@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/types/gtfs-flex.ts
-   @sha 52baec7
+   @sha d66a68b
    @status modified
    @changes
    - Types only. `stopTimeRef`, its `value` helper and the `StopTimes` entity

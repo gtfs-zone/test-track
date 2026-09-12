@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/scs.ts
-   @sha 04f48c3
+   @sha 1a77bff
    @status verbatim */
 /**
  * Shortest Common Supersequence (SCS) module.
