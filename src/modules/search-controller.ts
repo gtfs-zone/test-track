@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/search-controller.ts
-   @sha a4b5ee1
+   @sha b19718e
    @status verbatim */
 /**
  * The map search box.

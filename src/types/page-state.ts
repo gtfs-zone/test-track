@@ -1,9 +1,10 @@
 /* @vendored-from coloring-book:src/types/page-state.ts
-   @sha fcb17b2
+   @sha 1c16f14
    @status modified
    @changes
    - Page types reduced to test-track's four object pages plus home: dropped
-     `agency`, `timetable`, `service`, and `pathway`.
+     `agency`, `service`, and `pathway`. Upstream's `timetable` page became a
+     modal in `1c16f14` and was never here.
    - `route` gained an optional `direction_id` (absorbed from `timetable`), so the
      route strip's direction tab is linkable.
    - Added `vehicle` and `alert`, which have no coloring-book equivalent.
@@ -11,8 +12,15 @@
      database.
    - `BreadcrumbItem` moved upstream into `breadcrumb-trail.ts` when it gained a
      `typeLabel`; re-exported here so import sites are unchanged.
+   - `pageStatesEqual`, used by `AppState.setFocus` to drop a navigation to the
+     page already open. Upstream guards that inside `setPageState` instead.
    - Skipped `136329b`: the `zone` and `location_group` variants and their
-     `isPageState` cases are GTFS Flex pages test-track has no data for. */
+     `isPageState` cases are GTFS Flex pages test-track has no data for.
+   - Skipped `1c16f14`'s modal dimension (`MODAL_TYPES`, `ModalState`,
+     `PageLocation` + `WithModal`, `isModalState`). Every name in `MODAL_TYPES` is
+     an editor modal, and nothing here hash-routes a modal yet; which of
+     `modal-router.ts` and `page-state-manager.ts` owns the hash is Phase 7's
+     question, and the dimension comes with whichever answer wins. */
 
 /**
  * Union of every page test-track can display. Each variant carries the minimal
@@ -31,7 +39,7 @@ export type PageState =
 export type PageStateType = PageState['type'];
 
 /** Re-export, so the crumb shape and the page states stay one import apart. */
-export type { BreadcrumbItem } from '../modules/breadcrumb-trail.js';
+export type { BreadcrumbItem } from '../modules/breadcrumb-trail';
 
 /** Type guard for a valid PageState. */
 export function isPageState(value: unknown): value is PageState {

@@ -1,27 +1,36 @@
 /* @vendored-from coloring-book:src/modules/page-state-manager.ts
-   @sha fcb17b2
+   @sha dca23b3
    @status modified
    @changes
-   - Reduced to test-track's five page variants; all `agency` / `timetable` /
-     `service` / `pathway` branches deleted.
+   - Reduced to test-track's five page variants; all `agency` / `service` /
+     `pathway` branches deleted. Upstream's `timetable` page became a modal in
+     `1c16f14` and was never here.
    - `BreadcrumbLookup` interface and `getObjectName` deleted. Breadcrumbs are now
      built by an injected synchronous `BreadcrumbBuilder` (see breadcrumbs.ts),
      because our model is in-memory rather than IndexedDB-backed.
-   - `StateValidator` is synchronous, so `setPageState` / `initializeFromURL` /
+   - `StateValidator` is synchronous, so `setPageState` / `adoptState` /
      `handleHashChange` are no longer async.
    - Added `setFeedParams()`: the hash carries the feed configuration alongside the
      focus, so `pageStateToURL` output is merged with those params on every write.
      coloring-book instead stripped a single `load=` command param.
-   - `CONFIG.MAX_NAVIGATION_HISTORY` inlined — test-track has no config module.
+   - `CONFIG.MAX_NAVIGATION_HISTORY` inlined, since test-track has no config module.
    - Dropped the module-level singleton (`getPageStateManager` /
      `initPageStateManager`); AppState owns the one instance.
    - Skipped `eca835c`'s `peekURLPageState`: boot reads the hash through
      `feed-url.ts` and `AppState.boot()`, so nothing needs an unvalidated page
-     state.
+     state. `initializeFromURL()` is split into `pendingStateFromURL()` and
+     `adoptState()` for the same reason: the feed has to load between the two.
    - Skipped `136329b`: the `zone` and `location_group` branches in
      `getBreadcrumbs`, `pageStateToURL` and `urlToPageState`, plus the two
      `BreadcrumbLookup` name getters, are GTFS Flex pages test-track has no
-     data for. */
+     data for.
+   - Skipped `2287432`'s same-page guard in `setPageState`. The equivalent guard
+     lives in `AppState.setFocus`, over `pageStatesEqual`, and is the only caller;
+     a second copy here would compare against `buildHash` rather than
+     `pageStateToURL` and never fire.
+   - Skipped `1c16f14`'s modal dimension (`parseModalParams`, `clearModal`, the
+     `modal_*` hash params, the modal-surviving home fallback), with the modal
+     types it routes. See the same note in `types/page-state.ts`. */
 
 import type {
   BreadcrumbItem,
