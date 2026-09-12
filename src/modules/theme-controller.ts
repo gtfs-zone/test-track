@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/theme-controller.ts
-   @sha a4b5ee1
+   @sha cbe72e1
    @status verbatim */
 export class ThemeController {
   private listeners: ((theme: string) => void)[] = [];

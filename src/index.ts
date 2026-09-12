@@ -42,7 +42,17 @@ themeController.onThemeChange(() => mapCtrl.refreshAccentColor());
 new PanelResizer(appContainer, mapCtrl);
 
 const rightPanel = document.getElementById('right-panel')!;
-const bottomSheet = new BottomSheetController(rightPanel);
+// The dock is the mobile-only nav. Browse snaps the sheet open over the map;
+// Alerts and Help open their own modals and leave the sheet where it is.
+const bottomSheet = new BottomSheetController(rightPanel, [
+  { id: 'dock-browse' },
+  {
+    id: 'dock-alerts',
+    snap: null,
+    onSelect: () => (document.getElementById('alerts-modal') as HTMLDialogElement).showModal(),
+  },
+  { id: 'dock-help', snap: null, onSelect: () => void showHelpModal() },
+]);
 // On mobile the sheet sits over the map, so the camera has to hold the focused
 // feature above it rather than centring it under the sheet.
 bottomSheet.onSnapChange(covered => mapCtrl.setBottomPadding(covered));
@@ -311,18 +321,24 @@ const alertsList = document.getElementById('alerts-list')!;
  * alert text is finally rendered — a row links to the page that shows every
  * translation, active period, and informed entity.
  *
- * The navbar badge counts only alerts that are active *now*. A feed routinely
+ * The badges count only alerts that are active *now*. A feed routinely
  * carries alerts for next month's shutdown, and counting them as if they were
  * happening makes the badge useless; the total is stated next to it instead.
  */
 function renderAlertsModal(records: AlertRecord[]): void {
-  const badge = document.getElementById('alerts-badge')!;
+  // The navbar and the mobile dock each carry one.
+  const badges = [
+    document.getElementById('alerts-badge')!,
+    document.getElementById('dock-alerts-badge')!,
+  ];
   const active = records.filter(r => isActiveNow(r.alert));
 
   if (records.length === 0) {
     alertsList.innerHTML = '<p class="text-sm opacity-40 text-center py-8">No service alerts.</p>';
-    badge.classList.add('hidden');
-    badge.textContent = '';
+    for (const badge of badges) {
+      badge.classList.add('hidden');
+      badge.textContent = '';
+    }
     return;
   }
 
@@ -332,8 +348,10 @@ function renderAlertsModal(records: AlertRecord[]): void {
     <p class="text-xs opacity-60">${active.length} active of ${records.length} in the feed.</p>
     ${ordered.map(renderAlertRow).join('')}`;
 
-  badge.textContent = String(active.length);
-  badge.classList.toggle('hidden', active.length === 0);
+  for (const badge of badges) {
+    badge.textContent = String(active.length);
+    badge.classList.toggle('hidden', active.length === 0);
+  }
 }
 
 function renderAlertRow(record: AlertRecord): string {

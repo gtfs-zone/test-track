@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/basemap-styles.ts
-   @sha f9c718c
+   @sha ec33c12
    @status verbatim */
 /**
  * Basemap style configurations for MapLibre GL

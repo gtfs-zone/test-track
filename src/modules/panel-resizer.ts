@@ -1,16 +1,20 @@
 /* @vendored-from coloring-book:src/modules/panel-resizer.ts
-   @sha f9c718c
-   @status modified
-   @changes
-   - Import path is `../map-controller` (test-track keeps MapController at src root).
-   - Persists the resulting width to localStorage under `panel-width` on mouseup.
-   - Adds an exported `restorePanelWidth(appContainer)` to apply the stored width at boot. */
-import { MapController } from '../map-controller';
-
+   @sha 146c371
+   @status verbatim */
 const MIN_WIDTH = 300;
 const MAX_WIDTH = 1500;
 const DEFAULT_WIDTH = 650;
 const STORAGE_KEY = 'panel-width';
+
+/**
+ * What the resizer needs from the map: a cheap resize while dragging and a
+ * full one on release. Structural rather than a `MapController` import, so the
+ * file carries no app dependency.
+ */
+export interface PanelResizeTarget {
+  resizeNow(): void;
+  forceMapResize(): void;
+}
 
 /** Apply the persisted panel width, if any, before the map first sizes itself. */
 export function restorePanelWidth(appContainer: HTMLElement): void {
@@ -23,7 +27,7 @@ export function restorePanelWidth(appContainer: HTMLElement): void {
 }
 
 export class PanelResizer {
-  constructor(appContainer: HTMLElement, mapController: MapController) {
+  constructor(appContainer: HTMLElement, mapController: PanelResizeTarget) {
     const resizer = document.getElementById('panel-resizer');
     if (!resizer) {
       return;

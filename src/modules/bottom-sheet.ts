@@ -1,19 +1,20 @@
 /* @vendored-from coloring-book:src/modules/bottom-sheet.ts
-   @sha a4b5ee1
-   @status modified
-   @changes
-   - Removed the TabManager import and the `setupDock` method — there is no mobile dock.
-   - Removed the `openHistoryModal` parameter and the `#mobile-dock` ResizeObserver
-     (which drove `--dock-height`; the sheet now anchors to `bottom: 0`).
-   - Constructor is `new BottomSheetController(panel)`.
-   - Upstream early-returns when `innerWidth >= 768` and never re-checks, so rotating a
-     tablet leaves the sheet inert. Here the drag handle is wired once up front and a
-     `matchMedia('(max-width: 767px)')` listener toggles `active`, so the sheet comes
-     alive/goes inert across breakpoint crossings.
-   - Added `coveredHeight()` and `onSnapChange()` so the map can keep the focused
-     feature clear of the sheet (`MapController.setBottomPadding`). */
-
+   @sha b0a2ff8
+   @status verbatim */
 type Snap = 'closed' | 'half' | 'full';
+
+/**
+ * One button of the mobile dock. The button itself lives in the host app's
+ * markup; this only says what pressing it does.
+ */
+export interface DockItem {
+  /** Element id of the button in the dock. */
+  id: string;
+  /** Snap to open the sheet to on press, or null to leave the sheet alone. */
+  snap?: 'half' | 'full' | null;
+  /** Ran after the sheet has snapped. */
+  onSelect?: () => void;
+}
 
 const CLOSED_PX = 0;
 const HALF_VH = 0.45;
@@ -26,9 +27,20 @@ export class BottomSheetController {
   private snapCallbacks: Array<(covered: number) => void> = [];
   private active = false;
 
-  constructor(panel: HTMLElement) {
+  constructor(panel: HTMLElement, dockItems: DockItem[] = []) {
     this.panel = panel;
     this.setupDragHandle();
+    this.setupDock(dockItems);
+
+    const dock = document.getElementById('mobile-dock');
+    if (dock) {
+      new ResizeObserver(() => {
+        const h = dock.getBoundingClientRect().height;
+        if (h > 0) {
+          document.documentElement.style.setProperty('--dock-height', `${h}px`);
+        }
+      }).observe(dock);
+    }
 
     const mobile = window.matchMedia('(max-width: 767px)');
     this.applyMode(mobile.matches);
@@ -200,12 +212,32 @@ export class BottomSheetController {
     }
   }
 
+  private setupDock(items: DockItem[]): void {
+    const buttons = items.map((item) => ({
+      item,
+      el: document.getElementById(item.id),
+    }));
+
+    for (const { item, el } of buttons) {
+      el?.addEventListener('click', () => {
+        for (const other of buttons) {
+          other.el?.classList.toggle('dock-active', other.item.id === item.id);
+        }
+        const snap = item.snap === undefined ? 'half' : item.snap;
+        if (snap) {
+          this.open(snap);
+        }
+        item.onSelect?.();
+      });
+    }
+  }
+
   public onDismiss(cb: () => void): void {
     this.dismissCallbacks.push(cb);
   }
 
   /**
-   * Pixels of the map the sheet is currently covering — 0 on desktop, where the
+   * Pixels of the map the sheet is currently covering. 0 on desktop, where the
    * panel sits beside the map rather than over it.
    */
   public coveredHeight(): number {

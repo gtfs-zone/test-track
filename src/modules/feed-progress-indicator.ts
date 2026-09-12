@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/feed-progress-indicator.ts
-   @sha c6199c5
+   @sha 43f3664
    @status verbatim */
 /**
  * Feed Progress Indicator
@@ -13,8 +13,14 @@ export interface LoadingOptions {
   onCancel?: () => void;
 }
 
+/** What the bar would show for one live operation. */
+interface OperationState {
+  status: string;
+  progress: number;
+}
+
 export class FeedProgressIndicator {
-  private loadingStates: Map<string, boolean> = new Map();
+  private loadingStates: Map<string, OperationState> = new Map();
   private cancelHandlers: Map<string, () => void> = new Map();
   private cancellingOperations: Set<string> = new Set();
   // Several operations can be live at once, but the bar shows one at a time;
@@ -68,7 +74,7 @@ export class FeedProgressIndicator {
     status: string = 'Processing...',
     options: LoadingOptions = {}
   ): void {
-    this.loadingStates.set(operation, true);
+    this.loadingStates.set(operation, { status, progress: 0 });
     // A restarted operation gets its own handler, never the previous run's.
     if (options.onCancel) {
       this.cancelHandlers.set(operation, options.onCancel);
@@ -77,36 +83,23 @@ export class FeedProgressIndicator {
     }
     this.cancellingOperations.delete(operation);
     this.currentOperation = operation;
-    this.updateLoadingDisplay(status);
+    this.render();
+    this.showLoadingIndicator();
   }
 
   updateProgress(operation: string, progress: number, status?: string): void {
-    if (this.loadingStates.has(operation)) {
-      this.currentOperation = operation;
-      if (this.progressElement) {
-        (this.progressElement as HTMLProgressElement).value = progress;
-      }
-      // Chunks keep arriving after a cancel until the abort lands; the
-      // 'Cancelling...' line stays put rather than flickering back to bytes.
-      if (
-        status &&
-        this.statusElement &&
-        !this.cancellingOperations.has(operation)
-      ) {
-        this.statusElement.textContent = status;
-      }
-      this.updateCancelButton();
+    const state = this.loadingStates.get(operation);
+    if (!state) {
+      return;
     }
-  }
-
-  /**
-   * Drop an operation's cancel affordance without ending it, for a key that
-   * covers an abortable phase followed by an unabortable one.
-   */
-  clearCancel(operation: string): void {
-    this.cancelHandlers.delete(operation);
-    this.cancellingOperations.delete(operation);
-    this.updateCancelButton();
+    state.progress = progress;
+    // Chunks keep arriving after a cancel until the abort lands; the
+    // 'Cancelling...' line stays put rather than flickering back to bytes.
+    if (status && !this.cancellingOperations.has(operation)) {
+      state.status = status;
+    }
+    this.currentOperation = operation;
+    this.render();
   }
 
   finishLoading(operation: string): void {
@@ -114,10 +107,12 @@ export class FeedProgressIndicator {
     this.cancelHandlers.delete(operation);
     this.cancellingOperations.delete(operation);
     if (this.currentOperation === operation) {
+      // Hand the bar back to whatever is still running, with its own status and
+      // progress, rather than leaving this operation's "Complete!" at 100%.
       const remaining = this.getLoadingOperations();
       this.currentOperation = remaining[remaining.length - 1] ?? null;
     }
-    this.updateCancelButton();
+    this.render();
 
     if (this.loadingStates.size === 0) {
       this.hideLoadingIndicator();
@@ -144,10 +139,11 @@ export class FeedProgressIndicator {
     }
     this.cancelHandlers.delete(operation);
     this.cancellingOperations.add(operation);
-    if (this.statusElement) {
-      this.statusElement.textContent = 'Cancelling...';
+    const state = this.loadingStates.get(operation);
+    if (state) {
+      state.status = 'Cancelling...';
     }
-    this.updateCancelButton();
+    this.render();
     handler();
   }
 
@@ -164,17 +160,21 @@ export class FeedProgressIndicator {
     this.cancelElement.disabled = cancelling;
   }
 
-  private updateLoadingDisplay(status: string): void {
-    if (this.statusElement) {
-      this.statusElement.textContent = status;
+  /** Paint whichever operation currently owns the bar. */
+  private render(): void {
+    const state =
+      this.currentOperation === null
+        ? undefined
+        : this.loadingStates.get(this.currentOperation);
+    if (state) {
+      if (this.statusElement) {
+        this.statusElement.textContent = state.status;
+      }
+      if (this.progressElement) {
+        (this.progressElement as HTMLProgressElement).value = state.progress;
+      }
     }
-
-    if (this.progressElement) {
-      (this.progressElement as HTMLProgressElement).value = 0;
-    }
-
     this.updateCancelButton();
-    this.showLoadingIndicator();
   }
 
   private showLoadingIndicator(): void {
