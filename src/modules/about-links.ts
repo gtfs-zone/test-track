@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/about-links.ts
-   @sha 2c858bf
+   @sha 1c16f14
    @status verbatim */
 // The off-site destinations both gtfs.zone apps name in their About modal, and
 // the blocks that render them. Each app supplies its own identity through
@@ -32,6 +32,12 @@ export interface AboutApp {
 function link(href: string, label: string): string {
   return `<a href="${href}" target="_blank" rel="noopener noreferrer" class="link">${label}</a>`;
 }
+
+/** Exported for other prose that wants the same off-site anchor styling. */
+export const renderExternalLink = link;
+
+/** The TransitLand Atlas URL named in `renderResourcesSection()`. */
+export const TRANSITLAND_URL = 'https://www.transit.land/';
 
 function divider(label: string): string {
   return `<div class="divider text-sm font-semibold opacity-60">${label}</div>`;
@@ -69,7 +75,7 @@ export function renderVersionAndSource(app: AboutApp, version: string): string {
     list([
       `Version: <code class="font-mono">${version}</code>`,
       link(repo, 'Source code'),
-      link(`${repo}/raw/branch/main/CHANGELOG.md`, 'Changelog'),
+      link(`${repo}/src/branch/main/CHANGELOG.md`, 'Changelog'),
     ])
   );
 }

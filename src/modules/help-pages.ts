@@ -1,9 +1,10 @@
 /* @vendored-from coloring-book:src/modules/help-pages.ts
-   @sha 2302e2e
+   @sha dca23b3
    @status modified
    @changes
-   - Editor-only pages dropped (Getting Started/Shapes/Fares/Keyboard
-     Shortcuts); HELP_PAGES is [welcomePage, aboutPage, mapKeyPage]
+   - Editor-only pages dropped (Getting Started/Shapes/Fares/On-Demand/
+     Publishing/Keyboard Shortcuts); HELP_PAGES is [welcomePage, aboutPage,
+     mapKeyPage]
    - welcomePage copy rewritten for viz.rt.gtfs.zone (live vehicle map, not
      the GTFS editor)
    - ABOUT_APP replaced with test-track's existing AboutApp config, moved
@@ -19,7 +20,7 @@
  * from the code that draws it.
  */
 
-import { eyebrow, lede, glyphList } from './help-modal.js';
+import { eyebrow, lede, glyphList } from './help-modal';
 import {
   renderBlurb,
   renderVersionAndSource,
@@ -27,7 +28,7 @@ import {
   renderResourcesSection,
   renderFeedbackSection,
   type AboutApp,
-} from './about-links.js';
+} from './about-links';
 
 export type HelpGroup = 'Getting Started' | 'Reference';
 
@@ -38,10 +39,10 @@ export interface HelpPage {
   title: string;
   render(): string;
   /**
-   * localStorage key for a "don't show this again" checkbox. Pages without
-   * one are reference-only: always available from the menu, never suppressed.
+   * Marks a page that is auto-shown once at its trigger and afterwards only
+   * reachable from the Guide menu. Pages without it are reference-only.
    */
-  showOnceKey?: string;
+  showOnce?: boolean;
 }
 
 function icon(paths: string): string {
@@ -66,7 +67,7 @@ const welcomePage: HelpPage = {
   label: 'Welcome',
   group: 'Getting Started',
   title: 'Welcome to viz.rt.gtfs.zone',
-  showOnceKey: 'help.welcome.seen',
+  showOnce: true,
   render: () =>
     [
       eyebrow('GTFS.zone'),

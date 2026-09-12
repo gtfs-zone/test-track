@@ -60,7 +60,7 @@ function aggregationNote(count: number): string {
 
 function renderRoutes(ctx: RenderContext, serviceIds: string[], isStation: boolean): string {
   const feed = ctx.session.scheduledFeed!;
-  // route_id → the platforms that serve it
+  // route_id to the platforms that serve it
   const routePlatforms = new Map<string, Set<string>>();
   for (const id of serviceIds) {
     for (const routeId of feed.routesByStop.get(id) ?? []) {

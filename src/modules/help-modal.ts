@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/help-modal.ts
-   @sha 2302e2e
+   @sha dca23b3
    @status verbatim */
 /**
  * The help viewer: a sidebar of `HELP_PAGES` grouped by `HelpGroup`, and one
@@ -7,9 +7,9 @@
  * adding a page is an entry in `help-pages.ts`, not a new renderer.
  */
 
-import { showModal } from './modal-utils.js';
-import { escapeHtml } from '../utils/escape-html.js';
-import { HELP_PAGES, getHelpPage, type HelpGroup } from './help-pages.js';
+import { showSidebarModal } from './sidebar-modal';
+import { escapeHtml } from '../utils/escape-html';
+import { HELP_PAGES, getHelpPage, type HelpGroup } from './help-pages';
 
 const GROUP_ORDER: HelpGroup[] = ['Getting Started', 'Reference'];
 
@@ -18,27 +18,19 @@ function shownKey(id: string): string {
 }
 
 /**
- * Whether a help page should be shown. A page with no `showOnceKey` is always
- * shown. `localStorage` failing (private browsing, quota) must never block
- * boot, so any error here also means "show it".
+ * Whether an auto-shown help page has already been shown. `localStorage`
+ * failing (private browsing, quota) must never block boot, so any error here
+ * also means "show it".
  */
-export function shouldShowHelpPage(id: string): boolean {
-  const page = getHelpPage(id);
-  if (!page?.showOnceKey) {
-    return true;
-  }
+function alreadySeen(id: string): boolean {
   try {
-    return localStorage.getItem(shownKey(id)) !== '1';
+    return localStorage.getItem(shownKey(id)) === '1';
   } catch {
-    return true;
+    return false;
   }
 }
 
-export function markHelpPageSeen(id: string): void {
-  const page = getHelpPage(id);
-  if (!page?.showOnceKey) {
-    return;
-  }
+function markSeen(id: string): void {
   try {
     localStorage.setItem(shownKey(id), '1');
   } catch {
@@ -46,109 +38,85 @@ export function markHelpPageSeen(id: string): void {
   }
 }
 
-function renderSidebar(activeId: string): string {
-  const groups = GROUP_ORDER.map((group) => {
-    const pages = HELP_PAGES.filter((page) => page.group === group);
-    if (pages.length === 0) {
-      return '';
-    }
-    const items = pages
-      .map(
-        (page) => `<li>
-          <button
-            type="button"
-            data-help-entry="${escapeHtml(page.id)}"
-            class="${page.id === activeId ? 'menu-active' : ''}"
-          >${escapeHtml(page.label)}</button>
-        </li>`
-      )
-      .join('');
-    return `<li class="menu-title">${group}</li>${items}`;
-  }).join('');
+// Open state, so F1 (and a second click on Guide) cannot stack a duplicate
+// modal on top of the one already showing.
+let helpModalOpen = false;
 
-  return `<ul class="menu menu-sm bg-base-200 rounded-box w-52 shrink-0">${groups}</ul>`;
+/**
+ * Shown when the guide is opened as a gate before another modal (the shapes
+ * and fares buttons). The action button reads this label instead of "Close"
+ * so it is clear that dismissing the guide continues to the thing that was
+ * gated, rather than merely closing a dialog.
+ */
+export interface HelpModalOptions {
+  continueLabel?: string;
 }
 
-function renderCheckbox(page: { id: string; showOnceKey?: string }): string {
-  if (!page.showOnceKey) {
-    return '';
-  }
-  return `<label class="label cursor-pointer gap-2">
-    <input type="checkbox" class="checkbox checkbox-sm" data-help-dont-show>
-    Don't show this again
-  </label>`;
-}
-
-export async function showHelpModal(pageId?: string): Promise<void> {
-  if (HELP_PAGES.length === 0) {
+export async function showHelpModal(
+  pageId?: string,
+  options?: HelpModalOptions
+): Promise<void> {
+  if (HELP_PAGES.length === 0 || helpModalOpen) {
     return;
   }
-  let activePage = (pageId && getHelpPage(pageId)) || HELP_PAGES[0];
 
-  const render = (): void => {
-    const sidebarEl = document.getElementById('help-sidebar');
-    const paneEl = document.getElementById('help-pane');
-    if (!sidebarEl || !paneEl) {
-      return;
-    }
-    sidebarEl.innerHTML = renderSidebar(activePage.id);
-    paneEl.innerHTML = `<h4 class="font-semibold text-base mb-2">${escapeHtml(activePage.title)}</h4><div class="flex flex-col gap-3">${activePage.render()}</div>`;
-    const actionBar = document.getElementById('help-action-bar');
-    if (actionBar) {
-      actionBar.innerHTML = renderCheckbox(activePage);
-      const checkbox = actionBar.querySelector<HTMLInputElement>(
-        '[data-help-dont-show]'
-      );
-      checkbox?.addEventListener('change', () => {
-        if (checkbox.checked) {
-          markHelpPageSeen(activePage.id);
-        } else if (activePage.showOnceKey) {
-          try {
-            localStorage.removeItem(shownKey(activePage.id));
-          } catch {
-            // Nothing to do.
-          }
-        }
-      });
-    }
-  };
+  helpModalOpen = true;
+  try {
+    await showSidebarModal({
+      title: 'Guide',
+      groupOrder: GROUP_ORDER,
+      initialId: pageId && getHelpPage(pageId) ? pageId : undefined,
+      boxClassName: 'max-w-4xl w-11/12',
+      closeLabel: options?.continueLabel,
+      entries: HELP_PAGES.map((page) => ({
+        id: page.id,
+        label: page.label,
+        group: page.group,
+        paneTitle: page.title,
+        renderPane: () =>
+          Promise.resolve(
+            `<div class="flex flex-col gap-3">${page.render()}</div>`
+          ),
+      })),
+    });
+  } finally {
+    helpModalOpen = false;
+  }
+}
 
-  const body = `
-    <div class="flex gap-4 items-start">
-      <div id="help-sidebar" class="shrink-0"></div>
-      <div id="help-pane" class="flex-1 min-w-0"></div>
-    </div>
-  `;
-
-  await showModal({
-    title: 'Help',
-    body,
-    actions: [{ label: 'Close', onClick: () => {} }],
-    actionBarContent: '<div id="help-action-bar"></div>',
-    escapeAction: 0,
-    boxClassName: 'max-w-4xl w-11/12',
-    onMount: () => {
-      render();
-
-      document
-        .getElementById('help-sidebar')
-        ?.addEventListener('click', (e) => {
-          const btn = (e.target as HTMLElement).closest<HTMLButtonElement>(
-            '[data-help-entry]'
-          );
-          const id = btn?.dataset.helpEntry;
-          if (!id || id === activePage.id) {
-            return;
-          }
-          const page = getHelpPage(id);
-          if (!page) {
-            return;
-          }
-          activePage = page;
-          render();
-        });
-    },
+/**
+ * Wire every `[data-open-guide]` button inside `container` to open the help
+ * page its attribute names (empty attribute: the first page).
+ *
+ * One implementation of the convention, called by the sidebar-modal scaffold
+ * after each pane render and by page renderers after they build their markup.
+ */
+export function installGuideButtons(container: HTMLElement): void {
+  container.querySelectorAll('[data-open-guide]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const pageId = btn.getAttribute('data-open-guide') || undefined;
+      void showHelpModal(pageId);
+    });
   });
+}
+
+/**
+ * Show a page the first time its trigger fires, then never again. Returns
+ * whether it was shown, so a caller gating another modal knows if it awaited.
+ *
+ * The page is marked seen before it opens, so a reload mid-modal still counts.
+ */
+export async function showHelpPageOnce(
+  pageId: string,
+  options?: HelpModalOptions
+): Promise<boolean> {
+  const page = getHelpPage(pageId);
+  if (!page?.showOnce || alreadySeen(pageId)) {
+    return false;
+  }
+  markSeen(pageId);
+  await showHelpModal(pageId, options);
+  return true;
 }
 
 // ─── Shared render helpers for page content ────────────────────────────────
@@ -175,19 +143,28 @@ export interface GlyphListItem {
   icon: string;
   term: string;
   description: string;
+  /** Raw HTML used instead of the escaped `term`, for inline links. */
+  termHtml?: string;
+  /** Raw HTML used instead of the escaped `description`, for inline links. */
+  descriptionHtml?: string;
 }
 
 export function glyphList(items: GlyphListItem[]): string {
   const rows = items
-    .map(
-      (item) => `<div class="flex gap-3 items-start">
+    .map((item) => {
+      const term = item.termHtml ?? escapeHtml(item.term);
+      const description = item.descriptionHtml ?? escapeHtml(item.description);
+      const hasDescription = item.descriptionHtml
+        ? true
+        : Boolean(item.description);
+      return `<div class="flex gap-3 items-start">
         <div class="shrink-0 w-6 h-6 text-primary">${item.icon}</div>
         <div>
-          <dt class="font-semibold">${escapeHtml(item.term)}</dt>
-          ${item.description ? `<dd class="text-sm text-base-content/60">${escapeHtml(item.description)}</dd>` : ''}
+          <dt class="font-semibold">${term}</dt>
+          ${hasDescription ? `<dd class="text-sm text-base-content/60">${description}</dd>` : ''}
         </div>
-      </div>`
-    )
+      </div>`;
+    })
     .join('');
   return `<dl class="flex flex-col gap-3">${rows}</dl>`;
 }

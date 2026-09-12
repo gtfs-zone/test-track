@@ -188,7 +188,7 @@ export class GTFSScheduled {
   /** Trip stop_times, sorted by `stop_sequence`. Drives the route strip. */
   stopTimesByTrip = new Map<string, StopTime[]>();
   tripsByRoute = new Map<string, Trip[]>();
-  /** Derived from stop_times → trips: which routes serve a stop. */
+  /** Derived from stop_times to trips: which routes serve a stop. */
   routesByStop = new Map<string, Set<string>>();
   /** Trip ids serving a stop, in first-seen order. */
   stopTrips = new Map<string, string[]>();

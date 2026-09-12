@@ -3,7 +3,7 @@ import { MapController } from './map-controller';
 import type { VehiclePosition } from './map-controller';
 import type { GTFSScheduled } from './gtfs-scheduled';
 import type { AlertRecord } from './gtfs-rt';
-import { showHelpModal, shouldShowHelpPage } from './modules/help-modal';
+import { showHelpModal, showHelpPageOnce } from './modules/help-modal';
 import { setHelpRuntimeData } from './modules/help-pages';
 import { showLoadModal } from './modules/load-modal';
 import { notify } from './modules/notification-system';
@@ -11,6 +11,12 @@ import { LoadCancelledError } from './modules/feed-download';
 import { PanelResizer, restorePanelWidth } from './modules/panel-resizer';
 import { BottomSheetController } from './modules/bottom-sheet';
 import { ThemeController } from './modules/theme-controller';
+import {
+  renderMoonIcon,
+  renderNavIcon,
+  renderSunIcon,
+  type NavIconName,
+} from './modules/nav-icons';
 import type { FeedSelection } from './modules/feed-selection';
 import { describeSelection } from './modules/feed-selection';
 import { FeedSession } from './modules/feed-session';
@@ -26,6 +32,30 @@ import { ALERT_LEVEL_LABELS, alertLevel, isActiveNow, preferredText } from './mo
 import type { PageState } from './types/page-state';
 
 // ─── Shell ────────────────────────────────────────────────────────────────────
+
+/**
+ * Fill every `[data-nav-icon]` slot from the shared icon map, so the navbar and
+ * the dock never draw two different glyphs for the same action.
+ */
+function renderNavIconSlots(): void {
+  document.querySelectorAll<HTMLElement>('[data-nav-icon]').forEach((el) => {
+    const name = el.dataset.navIcon as NavIconName;
+    const sizeClass = el.dataset.navIconSize;
+    el.insertAdjacentHTML(
+      'afterbegin',
+      renderNavIcon(name, sizeClass ? { sizeClass } : undefined)
+    );
+  });
+  document
+    .querySelector<HTMLElement>('[data-theme-swap]')
+    ?.insertAdjacentHTML(
+      'beforeend',
+      renderSunIcon('swap-on h-6 w-6') + renderMoonIcon('swap-off h-6 w-6')
+    );
+}
+
+renderNavIconSlots();
+
 const appContainer = document.querySelector<HTMLElement>('.app-container')!;
 restorePanelWidth(appContainer);
 
@@ -224,9 +254,7 @@ async function boot(): Promise<void> {
 }
 
 async function start(): Promise<void> {
-  if (shouldShowHelpPage('welcome')) {
-    await showHelpModal('welcome');
-  }
+  await showHelpPageOnce('welcome');
   await boot();
 }
 void start();
