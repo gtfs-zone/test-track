@@ -78,9 +78,9 @@ export const CONFIG = {
   // point at the stable public editor. It loads a scheduled GTFS via `#load=<url>`.
   EDITOR_BASE: 'https://edit.gtfs.zone',
 
-  // Where the feed catalog and any path-only realtime URL resolve to. Dev is
-  // the music-student stack's cafe-car (`docker-compose.yml`, service `api`);
-  // prod is the deployed feed server. Fetching it directly rather than through
+  // Where a path-only realtime URL resolves to. Dev is the music-student
+  // stack's cafe-car (`docker-compose.yml`, service `api`); prod is the
+  // deployed feed server. Fetching it directly rather than through
   // a vite proxy means cafe-car's `CORS_ALLOWED_ORIGINS` has to name the dev
   // server's origin — it allows localhost:8080-8089, which covers vite's whole
   // drift range. cors.kcfam.us is a separate whitelist with its own list

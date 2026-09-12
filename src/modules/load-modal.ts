@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/load-modal.ts
-   @sha 6a20621
+   @sha 2ba42e2
    @status verbatim */
 /**
  * The one way into a feed.
@@ -29,30 +29,21 @@
 
 import UFuzzy from '@leeoniya/ufuzzy';
 import { EXAMPLES } from './examples';
-import type { CatalogFeed } from './feed-catalog';
-import { describeLiveness, loadCatalog, realtimePaths } from './feed-catalog';
 import type { FeedSelection } from './feed-selection';
 import { describeMissing, isComplete } from './feed-selection';
-import {
-  isLocalUrl,
-  normalizeFeedUrl,
-  RT_BASE,
-  validateFeedUrl,
-} from './feed-url-resolve';
+import { normalizeFeedUrl, validateFeedUrl } from './feed-url-resolve';
 import type { ModalAction } from './modal-utils';
 import { renderUploadIcon, showModal } from './modal-utils';
 
 /**
- * Where a row came from, in the order the groups are shown. Feeds this stack
- * serves are first because they are the ones we can vouch for; the atlas is
- * last because it is thousands of rows of unverified metadata.
+ * Where a row came from, in the order the groups are shown. The atlas is last
+ * because it is thousands of rows of unverified metadata.
  */
-type Group = 'verified' | 'example' | 'atlas';
+type Group = 'example' | 'atlas';
 
-const GROUP_ORDER: readonly Group[] = ['verified', 'example', 'atlas'];
+const GROUP_ORDER: readonly Group[] = ['example', 'atlas'];
 
 const GROUP_LABELS: Record<Group, string> = {
-  verified: 'Feeds on rt.gtfs.zone',
   example: 'Examples',
   atlas: 'TransitLand Atlas',
 };
@@ -128,12 +119,19 @@ const DISPLAY_CAP = 200;
 let cachedAtlas: Promise<AtlasRow[]> | null = null;
 
 function loadAtlasRows(): Promise<AtlasRow[]> {
-  cachedAtlas ??= fetch('/atlas-feeds.json').then((res) => {
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status} ${res.statusText}`.trim());
-    }
-    return res.json() as Promise<AtlasRow[]>;
-  });
+  cachedAtlas ??= fetch('/atlas-feeds.json')
+    .then((res) => {
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} ${res.statusText}`.trim());
+      }
+      return res.json() as Promise<AtlasRow[]>;
+    })
+    .catch((err) => {
+      // Not cached on failure, so reopening the modal retries rather than
+      // reporting the atlas as unavailable for the rest of the session.
+      cachedAtlas = null;
+      throw err;
+    });
   return cachedAtlas;
 }
 
@@ -150,31 +148,6 @@ function reason(err: unknown): string {
 }
 
 // ─── Sources ──────────────────────────────────────────────────────────────────
-
-function catalogRow(feed: CatalogFeed, realtime: boolean): FeedRow {
-  const live = realtime ? describeLiveness(feed) : '';
-  return {
-    rowId: `verified:${feed.feed_name}`,
-    group: 'verified',
-    provides: realtime ? 'pair' : 'scheduled',
-    name: feed.feed_name,
-    subtitle: realtime
-      ? live
-        ? `serving ${live}`
-        : 'no live data right now'
-      : '',
-    // `static_url` is cafe-car's field name and stays that way on the wire;
-    // it is the scheduled feed from here inward.
-    scheduledUrl: feed.static_url || undefined,
-    ...(realtime ? realtimePaths(feed) : {}),
-    // The scheduled half is somebody else's CDN, so it needs the proxy. The
-    // realtime half does not: this list only exists because rt.gtfs.zone
-    // answered a cross-origin request from here, which is the same permission
-    // the .pb endpoints need. Skipping the proxy hop is free accuracy.
-    scheduledCors: true,
-    rtCors: false,
-  };
-}
 
 function exampleRows(realtime: boolean): FeedRow[] {
   return EXAMPLES.map((ex, i) => {
@@ -219,66 +192,31 @@ function atlasRow(row: AtlasRow): FeedRow {
   };
 }
 
-/**
- * Every row, plus a note for each source that could not be reached.
- *
- * Neither remote source is allowed to keep the modal shut: the examples are
- * compiled in, so there is always something to load even with no network.
- */
-async function loadRows(
-  realtime: boolean
-): Promise<{ rows: FeedRow[]; notes: string[] }> {
-  const [catalog, atlas] = await Promise.allSettled([
-    loadCatalog(),
-    loadAtlasRows(),
-  ]);
-
-  const notes: string[] = [];
-  const rows: FeedRow[] = [];
-
-  if (catalog.status === 'fulfilled') {
-    rows.push(
-      ...catalog.value
-        .filter((f) => hasUsableData(f, realtime))
-        .map((f) => catalogRow(f, realtime))
-    );
-  } else if (isLocalUrl(RT_BASE)) {
-    // A dev machine with no feed server running is the overwhelmingly common
-    // reason this fails locally, and it is not something the user can act on.
-    // It is not an outage, so it does not get an outage banner.
-    console.warn(
-      '[LoadModal] feed catalog unreachable at',
-      RT_BASE,
-      catalog.reason
-    );
-  } else {
-    notes.push(`Feed catalog unavailable — ${reason(catalog.reason)}`);
-  }
-
-  rows.push(...exampleRows(realtime));
-
-  if (atlas.status === 'fulfilled') {
-    const usable = realtime
-      ? atlas.value
-      : atlas.value.filter((r) => r.kind === 'static');
-    rows.push(...usable.map(atlasRow));
-  } else {
-    notes.push(`TransitLand atlas unavailable — ${reason(atlas.reason)}`);
-  }
-
-  return { rows, notes };
+/** The TransitLand corpus. Rejects when the file cannot be fetched. */
+async function atlasFeedRows(realtime: boolean): Promise<FeedRow[]> {
+  const atlas = await loadAtlasRows();
+  const usable = realtime ? atlas : atlas.filter((r) => r.kind === 'static');
+  return usable.map(atlasRow);
 }
 
-/**
- * A feed with nothing in any endpoint is a feed with nothing to show — but only
- * when realtime is what you came for. Without it, a scheduled URL is the whole
- * point and the liveness flags are irrelevant.
- */
-function hasUsableData(feed: CatalogFeed, realtime: boolean): boolean {
-  if (!realtime) {
-    return Boolean(feed.static_url);
-  }
-  return feed.has_vehicles || feed.has_trip_updates || feed.has_alerts;
+function atlasNote(err: unknown): string | null {
+  return `TransitLand atlas unavailable — ${reason(err)}`;
+}
+
+/** What each row is matched against when the search box has a query. */
+function buildHaystack(rows: FeedRow[]): string[] {
+  return rows.map((r) =>
+    [
+      r.name,
+      r.subtitle,
+      r.scheduledUrl,
+      r.vehiclesUrl,
+      r.tripUpdatesUrl,
+      r.alertsUrl,
+    ]
+      .filter(Boolean)
+      .join(' ')
+  );
 }
 
 // ─── Rendering ────────────────────────────────────────────────────────────────
@@ -333,10 +271,11 @@ function renderRow(row: FeedRow, inUse: boolean, realtime: boolean): string {
 function renderRows(
   rows: FeedRow[],
   inUse: Set<string>,
-  realtime: boolean
+  realtime: boolean,
+  emptyText: string
 ): string {
   if (rows.length === 0) {
-    return '<p class="text-sm opacity-40 text-center py-8">No results.</p>';
+    return `<p class="text-sm opacity-40 text-center py-8">${emptyText}</p>`;
   }
   let group: Group | null = null;
   const out: string[] = [];
@@ -447,23 +386,21 @@ export async function showLoadModal(
     return '';
   };
 
-  const { rows, notes } = await loadRows(realtime);
+  // The atlas fetch is already in flight while the modal paints, and is not
+  // allowed to keep it shut: the examples are compiled in, so there is always
+  // something to load, and the URL fields and upload need no list at all. Its
+  // rows fold in as they land.
+  const sources: Array<{
+    load: Promise<FeedRow[]>;
+    note: (err: unknown) => string | null;
+  }> = [{ load: atlasFeedRows(realtime), note: atlasNote }];
+  let pending = sources.length;
 
   const uf = new UFuzzy();
-  // Rows are already in group order, so a filtered view only has to keep that
+  // Rows are kept in group order, so a filtered view only has to keep that
   // order stable rather than re-derive it.
-  const haystack = rows.map((r) =>
-    [
-      r.name,
-      r.subtitle,
-      r.scheduledUrl,
-      r.vehiclesUrl,
-      r.tripUpdatesUrl,
-      r.alertsUrl,
-    ]
-      .filter(Boolean)
-      .join(' ')
-  );
+  let rows = exampleRows(realtime);
+  let haystack = buildHaystack(rows);
   const groupRank = new Map(GROUP_ORDER.map((g, i) => [g, i]));
 
   let visible = rows.slice(0, DISPLAY_CAP);
@@ -521,8 +458,8 @@ export async function showLoadModal(
   // the results absorb the slack means there is exactly one scrollbar on the
   // screen, always the same one, in both apps.
   //
-  // Search first: the catalog is how most feeds are loaded, so it and its
-  // results lead, and the URL/upload block sits below as the escape hatch.
+  // Search first: results lead, and the URL/upload block sits below as the
+  // escape hatch.
   const body = `
     <div class="flex h-full min-h-0 min-w-0 flex-col gap-3">
       ${options.continueWith ? continueCard(options.continueWith) : ''}
@@ -530,7 +467,10 @@ export async function showLoadModal(
       <input type="text" id="load-search" class="input input-bordered input-sm w-full shrink-0" placeholder="Search by agency, operator, source, or URL…" autofocus />
       <div id="load-results" class="min-h-0 flex-1 space-y-0.5 overflow-y-auto overflow-x-hidden"></div>
 
-      ${notes.map((n) => `<p class="shrink-0 text-xs text-warning">${escHtml(n)}</p>`).join('')}
+      <p id="load-status" class="shrink-0 text-xs opacity-60 flex items-center gap-2">
+        <span class="loading loading-spinner loading-xs"></span> Loading more feeds…
+      </p>
+      <div id="load-notes" class="shrink-0 space-y-1"></div>
 
       ${scheduledSection}
 
@@ -632,6 +572,8 @@ export async function showLoadModal(
       const fileRow = document.getElementById('load-file-row')!;
       const fileNameEl = document.getElementById('load-file-name')!;
       const hintEl = document.getElementById('load-hint')!;
+      const statusEl = document.getElementById('load-status')!;
+      const notesEl = document.getElementById('load-notes')!;
       const loadBtn = resultsEl
         .closest('.modal')!
         .querySelector<HTMLButtonElement>('button[data-idx="0"]')!;
@@ -640,7 +582,12 @@ export async function showLoadModal(
         const inUse = new Set(
           [scheduledRowId, rtRowId].filter(Boolean) as string[]
         );
-        resultsEl.innerHTML = renderRows(visible, inUse, realtime);
+        resultsEl.innerHTML = renderRows(
+          visible,
+          inUse,
+          realtime,
+          pending > 0 ? 'Loading…' : 'No results.'
+        );
       };
 
       /**
@@ -753,6 +700,43 @@ export async function showLoadModal(
         }
         renderResults();
       };
+
+      /** Fold a source's rows in, keeping group order and the current query. */
+      const addRows = (incoming: FeedRow[]) => {
+        rows = [...rows, ...incoming].sort(
+          (a, b) => groupRank.get(a.group)! - groupRank.get(b.group)!
+        );
+        haystack = buildHaystack(rows);
+        filterAndRender();
+      };
+
+      for (const source of sources) {
+        void (async () => {
+          let incoming: FeedRow[] = [];
+          let note: string | null = null;
+          try {
+            incoming = await source.load;
+          } catch (err) {
+            note = source.note(err);
+          }
+          pending--;
+          // A slow fetch can land after the modal is gone.
+          if (!resultsEl.isConnected) {
+            return;
+          }
+          if (note) {
+            notesEl.insertAdjacentHTML(
+              'beforeend',
+              `<p class="text-xs text-warning">${escHtml(note)}</p>`
+            );
+          }
+          // Both classes, like the file row: `hidden` and `flex` are the same
+          // specificity, so leaving `flex` on would keep the line visible.
+          statusEl.classList.toggle('hidden', pending === 0);
+          statusEl.classList.toggle('flex', pending > 0);
+          addRows(incoming);
+        })();
+      }
 
       // Delegated, so re-rendering the list never re-wires handlers.
       resultsEl.addEventListener('click', (e) => {

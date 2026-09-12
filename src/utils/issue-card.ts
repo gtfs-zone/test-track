@@ -1,10 +1,6 @@
 /* @vendored-from coloring-book:src/utils/issue-card.ts
-   @sha a515310
-   @status modified
-   @changes
-   - Escapes with `escHtml` from `../modules/render-utils` instead of importing
-     coloring-book's `utils/escape-html` (test-track already has one escaper).
-   - Import is extensionless, matching the rest of test-track. */
+   @sha 1c16f14
+   @status verbatim */
 /**
  * Feed issue card.
  *
@@ -23,7 +19,7 @@
  * here means re-vendoring there.
  */
 
-import { escHtml } from '../modules/render-utils';
+import { escapeHtml } from './escape-html.js';
 
 export interface IssueItem {
   /** Plain text shown for this item. Escaped here, so pass raw text. */
@@ -34,6 +30,17 @@ export interface IssueItem {
   data?: Record<string, string>;
 }
 
+/**
+ * A button in the row header, for a fix that applies to the whole row rather
+ * than to one item. The card only renders it and stamps the data attribute; the
+ * host app attaches its own delegated click handler, as it does for items.
+ */
+export interface IssueAction {
+  label: string;
+  /** Value of the `data-issue-action` attribute the host delegates on. */
+  dataAction: string;
+}
+
 export interface IssueRow {
   label: string;
   count: number;
@@ -41,32 +48,43 @@ export interface IssueRow {
   items?: IssueItem[];
   /** Items omitted from `items` because of the display cap. */
   moreCount?: number;
+  action?: IssueAction;
 }
 
 function renderItem(item: IssueItem): string {
   const attrs = Object.entries(item.data ?? {})
-    .map(([name, value]) => ` data-${name}="${escHtml(value)}"`)
+    .map(([name, value]) => ` data-${name}="${escapeHtml(value)}"`)
     .join('');
   const clickable = item.data && Object.keys(item.data).length > 0;
   const classes = clickable
     ? 'link link-hover cursor-pointer'
     : 'opacity-70 cursor-default';
   const detail = item.detail
-    ? ` <span class="opacity-50">${escHtml(item.detail)}</span>`
+    ? ` <span class="opacity-50">${escapeHtml(item.detail)}</span>`
     : '';
-  return `<li><span class="${classes}"${attrs}>${escHtml(item.label)}</span>${detail}</li>`;
+  return `<li><span class="${classes}"${attrs}>${escapeHtml(item.label)}</span>${detail}</li>`;
+}
+
+function renderAction(row: IssueRow): string {
+  if (!row.action) {
+    return '';
+  }
+  return `<button type="button" class="btn btn-xs btn-warning btn-outline" data-issue-action="${escapeHtml(row.action.dataAction)}">${escapeHtml(row.action.label)}</button>`;
 }
 
 function renderHeader(row: IssueRow): string {
   return `
-    <span>${escHtml(row.label)}</span>
-    <span class="tabular-nums font-semibold">${row.count}</span>
+    <span>${escapeHtml(row.label)}</span>
+    <span class="flex items-center gap-2 shrink-0">
+      ${renderAction(row)}
+      <span class="tabular-nums font-semibold">${row.count}</span>
+    </span>
   `;
 }
 
 function renderNote(row: IssueRow): string {
   return row.note
-    ? `<p class="text-xs opacity-50">${escHtml(row.note)}</p>`
+    ? `<p class="text-xs opacity-50">${escapeHtml(row.note)}</p>`
     : '';
 }
 
@@ -106,7 +124,7 @@ export function renderIssueCard(title: string, rows: IssueRow[]): string {
 
   return `
     <section class="space-y-2">
-      <h3 class="font-semibold text-sm">${escHtml(title)}</h3>
+      <h3 class="font-semibold text-sm">${escapeHtml(title)}</h3>
       <div class="rounded-lg border border-warning/40 bg-warning/10 p-3 space-y-2">
         ${body}
       </div>
