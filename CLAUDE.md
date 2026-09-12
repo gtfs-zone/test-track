@@ -4,6 +4,17 @@
 
 A static frontend for visualizing GTFS realtime feeds
 
+## Commands
+
+```bash
+pnpm dev
+pnpm typecheck    # the gate before any commit
+pnpm build
+pnpm vendor:check # diff vendored files against their source repo, per VENDORED.md
+
+git config core.hooksPath .githooks   # once per clone; runs vendor:check pre-commit
+```
+
 ## Rules
 
 - Do NOT use Playwright (or any browser automation) to verify changes. The user does

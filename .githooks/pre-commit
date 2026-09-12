@@ -1,0 +1,8 @@
+#!/bin/sh
+# vendor:check blocks on drift in a vendored file and warns when one is behind
+# its upstream. Not --strict: a sibling committing upstream should not break a
+# commit here, and the run exits 0 when no sibling is checked out.
+#
+# Enable with: git config core.hooksPath .githooks
+set -e
+pnpm run vendor:check
