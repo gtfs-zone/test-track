@@ -1,7 +1,15 @@
+/* @vendored-from yard-master:scripts/vendor-check.ts
+   @sha 5dc61ef
+   @status modified
+   @changes
+   - The doc comment names this repo and its source repos.
+   Tooling, not app code: the one place the coloring-book -> test-track ->
+   yard-master flow runs backwards, because yard-master wrote the five-column
+   checker first. */
 /**
  * Two passes over VENDORED.md. Every row names its own `Source repo` and is
- * resolved against that sibling checkout, which is every vendored row
- * coloring-book today:
+ * resolved against that sibling checkout, which is coloring-book for every
+ * row but this checker, vendored from yard-master:
  *
  * - drift: every `verbatim` entry must still match its source at the *recorded*
  *   SHA. A mismatch means someone edited the local copy.

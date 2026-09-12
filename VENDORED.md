@@ -10,7 +10,8 @@ of the file:
 ```
 
 Every row names its own `Source repo` and resolves against that sibling checkout
-next to this one. Today that is `coloring-book` for every vendored row.
+next to this one. That is `coloring-book` for every vendored row but
+`scripts/vendor-check.ts`, which came from `yard-master`.
 
 `@status` is one of:
 - `verbatim`: byte-identical apart from the banner. Re-sync = overwrite + re-add
@@ -34,6 +35,34 @@ that this repo wrote goes upstream first and is vendored back down
 is `origin`, which is a file yard-master vendors straight from here because
 coloring-book has no counterpart to put it in.
 
+**Why the realtime half is `origin` rather than vendored.** coloring-book is an
+editor: it reads no `.pb`, has no poller, and owns no vehicle, trip update or
+service alert. A realtime module hosted there would have no caller, and its
+`knip` gate would delete it on the next cleanup. yard-master *does* render
+alerts and trackers, so it vendors those modules from here directly, and that is
+what its `Source repo` column is for. The one-way rule is about where a file is
+edited, not an obligation on one repo to host every shared file, so the realtime
+set stays canonical here. The same holds for the four page renderers and the
+panel dispatcher: they render GTFS-RT beside the schedule, which is a screen
+coloring-book does not have.
+
+Two `origin` rows are read at a path this repo no longer uses. `f54ae79`
+(`refactor(vocab): call a static feed a scheduled feed`) renamed
+`gtfs-static.ts` to `gtfs-scheduled.ts` and `gtfs-static-route-source.ts` to
+`gtfs-scheduled-route-source.ts`, and `feed-session.ts` moved from `src/` to
+`src/modules/`. yard-master's rows still name the old paths. They resolve today
+because each is pinned to a SHA where the old path existed; they break the
+moment those rows are re-vendored, and fixing them is yard-master's to do.
+
+**What is deliberately absent.** `src/index.ts` (this app's boot order),
+`src/config.ts` and `src/env.d.ts` (build and deployment constants),
+`src/modules/feed-url.ts` (the `?scheduled=`/`?realtime=` query contract, which
+only this app has), `src/modules/last-feed.ts` (a localStorage note of the last
+feed loaded here) and `src/modules/status-page.ts` (the boot and feed-health
+screen, written against this app's session) are the app itself. No sibling
+vendors them and none should; they are named here so the table is a complete
+map of `src/` rather than only its shared half.
+
 This table is the single place to look when diffing against a newer source repo.
 Run `pnpm vendor:check` to diff every `verbatim` entry below against its recorded
 SHA (rows whose sibling repo isn't checked out are skipped).
@@ -44,13 +73,13 @@ SHA (rows whose sibling repo isn't checked out are skipped).
 | `src/modules/notification-system.ts` | `coloring-book` | `src/modules/notification-system.ts` | 51e8536 | verbatim | Toast system; `notify` singleton needs `.initialize()`. Imports `renderCloseIcon` from the local `modal-utils.ts` |
 | `src/modules/feed-progress-indicator.ts` | `coloring-book` | `src/modules/feed-progress-indicator.ts` | c6199c5 | verbatim | Top loading bar; singleton touches `document.body` at import time |
 | `src/modules/theme-controller.ts` | `coloring-book` | `src/modules/theme-controller.ts` | a4b5ee1 | verbatim | Replaces the inline theme toggle that never applied `data-theme` |
-| `src/modules/panel-resizer.ts` | `coloring-book` | `src/modules/panel-resizer.ts` | f9c718c | modified | Persists `--panel-width` to localStorage; adds `restorePanelWidth()` |
+| `src/modules/panel-resizer.ts` | `coloring-book` | `src/modules/panel-resizer.ts` | f9c718c | modified | Persists `--panel-width` to localStorage; adds `restorePanelWidth()`. Both went upstream in `146c371`, which also retyped the constructor's second argument as a structural `PanelResizeTarget` (`resizeNow`/`forceMapResize`) instead of importing `MapController`. That import was the last thing keeping this row `modified`, since the two repos keep that class at different paths. The Phase 5 re-vendor makes it `verbatim` |
 | `src/modules/bottom-sheet.ts` | `coloring-book` | `src/modules/bottom-sheet.ts` | a4b5ee1 | modified | Dock and TabManager stripped; re-activates across the 768px breakpoint; `coveredHeight()`/`onSnapChange()` added for map padding |
 | `src/modules/basemap-styles.ts` | `coloring-book` | `src/modules/basemap-styles.ts` | f9c718c | verbatim | Six raster basemaps; all glyph-less, so no `symbol` text layer can render over them |
 | `src/modules/basemap-control.ts` | `coloring-book` | `src/modules/basemap-control.ts` | c15807b | modified | Appearance is injected and persisted; projection/sky block deduped; one-shot stylesheet; the route-geometry shape toggle was dropped with upstream's `f9c1f5b` |
 | `src/modules/layer-manager.ts` | `coloring-book` | `src/modules/layer-manager.ts` | c15807b | modified | Fed from `GTFSScheduled`; pathways/levels/editing dropped; route layers absorbed from `route-renderer.ts`; realtime vehicles added; route layers sorted by `sortKey` with a focus lift in `applySpotlight`; `casingColor` moved out to `utils/route-colors.ts`; stop paint delegated to the vendored `stop-layer-style.ts`; the accent resolves from the DaisyUI theme through `utils/theme-color.ts` and repaints on `refreshAccentColor()`; small-feed stop-fade exemption from `424cbdf` wired into `setScheduledFeed` |
 | `src/modules/route-sort.ts` | `coloring-book` | `src/modules/route-sort.ts` | a4b5ee1 | verbatim | Paint order for route lines. `routeTypeRank` maps a GTFS `route_type` (base or extended) to a rank — subway on top, bus at the bottom — and `routeSortKey` blends in a log-scaled trip count as the within-mode tiebreaker. Feeds `line-sort-key` on the three route layers |
-| `src/utils/route-colors.ts` | `coloring-book` | `src/utils/route-colors.ts` | a4b5ee1 | modified | Route fill, line casing, and badge text color. A feed that omits `route_color` gets a hue hashed from `route_id`, rendered through OKLCH at fixed lightness/chroma so hashed routes read at one visual weight rather than HSL's wildly uneven ramp. `HASH_LIGHTNESS`/`HASH_CHROMA`/`HUE_STEP`/`CASING_FACTOR` are the tuning dials. Consumed by `GTFSScheduled.ingestRoutes` and `layer-manager.ts`. Kept `routeTextColor` (and its `luminance` helper), which knip removed upstream but `gtfs-scheduled.ts` still uses |
+| `src/utils/route-colors.ts` | `coloring-book` | `src/utils/route-colors.ts` | a4b5ee1 | modified | Route fill, line casing, and badge text color. A feed that omits `route_color` gets a hue hashed from `route_id`, rendered through OKLCH at fixed lightness/chroma so hashed routes read at one visual weight rather than HSL's wildly uneven ramp. `HASH_LIGHTNESS`/`HASH_CHROMA`/`HUE_STEP`/`CASING_FACTOR` are the tuning dials. Consumed by `GTFSScheduled.ingestRoutes` and `layer-manager.ts`. Kept `routeTextColor` (and its `luminance` helper), which knip removed upstream but `gtfs-scheduled.ts` still uses. Restored upstream in `3bb4772`, tagged `@lintignore` so knip leaves it alone, so the re-vendor that reaches this row makes it `verbatim` |
 | `src/utils/theme-color.ts` | `coloring-book` | `src/utils/theme-color.ts` | a4b5ee1 | verbatim | Resolves a DaisyUI theme token to an sRGB hex MapLibre can parse, by painting the computed color into a 1x1 canvas. Cached per token, so `clearThemeColorCache()` has to run on every theme change |
 | `src/types/page-state.ts` | `coloring-book` | `src/types/page-state.ts` | fcb17b2 | modified | Five variants only; `vehicle`/`alert` added, `direction_id` on route; sync `StateValidator` |
 | `src/modules/page-state-manager.ts` | `coloring-book` | `src/modules/page-state-manager.ts` | fcb17b2 | modified | Breadcrumbs synchronous and injected; feed URLs merged into the hash; singleton dropped |
@@ -75,3 +104,21 @@ SHA (rows whose sibling repo isn't checked out are skipped).
 | `src/utils/escape-html.ts` | `coloring-book` | `src/utils/escape-html.ts` | a2bf4cf | verbatim | Regex-based HTML escaping for string-building renderers, avoiding a detached-DOM-node allocation per call. Pulled in as a dependency of `help-modal.ts` |
 | `src/modules/help-modal.ts` | `coloring-book` | `src/modules/help-modal.ts` | 2302e2e | verbatim | The sidebar help viewer: renders `HELP_PAGES` grouped by `HelpGroup`, tracks first-run "don't show again" state in localStorage, and exports the shared `eyebrow`/`lede`/`footnote`/`glyphList` render helpers. Fully generic over the page registry, so nothing here differs between apps |
 | `src/modules/help-pages.ts` | `coloring-book` | `src/modules/help-pages.ts` | 2302e2e | modified | Replaces the old standalone `about-modal.ts` as the app's help entry point. Editor-only pages dropped (Getting Started/Shapes/Fares/Map Key/Keyboard Shortcuts); `HELP_PAGES` is just `[welcomePage, aboutPage]`. Welcome copy rewritten for viz.rt.gtfs.zone (live vehicle map, not the GTFS editor). `aboutPage` reuses the `AboutApp` config that used to live in `about-modal.ts`. `setHelpRuntimeData` narrowed to `{ version }` only, since test-track has no keyboard-shortcut registry |
+| `src/modules/modal-utils.ts` | `coloring-book` | `src/modules/modal-utils.ts` | 9fb9de2 | modified | `showModal` and the icon builders. See the banner's `@changes`: three icons added and a wider modal box with a drawn close button. Every one of those is upstream at HEAD now, `renderWarningIcon` last, in `039b6bd`, so Phase 7 fast-forwards this to `verbatim` against a copy that is a strict superset |
+| `scripts/vendor-check.ts` | `yard-master` | `scripts/vendor-check.ts` | 5dc61ef | modified | The two-pass drift and staleness checker behind `pnpm vendor:check`. The one row where the flow runs backwards: yard-master wrote the five-column, `Source repo`-aware form and this repo adopted it in Phase 1. Only the doc comment differs |
+| `src/gtfs-rt.ts` | — | — | — | origin | Not vendored: the GTFS-RT decoder and poller, the `TripUpdate` / `VehiclePosition` / `ServiceAlert` / `AlertRecord` types, and the `present`/`presentNumber` guards every panel module reads a payload field through. yard-master vendors it `modified`, having dropped the decoder and the poller so protobufjs tree-shakes out |
+| `src/modules/rt-index.ts` | — | — | — | origin | Not vendored: indexes the live payloads by trip and stop, including the derived `current_stop_sequence`. yard-master vendors it `verbatim` |
+| `src/modules/alerts.ts` | — | — | — | origin | Not vendored: alert lookups by route, stop and trip over the session's alert map. yard-master vendors it `verbatim` |
+| `src/modules/feed-time.ts` | — | — | — | origin | Not vendored: `adoptFeedTimezone` and the feed-local clock helpers, so every transit time renders against the feed's zone rather than the browser's. yard-master vendors it `verbatim` |
+| `src/modules/render-utils.ts` | — | — | — | origin | Not vendored: the shared page furniture: `escHtml`, `entityLink`, `routeBadge`, the raw-column table, the time and delay formatters, and the `schedule_relationship` vocabulary (`TRIP_SCHEDULE_RELATIONSHIP_LABELS`, `STOP_TIME_SCHEDULE_RELATIONSHIP_LABELS`, `feedMark`, `tripRelationshipMark`, `stopTimeRelationshipMark`). The vocabulary is GTFS-RT's, so it belongs to the same `origin` set as the rest. yard-master vendors it `verbatim` |
+| `src/gtfs-scheduled.ts` | — | — | — | origin | Not vendored: downloads and parses a GTFS zip in the browser, keeping the raw row behind every entity. yard-master vendors it `modified` at the pre-`f54ae79` path `src/gtfs-static.ts` |
+| `src/modules/gtfs-scheduled-route-source.ts` | — | — | — | origin | Not vendored: the `RouteSource` adapter over `GTFSScheduled`, so the vendored route engine runs on this repo's parse. yard-master vendors it `verbatim` at the pre-`f54ae79` path `src/modules/gtfs-static-route-source.ts` |
+| `src/modules/feed-session.ts` | — | — | — | origin | Not vendored: the live session, meaning the scheduled feed, the poller, and the vehicle, alert and trip-update maps. yard-master's copy is `adopted`, written there against the API and the SSE channel but deliberately shaped so the modules that read a `FeedSession` compile unchanged |
+| `src/modules/app-state.ts` | — | — | — | origin | Not vendored: focus changes and feed selection. yard-master vendors it `modified`, since a feed there is an API row rather than a `FeedSelection` of URLs |
+| `src/map-controller.ts` | — | — | — | origin | Not vendored: MapLibre setup, camera moves, focus and vehicle follow. coloring-book has a file of this name but it is the editor's, three times the size and built on a different model, so neither is the other's source. yard-master vendors this one `modified` |
+| `src/modules/panel-renderer.ts` | — | — | — | origin | Not vendored: the panel dispatcher, its scroll and `<details>` restore, and the shared ticker. yard-master vendors it `modified` |
+| `src/modules/search-entries.ts` | — | — | — | origin | Not vendored: builds `SearchController` entries from the session. coloring-book has its own, over the editor's tables; the interface between them is the vendored `search-controller.ts`, not this file. yard-master vendors this one `modified` |
+| `src/modules/pages/route-page.ts` | — | — | — | origin | Not vendored: the route strip page. yard-master vendors it `modified` |
+| `src/modules/pages/stop-page.ts` | — | — | — | origin | Not vendored: the stop and station page, departures included. yard-master vendors it `modified` |
+| `src/modules/pages/alert-page.ts` | — | — | — | origin | Not vendored: `renderAlertList`, embedded by the route, stop and trip pages, plus the alert page itself. yard-master vendors it `modified` |
+| `src/modules/pages/vehicle-page.ts` | — | — | — | origin | Not vendored and not vendored *from*: yard-master's equivalent screen is a tracker page against its own managed objects, not a copy of this one. Listed so the page set is complete |
