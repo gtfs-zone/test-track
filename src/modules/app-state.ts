@@ -9,8 +9,8 @@
  */
 
 import type { FeedSelection } from './feed-selection';
-import type { PageState } from '../types/page-state';
-import { pageStatesEqual } from '../types/page-state';
+import type { ModalState, PageState } from '../types/page-state';
+import { pageStatesEqual, sameLocation } from '../types/page-state';
 import { buildBreadcrumbs, validateState } from './breadcrumbs';
 import type { FeedSession } from './feed-session';
 import { isComplete } from './feed-selection';
@@ -20,8 +20,18 @@ import { notify } from './notification-system';
 import { PageStateManager } from './page-state-manager';
 
 export interface AppStateHooks {
-  /** Called on every focus change, including the boot restore. */
+  /**
+   * Called when the page underneath the modal changes, including the boot
+   * restore. Opening or closing a modal leaves the page alone, so this does
+   * not fire for one.
+   */
   onFocusChange: (state: PageState) => void;
+  /**
+   * Called on every navigation, modal-only ones included. The modal router
+   * reads the whole state from here, which is what keeps the hash and the open
+   * modal reconciled however the modal was closed.
+   */
+  onStateChange: (state: PageState) => void;
 }
 
 export class AppState {
@@ -41,7 +51,7 @@ export class AppState {
 
     this.pages.setBreadcrumbBuilder(state => buildBreadcrumbs(session, state));
     this.pages.setStateValidator(state => validateState(session, state));
-    this.pages.addNavigationHandler(event => this.hooks.onFocusChange(event.to));
+    this.pages.addNavigationHandler(event => this.emit(event.to, event.from));
 
     // The selection is half of the hash, so any change to it — a modal load, an
     // inline URL edit on the status page — has to be reflected there too.
@@ -68,6 +78,22 @@ export class AppState {
     return this.pages.getBreadcrumbs();
   }
 
+  /**
+   * Fan a state out to the hooks. The focus hook is skipped when only the modal
+   * moved, so opening the guide over a stop page does not re-render the panel
+   * or move the camera. `from` is omitted at boot, where there is no previous
+   * state and both hooks have to run.
+   */
+  private emit(to: PageState, from?: PageState): void {
+    if (!from || !sameLocation(from, to)) this.hooks.onFocusChange(to);
+    this.hooks.onStateChange(to);
+  }
+
+  /**
+   * Navigate. The state replaces the current one whole, so a focus change with
+   * no `modal` field closes whatever modal was open — which is what an alert
+   * row inside the alerts modal wants.
+   */
   setFocus(state: PageState): void {
     if (pageStatesEqual(state, this.focus)) return;
     this.pages.setPageState(state);
@@ -75,6 +101,11 @@ export class AppState {
 
   clearFocus(): void {
     this.setFocus({ type: 'home' });
+  }
+
+  /** Open a modal over the current page, leaving that page where it is. */
+  openModal(modal: ModalState): void {
+    this.setFocus({ ...this.focus, modal });
   }
 
   /**
@@ -94,7 +125,7 @@ export class AppState {
         this.bootSeed = selection;
         notify.warning('The link is missing a scheduled or realtime feed — nothing loaded.');
       }
-      this.hooks.onFocusChange(this.focus);
+      this.emit(this.focus);
       return false;
     }
 
@@ -105,13 +136,13 @@ export class AppState {
     } catch (err) {
       if (err instanceof LoadCancelledError) {
         notify.info('Load cancelled');
-        this.hooks.onFocusChange(this.focus);
+        this.emit(this.focus);
         return false;
       }
       notify.error(
         `Failed to load feeds from link: ${err instanceof Error ? err.message : String(err)}`,
       );
-      this.hooks.onFocusChange(this.focus);
+      this.emit(this.focus);
       return false;
     }
 
@@ -127,11 +158,12 @@ export class AppState {
   private applyPendingFocus(pending: PageState): void {
     if (pending.type !== 'home' && !validateState(this.session, pending)) {
       notify.warning(`Nothing in this feed matches the linked ${pending.type}.`);
-      this.pages.adoptState({ type: 'home' });
+      // The modal outlives the page it was linked over: it names no object.
+      this.pages.adoptState({ type: 'home', ...(pending.modal && { modal: pending.modal }) });
     } else {
       this.pages.adoptState(pending);
     }
-    this.hooks.onFocusChange(this.focus);
+    this.emit(this.focus);
   }
 
   /**

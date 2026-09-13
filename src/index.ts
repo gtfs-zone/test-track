@@ -10,6 +10,11 @@ import type { GTFSScheduled } from './gtfs-scheduled';
 import type { AlertRecord } from './gtfs-rt';
 import { showHelpModal, showHelpPageOnce } from './modules/help-modal';
 import { setHelpRuntimeData } from './modules/help-pages';
+import { KeyboardShortcuts, describeShortcuts } from './modules/keyboard-shortcuts';
+import { viewerShortcuts } from './modules/shortcut-list';
+import { createModalRouter } from './modules/modal-router';
+import { AlertsModal } from './modules/alerts-modal';
+import { initFieldTooltipPortal } from './utils/tooltip-position';
 import { showLoadModal } from './modules/load-modal';
 import { notify } from './modules/notification-system';
 import { LoadCancelledError } from './modules/feed-download';
@@ -29,7 +34,6 @@ import { pageTitle } from './modules/breadcrumb-trail';
 import { alertLabel } from './modules/breadcrumbs';
 import { SearchController } from './modules/search-controller';
 import { buildSearchEntries } from './modules/search-entries';
-import { ALERT_LEVEL_LABELS, alertLevel, isActiveNow, preferredText } from './modules/alerts';
 import type { PageState } from './types/page-state';
 
 // ─── Shell ────────────────────────────────────────────────────────────────────
@@ -44,6 +48,9 @@ const appContainer = document.querySelector<HTMLElement>('.app-container')!;
 restorePanelWidth(appContainer);
 
 notify.initialize();
+// Delegated document listeners for `.field-tooltip-trigger`, which the load
+// modal's CORS note is the first thing here to render.
+initFieldTooltipPortal();
 const themeController = new ThemeController();
 themeController.initialize();
 
@@ -66,12 +73,8 @@ const rightPanel = document.getElementById('right-panel')!;
 // Alerts and Help open their own modals and leave the sheet where it is.
 const bottomSheet = new BottomSheetController(rightPanel, [
   { id: 'dock-browse' },
-  {
-    id: 'dock-alerts',
-    snap: null,
-    onSelect: () => (document.getElementById('alerts-modal') as HTMLDialogElement).showModal(),
-  },
-  { id: 'dock-help', snap: null, onSelect: () => void showHelpModal() },
+  { id: 'dock-alerts', snap: null, onSelect: () => appState.openModal({ type: 'alerts' }) },
+  { id: 'dock-help', snap: null, onSelect: () => appState.openModal({ type: 'help' }) },
 ]);
 // On mobile the sheet sits over the map, so the camera has to hold the focused
 // feature above it rather than centring it under the sheet.
@@ -107,7 +110,7 @@ session.addEventListener('vehicles', e => {
 // Trip updates are collected by the state store in a later plan; the panel
 // has no consumer for them yet.
 session.addEventListener('alerts', e => {
-  renderAlertsModal((e as CustomEvent<AlertRecord[]>).detail);
+  alertsModal.setRecords((e as CustomEvent<AlertRecord[]>).detail);
 });
 
 // ─── Focus state ──────────────────────────────────────────────────────────────
@@ -135,6 +138,7 @@ function setDocumentTitle(state: PageState): void {
 }
 
 const appState = new AppState(session, {
+  onStateChange: state => modalRouter.sync(state),
   onFocusChange: state => {
     setDocumentTitle(state);
     const atHome = state.type === 'home';
@@ -154,12 +158,25 @@ const appState = new AppState(session, {
   },
 });
 
+// ─── Modals ───────────────────────────────────────────────────────────────────
+// The two modals worth linking to live in the hash, so the router is what opens
+// and closes them: every other path — a button, the dock, a shortcut, Escape,
+// the back button — goes through a page state rather than calling `showModal`.
+const alertsModal = new AlertsModal({
+  href: state => appState.hrefFor(state),
+  navigate: state => appState.setFocus(state),
+});
+const modalRouter = createModalRouter(appState.pages);
+modalRouter.register('alerts', () => alertsModal.show());
+modalRouter.register('help', modal => showHelpModal(modal.page));
+
 // ─── Map search ───────────────────────────────────────────────────────────────
 // Selecting a result is the same event as clicking the object on the map.
-new SearchController<PageState>({
+const searchController = new SearchController<PageState>({
   getEntries: () => buildSearchEntries(session),
   onSelect: state => appState.setFocus(state),
-}).initialize();
+});
+searchController.initialize();
 
 statusPage.setShareUrlProvider(() => appState.shareableUrl());
 statusPage.setMapIssuesProvider(() => mapCtrl.issues);
@@ -256,15 +273,26 @@ async function start(): Promise<void> {
 void start();
 
 // ─── Alerts button ────────────────────────────────────────────────────────────
-document.getElementById('alerts-btn')!.addEventListener('click', () =>
-  (document.getElementById('alerts-modal') as HTMLDialogElement).showModal(),
-);
+document
+  .getElementById('alerts-btn')!
+  .addEventListener('click', () => appState.openModal({ type: 'alerts' }));
 
 // ─── Help button ──────────────────────────────────────────────────────────────
 document.getElementById('app-version')!.textContent = __APP_VERSION__;
-setHelpRuntimeData({ version: __APP_VERSION__ });
-document.getElementById('help-btn')!
-  .addEventListener('click', () => void showHelpModal());
+document
+  .getElementById('help-btn')!
+  .addEventListener('click', () => appState.openModal({ type: 'help' }));
+
+// ─── Keyboard shortcuts ───────────────────────────────────────────────────────
+// The guide's shortcut table is built from the same list that is bound, so a
+// command cannot be documented without existing.
+const shortcuts = viewerShortcuts({
+  openLoadModal: () => openLoadModal(),
+  openGuide: () => appState.openModal({ type: 'help' }),
+  clearSearch: () => searchController.clearSearch(),
+});
+new KeyboardShortcuts(shortcuts).initialize();
+setHelpRuntimeData({ version: __APP_VERSION__, shortcuts: describeShortcuts(shortcuts) });
 
 
 // ─── Load ─────────────────────────────────────────────────────────────────────
@@ -288,14 +316,21 @@ async function handleLoadResult(selection: FeedSelection | null): Promise<boolea
   }
 }
 
-// Seeded from the current selection, which is what makes reopening the modal
-// the way to edit a loaded feed — the right panel has no editors of its own.
-document.getElementById('load-btn')!.addEventListener('click', async () => {
+/**
+ * Seeded from the current selection, which is what makes reopening the modal
+ * the way to edit a loaded feed — the right panel has no editors of its own.
+ *
+ * Not hash-routed: the modal is a transient editor of the feed selection, and
+ * the selection it produces is already in the hash on its own.
+ */
+async function openLoadModal(): Promise<void> {
   // The modal can also return `{ kind: 'continue' }`, but only when it is given
   // a `continueWith` card, which this call site does not.
   const result = await showLoadModal(session.selection);
   await handleLoadResult(result?.kind === 'selection' ? result.selection : null);
-});
+}
+
+document.getElementById('load-btn')!.addEventListener('click', () => void openLoadModal());
 
 // ─── Reload feed button ───────────────────────────────────────────────────────
 // A full reload — the schedule is re-downloaded and the poller replaced —
@@ -341,84 +376,3 @@ intervalMenu.addEventListener('click', e => {
 });
 
 renderIntervalMenu();
-
-// ─── Alerts modal ─────────────────────────────────────────────────────────────
-const alertsList = document.getElementById('alerts-list')!;
-
-/**
- * The modal is now an index into the alert pages rather than a place where the
- * alert text is finally rendered — a row links to the page that shows every
- * translation, active period, and informed entity.
- *
- * The badges count only alerts that are active *now*. A feed routinely
- * carries alerts for next month's shutdown, and counting them as if they were
- * happening makes the badge useless; the total is stated next to it instead.
- */
-function renderAlertsModal(records: AlertRecord[]): void {
-  // The navbar and the mobile dock each carry one.
-  const badges = [
-    document.getElementById('alerts-badge')!,
-    document.getElementById('dock-alerts-badge')!,
-  ];
-  const active = records.filter(r => isActiveNow(r.alert));
-
-  if (records.length === 0) {
-    alertsList.innerHTML = '<p class="text-sm opacity-40 text-center py-8">No service alerts.</p>';
-    for (const badge of badges) {
-      badge.classList.add('hidden');
-      badge.textContent = '';
-    }
-    return;
-  }
-
-  // Active first — the rest are scheduled or expired and can wait.
-  const ordered = [...active, ...records.filter(r => !isActiveNow(r.alert))];
-  alertsList.innerHTML = `
-    <p class="text-xs opacity-60">${active.length} active of ${records.length} in the feed.</p>
-    ${ordered.map(renderAlertRow).join('')}`;
-
-  for (const badge of badges) {
-    badge.textContent = String(active.length);
-    badge.classList.toggle('hidden', active.length === 0);
-  }
-}
-
-function renderAlertRow(record: AlertRecord): string {
-  const header = preferredText(record.alert.headerText) || `Alert ${record.id}`;
-  const desc = preferredText(record.alert.descriptionText);
-  const state: PageState = { type: 'alert', alert_id: record.id };
-  return `<a
-      href="${escHtml(appState.hrefFor(state))}"
-      data-alert-id="${escHtml(record.id)}"
-      class="block card card-bordered bg-base-200 p-3 space-y-1 hover:bg-base-300"
-    >
-    <div class="flex items-center gap-2">
-      ${
-        isActiveNow(record.alert)
-          ? '<span class="badge badge-warning badge-xs">active</span>'
-          : '<span class="badge badge-ghost badge-xs">not active</span>'
-      }
-      <span class="text-xs opacity-50">${escHtml(ALERT_LEVEL_LABELS[alertLevel(record)])}</span>
-    </div>
-    <p class="font-semibold text-sm">${escHtml(header)}</p>
-    ${desc ? `<p class="text-xs opacity-70 line-clamp-3">${escHtml(desc)}</p>` : ''}
-  </a>`;
-}
-
-alertsList.addEventListener('click', e => {
-  const row = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-alert-id]');
-  if (!row) return;
-  const mouse = e as MouseEvent;
-  if (mouse.metaKey || mouse.ctrlKey || mouse.shiftKey || mouse.button !== 0) return;
-  e.preventDefault();
-  (document.getElementById('alerts-modal') as HTMLDialogElement).close();
-  appState.setFocus({ type: 'alert', alert_id: row.dataset.alertId! });
-});
-
-function escHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
