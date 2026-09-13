@@ -1,4 +1,9 @@
 import { CONFIG } from './config';
+import {
+  renderAutoZoomControl,
+  syncAutoZoomControl,
+  wireAutoZoomControl,
+} from './modules/auto-zoom';
 import { MapController } from './map-controller';
 import type { VehiclePosition } from './map-controller';
 import type { GTFSScheduled } from './gtfs-scheduled';
@@ -70,6 +75,12 @@ mapCtrl.initialize('map');
 themeController.onThemeChange(() => mapCtrl.refreshAccentColor());
 
 new PanelResizer(appContainer, mapCtrl);
+
+// The auto-zoom toggle. Rendered before it is wired, since the render replaces
+// the mount point's contents.
+document.getElementById('auto-zoom-mount')!.innerHTML = renderAutoZoomControl();
+syncAutoZoomControl(mapCtrl.isAutoZoomEnabled());
+wireAutoZoomControl(mapCtrl.getAutoZoom());
 
 const rightPanel = document.getElementById('right-panel')!;
 // The dock is the mobile-only nav. Browse snaps the sheet open over the map;

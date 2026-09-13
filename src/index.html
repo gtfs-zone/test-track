@@ -136,6 +136,11 @@
               class="input input-sm w-full"
             />
           </div>
+
+          <!-- Auto-zoom toggle: filled by renderAutoZoomControl from
+               src/modules/auto-zoom.ts. The wrapper carries pointer-events-auto
+               because #map-controls is pointer-events-none. -->
+          <div id="auto-zoom-mount" class="pointer-events-auto flex-shrink-0"></div>
         </div>
       </div><!-- end map area -->
 
