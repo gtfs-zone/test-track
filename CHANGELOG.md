@@ -1,3 +1,19 @@
+## v0.10.0 (2026-09-14)
+
+### Feat
+
+- **modals**: hash-route the alerts and help modals, and bind keyboard shortcuts
+- **map**: add the auto-zoom-to-selection toggle
+- **help**: re-vendor the modal foundation and the help viewer
+- **shell**: re-vendor the shell and adopt the mobile dock
+
+### Refactor
+
+- **navbar**: render the navbar action row from a descriptor list
+- **map**: re-vendor the basemap control and go globe-only
+- **map**: re-vendor the map layer stack and adopt layer-manager
+- **load**: drop the cafe-car feed catalog from the load modal
+
 ## v0.9.0 (2026-08-28)
 
 ### Feat
