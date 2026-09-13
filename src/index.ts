@@ -16,12 +16,8 @@ import { LoadCancelledError } from './modules/feed-download';
 import { PanelResizer, restorePanelWidth } from './modules/panel-resizer';
 import { BottomSheetController } from './modules/bottom-sheet';
 import { ThemeController } from './modules/theme-controller';
-import {
-  renderMoonIcon,
-  renderNavIcon,
-  renderSunIcon,
-  type NavIconName,
-} from './modules/nav-icons';
+import { DOCK_ICONS, NAVBAR_ACTIONS } from './modules/navbar-action-list';
+import { renderDockIcons, renderNavbarActions } from './modules/navbar-actions';
 import type { FeedSelection } from './modules/feed-selection';
 import { describeSelection } from './modules/feed-selection';
 import { FeedSession } from './modules/feed-session';
@@ -38,28 +34,11 @@ import type { PageState } from './types/page-state';
 
 // ─── Shell ────────────────────────────────────────────────────────────────────
 
-/**
- * Fill every `[data-nav-icon]` slot from the shared icon map, so the navbar and
- * the dock never draw two different glyphs for the same action.
- */
-function renderNavIconSlots(): void {
-  document.querySelectorAll<HTMLElement>('[data-nav-icon]').forEach((el) => {
-    const name = el.dataset.navIcon as NavIconName;
-    const sizeClass = el.dataset.navIconSize;
-    el.insertAdjacentHTML(
-      'afterbegin',
-      renderNavIcon(name, sizeClass ? { sizeClass } : undefined)
-    );
-  });
-  document
-    .querySelector<HTMLElement>('[data-theme-swap]')
-    ?.insertAdjacentHTML(
-      'beforeend',
-      renderSunIcon('swap-on h-6 w-6') + renderMoonIcon('swap-off h-6 w-6')
-    );
-}
-
-renderNavIconSlots();
+// The navbar row and the dock draw from one list, so the same action cannot
+// show two different glyphs. The render replaces the container's contents, so
+// every navbar listener below binds after this call.
+renderNavbarActions(document.getElementById('navbar-actions')!, NAVBAR_ACTIONS);
+renderDockIcons(DOCK_ICONS);
 
 const appContainer = document.querySelector<HTMLElement>('.app-container')!;
 restorePanelWidth(appContainer);
@@ -200,8 +179,14 @@ mapCtrl.onEmptySelect = () => appState.clearFocus();
 const reloadBtn = document.getElementById('reload-feed-btn') as HTMLButtonElement;
 const intervalDropdown = document.getElementById('rt-interval-dropdown')!;
 const editBtn = document.getElementById('edit-feed-btn') as HTMLAnchorElement;
+// Hiding the tooltip wrapper rather than the control keeps an empty tooltip out
+// of the row; the action list itself carries no hidden state.
+const reloadWrap = document.getElementById('reload-feed-tip')!;
+const editWrap = document.getElementById('edit-feed-tip')!;
+reloadWrap.classList.add('hidden');
+editWrap.classList.add('hidden');
 function showFeedControls(): void {
-  reloadBtn.classList.remove('hidden');
+  reloadWrap.classList.remove('hidden');
   intervalDropdown.classList.remove('hidden');
   // The editor link only works from a URL-backed scheduled feed — file uploads
   // have no URL to hand off — so it stays hidden otherwise. A
@@ -212,9 +197,9 @@ function showFeedControls(): void {
   const scheduledSrc = session.selection?.scheduled;
   if (scheduledSrc?.kind === 'url' && scheduledSrc.url) {
     editBtn.href = `${CONFIG.EDITOR_BASE}/#load=${encodeURIComponent(scheduledSrc.url)}`;
-    editBtn.classList.remove('hidden');
+    editWrap.classList.remove('hidden');
   } else {
-    editBtn.classList.add('hidden');
+    editWrap.classList.add('hidden');
   }
 }
 
@@ -269,6 +254,11 @@ async function start(): Promise<void> {
   await boot();
 }
 void start();
+
+// ─── Alerts button ────────────────────────────────────────────────────────────
+document.getElementById('alerts-btn')!.addEventListener('click', () =>
+  (document.getElementById('alerts-modal') as HTMLDialogElement).showModal(),
+);
 
 // ─── Help button ──────────────────────────────────────────────────────────────
 document.getElementById('app-version')!.textContent = __APP_VERSION__;
