@@ -85,27 +85,6 @@ export class FeedSession extends EventTarget {
     this.emitChange();
   }
 
-  /**
-   * Unload everything: stop polling, drop both feeds, forget the selection.
-   *
-   * Deliberately does not dispatch `scheduleloaded` — there is no feed to load,
-   * and the listener that revalidates the focus would run against an empty
-   * session. The caller clears the focus and repaints the map itself.
-   */
-  clear(): void {
-    this.poller?.stop();
-    this.poller = null;
-    this.selection = null;
-    this.scheduledFeed = null;
-    this.scheduleError = null;
-    this.scheduleLoadedAt = null;
-    this.rtCounts = { vehicles: 0, tripUpdates: 0, alerts: 0 };
-    this.vehicles = new Map();
-    this.alerts = new Map();
-    this.tripUpdates = [];
-    this.emitChange();
-  }
-
   /** Re-run the current selection from scratch: schedule download plus a fresh poller. */
   async reload(): Promise<void> {
     if (!this.selection) return;

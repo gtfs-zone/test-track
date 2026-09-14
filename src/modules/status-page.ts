@@ -564,6 +564,7 @@ export class StatusPage {
   }
 
   private shareUrl: (() => string) | null = null;
+  private openLoad: (() => void) | null = null;
   private mapIssues: (() => MapDataIssues) | null = null;
   private feedGaps: (() => FeedGaps) | null = null;
   private scheduleRelationships: (() => ScheduleRelationshipCounts) | null = null;
@@ -571,6 +572,11 @@ export class StatusPage {
   /** Supplied by AppState, which is the only thing that knows the full hash. */
   setShareUrlProvider(fn: () => string): void {
     this.shareUrl = fn;
+  }
+
+  /** Supplied by the host: the empty state's button opens the load modal. */
+  setOpenLoadHandler(fn: () => void): void {
+    this.openLoad = fn;
   }
 
   /** Supplied by MapController — only the layer stack knows what it dropped. */
@@ -634,9 +640,7 @@ export class StatusPage {
       this.host.innerHTML = renderEmpty();
       this.host
         .querySelector<HTMLButtonElement>('#status-empty-load')
-        ?.addEventListener('click', () => {
-          document.getElementById('load-btn')?.click();
-        });
+        ?.addEventListener('click', () => this.openLoad?.());
       return;
     }
 

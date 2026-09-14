@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/load-modal.ts
-   @sha 9673099
+   @sha 619efb5
    @status verbatim */
 /**
  * The one way into a feed.
@@ -19,6 +19,11 @@
  * Rows carry their URLs on the face of them. Two agencies with the same name
  * are otherwise indistinguishable, and it is worth knowing what you are about
  * to fetch before you fetch it.
+ *
+ * `options.notice` and `options.linkedWith` are the failure half of the same
+ * idea: when a link named a feed and it could not be loaded, the modal opens
+ * holding that link's URLs, says why, and offers one click to try again through
+ * the CORS proxy. Nothing about that is app-specific, so it lives here.
  *
  * `options.realtime` is the one axis the two apps sharing this file disagree
  * on. With it off the realtime section, its URL fields, and every realtime-only
@@ -90,6 +95,24 @@ export interface ContinueOffer {
 }
 
 /**
+ * The feed a link named, when it could not simply be loaded.
+ *
+ * The URLs are printed on the card rather than only filled into the fields,
+ * because the point of the card is to say what the link asked for — a link that
+ * failed has already spent the user's trust once, and hiding what it named
+ * below the fold spends it again.
+ */
+export interface LinkedOffer {
+  label: string;
+  scheduledUrl?: string;
+  vehiclesUrl?: string;
+  tripUpdatesUrl?: string;
+  alertsUrl?: string;
+  /** Whether either half had the proxy off, so a retry through it may help. */
+  canRetryWithCors: boolean;
+}
+
+/**
  * What the modal closed with. `continue` means the user picked the continue
  * card, so the caller restores the feed already in IndexedDB rather than
  * loading anything; `selection` carries what the form was filled with. A
@@ -112,6 +135,16 @@ export interface LoadModalOptions {
    * "continue with what is already open" means nothing there.
    */
   continueWith?: ContinueOffer;
+  /**
+   * Why the modal is open, when it is open because something failed. Rendered
+   * above everything else; absent or empty renders nothing.
+   */
+  notice?: string;
+  /**
+   * The feed the current link names, offered as a card. Boot passes this when a
+   * link could not be loaded, so its URLs are visible and one click retries.
+   */
+  linkedWith?: LinkedOffer;
 }
 
 /** The unfiltered list is thousands of rows; cap what is painted. */
@@ -268,6 +301,26 @@ function renderRow(row: FeedRow, inUse: boolean, realtime: boolean): string {
     </button>`;
 }
 
+/**
+ * Always the first row, and never filtered out by the search.
+ *
+ * The URL fields are at the bottom of the modal, where the eye is not, so the
+ * list has to name them: "type my own URL" is a choice of feed source like any
+ * other, and the only one that had no row.
+ */
+function customUrlRow(realtime: boolean): string {
+  const subtitle = realtime
+    ? 'Type or paste your own scheduled and realtime URLs below'
+    : 'Type or paste your own feed URL below';
+  return `
+    <button type="button" data-custom-url class="w-full text-left px-3 py-2 rounded-lg flex items-start gap-2 hover:bg-base-200 border border-dashed border-base-300">
+      <div class="flex-1 min-w-0">
+        <p class="text-sm font-medium truncate">Custom feed URLs</p>
+        <p class="text-xs opacity-60 truncate">${subtitle}</p>
+      </div>
+    </button>`;
+}
+
 /** The visible rows, with a heading wherever the group changes. */
 function renderRows(
   rows: FeedRow[],
@@ -275,8 +328,9 @@ function renderRows(
   realtime: boolean,
   emptyText: string
 ): string {
+  const custom = customUrlRow(realtime);
   if (rows.length === 0) {
-    return `<p class="text-sm opacity-40 text-center py-8">${emptyText}</p>`;
+    return `${custom}<p class="text-sm opacity-40 text-center py-8">${emptyText}</p>`;
   }
   let group: Group | null = null;
   const out: string[] = [];
@@ -289,7 +343,7 @@ function renderRows(
     }
     out.push(renderRow(row, inUse.has(row.rowId), realtime));
   }
-  return out.join('');
+  return custom + out.join('');
 }
 
 const CORS_TOOLTIP =
@@ -329,6 +383,36 @@ function continueCard(offer: ContinueOffer): string {
         <p class="text-sm font-medium truncate">Continue with ${escHtml(offer.name)}</p>
         <p class="text-xs opacity-60 truncate">${escHtml(counts)}</p>
       </button>`;
+}
+
+/** Why the modal is open, when something failed to open the feed instead. */
+function noticeBlock(text: string): string {
+  return `
+      <div class="shrink-0 rounded-lg border border-error/40 bg-error/10 p-3">
+        <p class="text-sm text-error">${escHtml(text)}</p>
+      </div>`;
+}
+
+/** The feed the link named, with the URLs it asked for and a one-click retry. */
+function linkedCard(offer: LinkedOffer): string {
+  return `
+      <div class="shrink-0 rounded-lg border border-primary/40 bg-primary/10">
+        <button type="button" id="load-linked" class="w-full text-left p-3">
+          <p class="text-sm font-medium truncate">Load the linked feed</p>
+          <p class="text-xs opacity-60 truncate">${escHtml(offer.label)}</p>
+          ${urlLine('scheduled', offer.scheduledUrl)}
+          ${urlLine('vp', offer.vehiclesUrl)}
+          ${urlLine('tu', offer.tripUpdatesUrl)}
+          ${urlLine('al', offer.alertsUrl)}
+        </button>
+        ${
+          offer.canRetryWithCors
+            ? `<div class="px-3 pb-3">
+          <button type="button" id="load-linked-retry" class="btn btn-xs btn-primary">Retry with CORS proxy</button>
+        </div>`
+            : ''
+        }
+      </div>`;
 }
 
 // ─── The modal ────────────────────────────────────────────────────────────────
@@ -461,6 +545,8 @@ export async function showLoadModal(
   // escape hatch.
   const body = `
     <div class="flex h-full min-h-0 min-w-0 flex-col gap-3">
+      ${options.notice ? noticeBlock(options.notice) : ''}
+      ${options.linkedWith ? linkedCard(options.linkedWith) : ''}
       ${options.continueWith ? continueCard(options.continueWith) : ''}
 
       <input type="text" id="load-search" class="input input-bordered input-sm w-full shrink-0" placeholder="Search by agency, operator, source, or URL…" autofocus />
@@ -523,7 +609,8 @@ export async function showLoadModal(
   };
 
   await showModal({
-    title: options.continueWith ? 'Open a Feed' : 'Load Feed',
+    title:
+      options.continueWith || options.linkedWith ? 'Open a Feed' : 'Load Feed',
     body,
     // An explicit height, not just a cap: `h-full` on the body only resolves
     // against a definite one, and that is what lets the result list flex. Width
@@ -663,6 +750,32 @@ export async function showLoadModal(
       };
 
       /**
+       * Put the link's URLs back in the fields. The fields are already seeded
+       * from the same selection when the modal opens, so this only matters
+       * after they have been edited — which is exactly when the card stops
+       * being a restatement and starts being an undo.
+       */
+      const applyLinked = (offer: LinkedOffer) => {
+        scheduledFile = undefined;
+        fileInput.value = '';
+        showFile();
+        input('load-scheduled-url').value = offer.scheduledUrl ?? '';
+        scheduledLabel = offer.label;
+        scheduledRowId = null;
+        flashSection('load-scheduled-section');
+        if (realtime) {
+          input('load-vehicles-url').value = offer.vehiclesUrl ?? '';
+          input('load-trip-updates-url').value = offer.tripUpdatesUrl ?? '';
+          input('load-alerts-url').value = offer.alertsUrl ?? '';
+          rtLabel = offer.label;
+          rtRowId = null;
+          flashSection('load-rt-section');
+        }
+        renderResults();
+        revalidate();
+      };
+
+      /**
        * Typing detaches the slot from the row it came from: the URLs are no
        * longer that agency's, so neither is the name.
        */
@@ -739,13 +852,46 @@ export async function showLoadModal(
 
       // Delegated, so re-rendering the list never re-wires handlers.
       resultsEl.addEventListener('click', (e) => {
-        const btn = (e.target as HTMLElement).closest<HTMLElement>(
-          '[data-row-id]'
-        );
+        const target = e.target as HTMLElement;
+        if (target.closest('[data-custom-url]')) {
+          const section = document.getElementById('load-scheduled-section');
+          section?.scrollIntoView({ block: 'nearest' });
+          flashSection('load-scheduled-section');
+          input('load-scheduled-url').focus();
+          return;
+        }
+        const btn = target.closest<HTMLElement>('[data-row-id]');
         if (btn?.dataset.rowId) {
           applyRow(btn.dataset.rowId);
         }
       });
+
+      const linked = options.linkedWith;
+      if (linked) {
+        document
+          .getElementById('load-linked')!
+          .addEventListener('click', () => {
+            applyLinked(linked);
+          });
+        // The retry is the Load button with the proxy boxes ticked first, not a
+        // second way to load: same form, same validation, same result.
+        document
+          .getElementById('load-linked-retry')
+          ?.addEventListener('click', () => {
+            applyLinked(linked);
+            input('load-scheduled-cors').checked = true;
+            if (realtime) {
+              input('load-rt-cors').checked = true;
+            }
+            revalidate();
+            const sel = readForm();
+            if (describeBadUrl() || !isComplete(sel, realtime)) {
+              return;
+            }
+            result = { kind: 'selection', selection: sel };
+            close();
+          });
+      }
 
       input('load-scheduled-url').addEventListener('input', () => {
         detachScheduled();

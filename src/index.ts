@@ -15,6 +15,7 @@ import { viewerShortcuts } from './modules/shortcut-list';
 import { createModalRouter } from './modules/modal-router';
 import { AlertsModal } from './modules/alerts-modal';
 import { initFieldTooltipPortal } from './utils/tooltip-position';
+import type { LinkedOffer } from './modules/load-modal';
 import { showLoadModal } from './modules/load-modal';
 import { notify } from './modules/notification-system';
 import { LoadCancelledError } from './modules/feed-download';
@@ -179,6 +180,7 @@ const searchController = new SearchController<PageState>({
 searchController.initialize();
 
 statusPage.setShareUrlProvider(() => appState.shareableUrl());
+statusPage.setOpenLoadHandler(() => void openLoadModal());
 statusPage.setMapIssuesProvider(() => mapCtrl.issues);
 statusPage.setFeedGapsProvider(() => panelRenderer.rtIndex.gaps);
 statusPage.setScheduleRelationshipsProvider(() => panelRenderer.rtIndex.relationships);
@@ -220,17 +222,54 @@ function showFeedControls(): void {
   }
 }
 
+/** The link's feed, as the card that says what it asked for. */
+function linkedOffer(selection: FeedSelection): LinkedOffer {
+  const scheduled = selection.scheduled;
+  const rt = selection.realtime;
+  return {
+    label: describeSelection(selection),
+    scheduledUrl: scheduled?.kind === 'url' ? scheduled.url : undefined,
+    vehiclesUrl: rt?.vehiclesUrl,
+    tripUpdatesUrl: rt?.tripUpdatesUrl,
+    alertsUrl: rt?.alertsUrl,
+    // Only worth offering when there is a proxy left to turn on.
+    canRetryWithCors:
+      (scheduled?.kind === 'url' && !scheduled.useCors) || Boolean(rt && !rt.useCors),
+  };
+}
+
 /**
- * An empty hash opens the load modal rather than an empty status page, led by
- * the last feed this browser loaded. Dismissing it is allowed: the empty status
- * page is still the fallback.
+ * A link loads straight to the map; anything else opens the load modal.
+ *
+ * "Anything else" is an empty hash, a link naming half a session, or a link
+ * whose feed would not load. The last two keep the link: the modal opens seeded
+ * with its URLs, with a card printing them and a notice saying what went wrong,
+ * so the way forward is one click rather than a retype. Dismissing it is still
+ * allowed: the empty status page is the fallback.
  */
 async function boot(): Promise<void> {
-  if (await appState.boot()) {
-    console.log('[boot] hash selection loaded');
-    showFeedControls();
-    return;
+  const req = appState.bootRequest();
+  let notice: string | null;
+
+  if (req.selection && req.complete) {
+    const failure = await loadFeed(req.selection);
+    if (!failure) {
+      console.log('[boot] hash selection loaded');
+      appState.finishBoot(req.pending);
+      showFeedControls();
+      return;
+    }
+    console.log('[boot] hash selection failed:', failure);
+    notice = failure;
+  } else {
+    notice = req.problem;
   }
+  appState.bootEmpty();
+
+  // The link's own offer, on the first pass only: once the user has picked
+  // something else in the modal, re-offering the link that failed is noise.
+  let linkedWith = req.selection ? linkedOffer(req.selection) : undefined;
+  let seed = req.selection;
 
   // A stored feed that no longer loads must not trap boot in a reopen loop, so
   // the record is forgotten and the modal is offered exactly once more.
@@ -240,7 +279,9 @@ async function boot(): Promise<void> {
     console.log(
       last ? '[boot] modal opened, stored feed available' : '[boot] modal opened, nothing stored',
     );
-    const result = await showLoadModal(appState.bootSeed, {
+    const result = await showLoadModal(seed, {
+      notice: notice ?? undefined,
+      linkedWith,
       continueWith: last
         ? {
             name: last.summary.label,
@@ -250,6 +291,9 @@ async function boot(): Promise<void> {
           }
         : undefined,
     });
+    notice = null;
+    linkedWith = undefined;
+    seed = null;
 
     if (!result) {
       console.log('[boot] modal dismissed');
@@ -260,8 +304,18 @@ async function boot(): Promise<void> {
       return;
     }
     // `continue` is only reachable when the card was rendered, so `last` is set.
-    if (!last || (await handleLoadResult(last.selection)) || retried) return;
+    if (!last) return;
+    const failure = await loadFeed(last.selection);
+    if (!failure) {
+      showFeedControls();
+      return;
+    }
+    if (retried) return;
+    // The stored feed is what failed, so it is forgotten before the reopen —
+    // otherwise its card is offered again and the loop is the only thing
+    // stopping it.
     clearLastFeed();
+    notice = failure;
     retried = true;
   }
 }
@@ -296,24 +350,36 @@ setHelpRuntimeData({ version: __APP_VERSION__, shortcuts: describeShortcuts(shor
 
 
 // ─── Load ─────────────────────────────────────────────────────────────────────
-/** True when the feed is now loaded; false for a cancelled or failed load. */
-async function handleLoadResult(selection: FeedSelection | null): Promise<boolean> {
-  if (!selection) return false;
+/**
+ * The one place a selection is loaded and a failed load is reported.
+ *
+ * Returns the reason it failed, or null when the feed is now loaded, so boot can
+ * put that reason in front of the user instead of only in a toast.
+ */
+async function loadFeed(selection: FeedSelection): Promise<string | null> {
   const label = describeSelection(selection);
   try {
     await session.load(selection);
-    showFeedControls();
     notify.success(`Loaded ${label}`);
-    return true;
+    return null;
   } catch (err) {
     if (err instanceof LoadCancelledError) {
       notify.info('Load cancelled');
-      return false;
+      return 'Load cancelled.';
     }
     console.error('Load failed:', err);
-    notify.error(`Failed to load ${label}: ${err instanceof Error ? err.message : String(err)}`);
-    return false;
+    const reason = err instanceof Error ? err.message : String(err);
+    notify.error(`Failed to load ${label}: ${reason}`);
+    return `Could not load ${label}: ${reason}`;
   }
+}
+
+/** True when the feed is now loaded; false for a cancelled or failed load. */
+async function handleLoadResult(selection: FeedSelection | null): Promise<boolean> {
+  if (!selection) return false;
+  if (await loadFeed(selection)) return false;
+  showFeedControls();
+  return true;
 }
 
 /**

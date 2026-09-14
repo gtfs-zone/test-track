@@ -13,11 +13,21 @@ import type { ModalState, PageState } from '../types/page-state';
 import { pageStatesEqual, sameLocation } from '../types/page-state';
 import { buildBreadcrumbs, validateState } from './breadcrumbs';
 import type { FeedSession } from './feed-session';
-import { isComplete } from './feed-selection';
-import { LoadCancelledError } from './feed-download';
+import { describeMissing, isComplete } from './feed-selection';
 import { paramsToSelection, selectionToParams } from './feed-url';
 import { notify } from './notification-system';
 import { PageStateManager } from './page-state-manager';
+
+/** What the hash named at boot, read once before anything loads. */
+export interface BootRequest {
+  selection: FeedSelection | null;
+  /** True when the selection can be loaded as it stands. */
+  complete: boolean;
+  /** Why it cannot, when it names only half a session. */
+  problem: string | null;
+  /** The focus the link carried, captured before a load rewrites the hash. */
+  pending: PageState;
+}
 
 export interface AppStateHooks {
   /**
@@ -36,12 +46,6 @@ export interface AppStateHooks {
 
 export class AppState {
   readonly pages = new PageStateManager({ enableUrlSync: true });
-  /**
-   * What the hash named when `boot()` could not load it: a partial selection,
-   * or null. Boot's modal seeds itself with this, so a link naming only half a
-   * session is completed rather than retyped.
-   */
-  bootSeed: FeedSelection | null = null;
   private session: FeedSession;
   private hooks: AppStateHooks;
 
@@ -109,45 +113,44 @@ export class AppState {
   }
 
   /**
-   * Restore a session from the hash: read the feed config, load it, then apply
-   * the focus — which cannot resolve until the scheduled feed has parsed.
+   * What the hash named, without loading any of it.
    *
-   * Returns false when the hash named no feeds, leaving the app in its empty
-   * state. A focus without feeds is meaningless, so it is discarded rather than
-   * held pending.
+   * The loading itself belongs to the one caller that already knows how to
+   * report a failed load, so this only reads. `pending` has to be captured here
+   * and handed back rather than re-read later: loading rewrites the feed half of
+   * the hash, and the focus half would be re-read from a hash that no longer
+   * names what the link named.
+   *
+   * `problem` is set for a link that names only half a session — the boot modal
+   * prints it rather than a toast, since the modal is where it gets fixed.
    */
-  async boot(): Promise<boolean> {
-    const hash = window.location.hash.slice(1);
-    const selection = paramsToSelection(hash);
-
-    if (!selection || !isComplete(selection)) {
-      if (selection) {
-        this.bootSeed = selection;
-        notify.warning('The link is missing a scheduled or realtime feed — nothing loaded.');
-      }
-      this.emit(this.focus);
-      return false;
-    }
-
+  bootRequest(): BootRequest {
+    const selection = paramsToSelection(window.location.hash.slice(1));
     const pending = this.pages.pendingStateFromURL();
-
-    try {
-      await this.session.load(selection);
-    } catch (err) {
-      if (err instanceof LoadCancelledError) {
-        notify.info('Load cancelled');
-        this.emit(this.focus);
-        return false;
-      }
-      notify.error(
-        `Failed to load feeds from link: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      this.emit(this.focus);
-      return false;
+    if (!selection) {
+      return { selection: null, complete: false, problem: null, pending };
     }
+    const complete = isComplete(selection);
+    return {
+      selection,
+      complete,
+      // The modal's own hint line already names what is missing; this says why
+      // the modal is open at all, which the hint cannot.
+      problem: complete
+        ? null
+        : `This link names only part of a feed — ${describeMissing(selection).toLowerCase()}.`,
+      pending,
+    };
+  }
 
+  /** Apply the focus a link carried, once its feed has actually loaded. */
+  finishBoot(pending: PageState): void {
     this.applyPendingFocus(pending);
-    return true;
+  }
+
+  /** Paint the empty app when boot loaded nothing. */
+  bootEmpty(): void {
+    this.emit(this.focus);
   }
 
   /**

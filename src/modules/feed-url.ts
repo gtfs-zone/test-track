@@ -6,7 +6,17 @@
  *
  * `cors` is a compact flag list rather than two booleans, because the common
  * cases are "both" and "neither" and `cors=s,r` reads better in an address bar
- * than `scheduled_cors=1&rt_cors=1`.
+ * than `scheduled_cors=1&rt_cors=1`. "Neither" is written as `cors=none` rather
+ * than by leaving the key out, because the key is always written and a missing
+ * one therefore means something else.
+ *
+ * A missing `cors` means *unknown*, and both halves default to the proxy. Links
+ * are written by other apps too — yard-master's "Open in visualizer" names four
+ * URLs and no proxy setting — and the hosts feeds actually come from mostly send
+ * no CORS headers, so "off" is the wrong guess far more often than "on". The
+ * proxy costs a hop where it was not needed; guessing "off" costs the whole
+ * load. `maybeProxy` already bypasses the proxy for local and private hosts, so
+ * this does not break a link into a dev stack.
  *
  * `static=` is the old name of `scheduled=` and is still read, because links
  * are already in the wild. Only `scheduled=` is ever written, so an old link
@@ -51,7 +61,12 @@ export function selectionToParams(sel: FeedSelection | null): Record<string, str
     }
   }
 
-  if (corsFlags.length > 0) params.cors = corsFlags.join(',');
+  // Always written alongside a URL, never omitted: a missing key reads as
+  // "proxy both" below. A selection with no URL at all still writes nothing,
+  // so a file-backed session leaves no stray `cors=none` in the address bar.
+  if (Object.keys(params).length > 0) {
+    params.cors = corsFlags.length > 0 ? corsFlags.join(',') : 'none';
+  }
   return params;
 }
 
@@ -64,7 +79,11 @@ export function paramsToSelection(hash: string): FeedSelection | null {
   const params = new URLSearchParams(hash);
   if (!PARAM_KEYS.some(k => params.has(k))) return null;
 
-  const cors = new Set((params.get('cors') ?? '').split(',').filter(Boolean));
+  // Absent means unknown, so both halves proxy; `none` is the explicit "off".
+  const corsParam = params.get('cors');
+  const cors = new Set(
+    corsParam === null ? ['s', 'r'] : corsParam.split(',').filter(Boolean),
+  );
 
   const scheduledUrl = params.get('scheduled') ?? params.get('static');
   const scheduledSource: ScheduledSource | null = scheduledUrl

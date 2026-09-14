@@ -17,7 +17,7 @@
    - Dropped the module-level singleton (`getPageStateManager` /
      `initPageStateManager`); AppState owns the one instance.
    - Skipped `eca835c`'s `peekURLPageState`: boot reads the hash through
-     `feed-url.ts` and `AppState.boot()`, so nothing needs an unvalidated page
+     `feed-url.ts` and `AppState.bootRequest()`, so nothing needs an unvalidated page
      state. `initializeFromURL()` is split into `pendingStateFromURL()` and
      `adoptState()` for the same reason: the feed has to load between the two.
    - Skipped `136329b`: the `zone` and `location_group` branches in
