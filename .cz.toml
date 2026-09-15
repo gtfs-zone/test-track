@@ -8,7 +8,7 @@ update_changelog_on_bump = true
 major_version_zero = true
 tag_format = "v$version"
 annotated_tag = true
-bump_message = "chore(release): bump version $current_version → $new_version"
+bump_message = "chore(release): bump version $current_version -> $new_version"
 pre_bump_hooks = [
     "bash -c 'branch=$(git branch --show-current); [ \"$branch\" = \"main\" ] || { echo \"Error: cz bump must be run on main (currently on \\\"$branch\\\")\"; exit 1; }'",
 ]
