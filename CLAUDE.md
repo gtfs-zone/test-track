@@ -15,6 +15,21 @@ pnpm vendor:check # diff vendored files against their source repo, per VENDORED.
 git config core.hooksPath .githooks   # once per clone; runs vendor:check pre-commit
 ```
 
+## Shared modules (`interlocking`)
+
+A third of `src/` is no longer in this repo. The 35 files that were identical in
+all three apps live in the `interlocking` package, a git dependency shipping raw
+TypeScript with no build step. Import them as `interlocking/modules/...`,
+`interlocking/utils/...` and `interlocking/types/gtfs-flex`; `tsconfig.json`
+`paths` and a `resolve.alias` in `vite.config.js` both point at
+`node_modules/interlocking/src`.
+
+A shared change is a commit in interlocking, a tag, and a bump in each of the
+three consumers. It is not edited here and `vendor:check` does not cover it.
+
+What is still hand-copied is in `VENDORED.md`, and for that half the one-way
+flow rule still holds: coloring-book -> test-track -> yard-master.
+
 ## Rules
 
 - Do NOT use Playwright (or any browser automation) to verify changes. The user does
