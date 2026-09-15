@@ -63,7 +63,7 @@ function feedName(session: FeedSession): string | null {
  * The root crumb. Its eyebrow says what the page is, its label names the feed
  * being looked at, so the crumb reads like every other one: type over object.
  */
-function home(session: FeedSession): BreadcrumbItem {
+function home(session: FeedSession): BreadcrumbItem<PageState> {
   return {
     typeLabel: 'Feed',
     label: truncate(feedName(session) ?? 'No feed'),
@@ -150,7 +150,7 @@ function alertParent(session: FeedSession, alertId: string): AlertParent | null 
   return null;
 }
 
-export function buildBreadcrumbs(session: FeedSession, state: PageState): BreadcrumbItem[] {
+export function buildBreadcrumbs(session: FeedSession, state: PageState): BreadcrumbItem<PageState>[] {
   switch (state.type) {
     case 'home':
       return [];

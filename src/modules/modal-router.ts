@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/modal-router.ts
-   @sha d8afa32
+   @sha ce1bfa0
    @status verbatim */
 /**
  * Modal Router
@@ -16,13 +16,15 @@
  * it had before that opener ran.
  */
 
-import {
-  ModalState,
-  ModalStateOf,
-  ModalType,
-  PageState,
-} from '../types/page-state';
 import { closeModalsAbove, modalStackDepth } from './modal-utils';
+
+/**
+ * The modal state union an app routes: anything discriminated by `type`. The
+ * router never reads a modal beyond that field, so each app names its own set
+ * and its own per-modal payloads, and `register` still narrows the opener's
+ * argument to the one member it is registered for.
+ */
+type AnyModalState = { type: string };
 
 /**
  * The navigation state the router writes back to. Structural rather than the
@@ -44,7 +46,7 @@ export interface ModalTransient {
   onClosed?: () => void;
 }
 
-export type ModalOpener<M extends ModalState = ModalState> = (
+export type ModalOpener<M extends AnyModalState = AnyModalState> = (
   modal: M,
   transient: ModalTransient,
   /**
@@ -55,27 +57,27 @@ export type ModalOpener<M extends ModalState = ModalState> = (
   cancelled: () => boolean
 ) => Promise<void>;
 
-interface ModalSession {
-  type: ModalType;
+interface ModalSession<M extends AnyModalState> {
+  type: M['type'];
   /** Modal stack depth before the opener ran. */
   depth: number;
   /** Set when the router closes the session, possibly mid-open. */
   cancelled: boolean;
 }
 
-class ModalRouter {
-  private openers = new Map<ModalType, ModalOpener>();
-  private session: ModalSession | null = null;
+class ModalRouter<M extends AnyModalState> {
+  private openers = new Map<M['type'], ModalOpener<M>>();
+  private session: ModalSession<M> | null = null;
   private pendingTransient: ModalTransient = {};
 
   constructor(private host: ModalHost) {}
 
   /** Wire a modal type to the function that opens it. */
-  register<T extends ModalType>(
+  register<T extends M['type']>(
     type: T,
-    opener: ModalOpener<ModalStateOf<T>>
+    opener: ModalOpener<Extract<M, { type: T }>>
   ): void {
-    this.openers.set(type, opener as ModalOpener);
+    this.openers.set(type, opener as ModalOpener<M>);
   }
 
   /**
@@ -90,7 +92,7 @@ class ModalRouter {
    * Open the modal the state names and close any other. Called on every
    * navigation event and once on boot.
    */
-  sync(state: PageState): void {
+  sync(state: { modal?: M }): void {
     const wanted = state.modal;
     // A parameter change inside an open modal is the modal's own business, so
     // a matching type is left alone rather than reopened on a new `table` or a
@@ -117,7 +119,7 @@ class ModalRouter {
     closeModalsAbove(session.depth);
   }
 
-  private openSession(modal: ModalState): void {
+  private openSession(modal: M): void {
     const opener = this.openers.get(modal.type);
     if (!opener) {
       console.warn(`[ModalRouter] no opener registered for ${modal.type}`);
@@ -126,7 +128,7 @@ class ModalRouter {
 
     const transient = this.pendingTransient;
     this.pendingTransient = {};
-    const session: ModalSession = {
+    const session: ModalSession<M> = {
       type: modal.type,
       depth: modalStackDepth(),
       cancelled: false,
@@ -153,17 +155,27 @@ class ModalRouter {
   }
 }
 
-let instance: ModalRouter | null = null;
+let instance: unknown = null;
 
 /** Build the router for this app. Called once, during boot. */
-export function createModalRouter(host: ModalHost): ModalRouter {
-  instance = new ModalRouter(host);
-  return instance;
+export function createModalRouter<M extends AnyModalState>(
+  host: ModalHost
+): ModalRouter<M> {
+  const router = new ModalRouter<M>(host);
+  instance = router;
+  return router;
 }
 
-export function getModalRouter(): ModalRouter {
+/**
+ * The router built at boot. Pass the app's modal state union to get the
+ * narrowing `register` needs; the default is enough for `sync` and
+ * `setPendingTransient`.
+ */
+export function getModalRouter<
+  M extends AnyModalState = AnyModalState,
+>(): ModalRouter<M> {
   if (!instance) {
     throw new Error('[ModalRouter] createModalRouter has not run yet');
   }
-  return instance;
+  return instance as ModalRouter<M>;
 }

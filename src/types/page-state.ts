@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/types/page-state.ts
-   @sha 1c16f14
+   @sha ce1bfa0
    @status modified
    @changes
    - Page types reduced to test-track's four object pages plus home: dropped
@@ -30,7 +30,9 @@
      routed here, because a link to a guide page is worth having.
    - `page` names the guide page the modal *opens* on, not the one showing:
      `sidebar-modal.ts` has no hook for a pane change and is `verbatim`, so
-     teaching it one is an upstream change rather than a local edit. */
+     teaching it one is an upstream change rather than a local edit.
+   - `ModalStateOf` follows upstream's drop: `modal-router.ts` narrows an
+     opener's argument itself now. */
 
 /**
  * Union of every page test-track can display. Each variant carries the minimal
@@ -62,9 +64,6 @@ export type ModalType = (typeof MODAL_TYPES)[number];
 export type ModalState =
   | { type: 'alerts' }
   | { type: 'help'; page?: string };
-
-/** The modal state shape belonging to one modal type. */
-export type ModalStateOf<T extends ModalType> = Extract<ModalState, { type: T }>;
 
 /** Distributed so that narrowing on `type` still works through the modal field. */
 type WithModal<T> = T extends unknown ? T & { modal?: ModalState } : never;

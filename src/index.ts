@@ -8,8 +8,8 @@ import { MapController } from './map-controller';
 import type { VehiclePosition } from './map-controller';
 import type { GTFSScheduled } from './gtfs-scheduled';
 import type { AlertRecord } from './gtfs-rt';
-import { showHelpModal, showHelpPageOnce } from './modules/help-modal';
-import { setHelpRuntimeData } from './modules/help-pages';
+import { setHelpPages, showHelpModal, showHelpPageOnce } from './modules/help-modal';
+import { HELP_GROUP_ORDER, HELP_PAGES, setHelpRuntimeData } from './modules/help-pages';
 import { KeyboardShortcuts, describeShortcuts } from './modules/keyboard-shortcuts';
 import { viewerShortcuts } from './modules/shortcut-list';
 import { createModalRouter } from './modules/modal-router';
@@ -35,7 +35,7 @@ import { pageTitle } from './modules/breadcrumb-trail';
 import { alertLabel } from './modules/breadcrumbs';
 import { SearchController } from './modules/search-controller';
 import { buildSearchEntries } from './modules/search-entries';
-import type { PageState } from './types/page-state';
+import type { ModalState, PageState } from './types/page-state';
 
 // ─── Shell ────────────────────────────────────────────────────────────────────
 
@@ -167,7 +167,7 @@ const alertsModal = new AlertsModal({
   href: state => appState.hrefFor(state),
   navigate: state => appState.setFocus(state),
 });
-const modalRouter = createModalRouter(appState.pages);
+const modalRouter = createModalRouter<ModalState>(appState.pages);
 modalRouter.register('alerts', () => alertsModal.show());
 modalRouter.register('help', modal => showHelpModal(modal.page));
 
@@ -319,6 +319,10 @@ async function boot(): Promise<void> {
     retried = true;
   }
 }
+
+// The viewer needs the registry before a page can open, including the welcome
+// page `start` shows below.
+setHelpPages(HELP_PAGES, HELP_GROUP_ORDER);
 
 async function start(): Promise<void> {
   await showHelpPageOnce('welcome');

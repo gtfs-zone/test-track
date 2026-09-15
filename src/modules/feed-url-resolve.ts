@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/feed-url-resolve.ts
-   @sha 2d40667
+   @sha f2f2930
    @status verbatim */
 /**
  * Turning what someone typed into a URL that can actually be fetched.
@@ -7,26 +7,14 @@
  * Three jobs, deliberately kept apart from `feed-selection.ts` so the proxy
  * rules there stay readable:
  *
- * 1. `RT_BASE` — a feed URL may be stored as a bare path (`/amtrak/
+ * 1. `resolveRealtimeUrl` — a feed URL may be stored as a bare path (`/amtrak/
  *    vehicle_positions.pb`). That form is environment-agnostic, so a shared link
- *    works for whoever opens it. Resolution happens at fetch time only; the
- *    selection and the hash keep the path.
+ *    works for whoever opens it. Resolution happens at fetch time only, against
+ *    a base the caller supplies; the selection and the hash keep the path.
  * 2. `normalizeFeedUrl` — accept the shapes people actually type.
  * 3. `isLocalUrl` — the CORS proxy lives on the public internet and cannot reach
  *    the user's own machine, so a local URL must never be routed through it.
  */
-
-import { CONFIG } from '../config';
-
-/**
- * Where a path-only realtime URL points.
- *
- * Each app decides this in its own `CONFIG`, because they do not agree: an app
- * with a local feed server wants localhost in dev, one without wants the
- * deployed server always. Re-exported here so every consumer still reads it
- * from one place.
- */
-export const RT_BASE: string = CONFIG.RT_BASE;
 
 /**
  * Split `…/outer.zip#inner.zip` into the URL to fetch and the entries to
@@ -55,9 +43,15 @@ export function isPathOnly(url: string): boolean {
   return url.startsWith('/') && !url.startsWith('//');
 }
 
-/** Resolve a path-only realtime URL against `RT_BASE`; leave anything else alone. */
-export function resolveRealtimeUrl(url: string): string {
-  return isPathOnly(url) ? RT_BASE + url : url;
+/**
+ * Resolve a path-only realtime URL against `rtBase`; leave anything else alone.
+ *
+ * The base is an argument rather than a constant here because the apps do not
+ * agree on it: one with a local feed server wants localhost in dev, one without
+ * wants the deployed server always. Each passes its own `CONFIG.RT_BASE`.
+ */
+export function resolveRealtimeUrl(url: string, rtBase: string): string {
+  return isPathOnly(url) ? rtBase + url : url;
 }
 
 /**
@@ -92,7 +86,7 @@ function isLocalHost(hostname: string): boolean {
  * which is same-origin and needs no proxy by definition, or an explicit
  * local/private host.
  *
- * Callers must resolve a realtime path against `RT_BASE` *before* asking — in
+ * Callers must resolve a realtime path against the RT base *before* asking — in
  * the built site `/amtrak/…` resolves to rt.gtfs.zone, which is emphatically not
  * local and does need the proxy.
  */
@@ -125,7 +119,7 @@ function looksLikeHostPort(raw: string): boolean {
 
 /**
  * What someone typed, turned into something fetchable. Bare paths pass through
- * untouched (they are resolved later against `RT_BASE`); everything else ends up
+ * untouched (they are resolved later against the RT base); everything else ends up
  * with an explicit scheme — http for local hosts, which do not serve https, and
  * https for everything else.
  */

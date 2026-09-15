@@ -36,7 +36,7 @@ export class PanelRenderer {
   private hooks: PanelRendererHooks;
 
   private state: PageState = { type: 'home' };
-  private breadcrumbs: BreadcrumbItem[] = [];
+  private breadcrumbs: BreadcrumbItem<PageState>[] = [];
   private active = false;
   private hoveredStopId: string | null = null;
 
@@ -77,7 +77,7 @@ export class PanelRenderer {
   }
 
   /** Take over the panel and render `state`. */
-  show(state: PageState, breadcrumbs: BreadcrumbItem[]): void {
+  show(state: PageState, breadcrumbs: BreadcrumbItem<PageState>[]): void {
     this.clearHoveredStop();
     this.state = state;
     this.breadcrumbs = breadcrumbs;

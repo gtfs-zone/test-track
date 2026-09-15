@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/examples.ts
-   @sha 7671610
+   @sha f2f2930
    @status verbatim */
 import type { FeedSelection } from './feed-selection';
 
@@ -17,13 +17,13 @@ export interface ExampleFeed {
  * the realtime app it fills the scheduled slot and leaves the other for you.
  *
  * Feeds served by our own stack use **path-only** realtime URLs. Those resolve
- * against `RT_BASE` at fetch time (`feed-url-resolve.ts`): the local cafe-car in
- * dev, rt.gtfs.zone in the built site. So there is no separate set of "local"
- * examples to keep in sync, and a link someone shares works wherever it is
- * opened. `useCors: true` is correct for both halves of that: the proxy is what
- * rt.gtfs.zone needs in prod, and `maybeProxy` bypasses it for the local host in
- * dev. Feeds hosted by an agency stay absolute, since there is no single origin
- * to resolve them against.
+ * against each app's RT base at fetch time (`feed-url-resolve.ts`): the local
+ * cafe-car in dev, rt.gtfs.zone in the built site. So there is no separate set
+ * of "local" examples to keep in sync, and a link someone shares works
+ * wherever it is opened. `useCors: true` is correct for both halves of that:
+ * the proxy is what rt.gtfs.zone needs in prod, and `maybeProxy` bypasses it
+ * for the local host in dev. Feeds hosted by an agency stay absolute, since
+ * there is no single origin to resolve them against.
  *
  * `useCors` is otherwise set per source from what the origin actually sends.
  * Only `raw.githubusercontent.com` sends `access-control-allow-origin: *`, so a

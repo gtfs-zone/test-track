@@ -1,17 +1,50 @@
 /* @vendored-from coloring-book:src/modules/help-modal.ts
-   @sha dca23b3
+   @sha 1eb424b
    @status verbatim */
 /**
- * The help viewer: a sidebar of `HELP_PAGES` grouped by `HelpGroup`, and one
- * rendered page in the content pane. Modelled directly on `fares-modal.ts`:
- * adding a page is an entry in `help-pages.ts`, not a new renderer.
+ * The help viewer: a sidebar of registered pages grouped by their group, and
+ * one rendered page in the content pane. Modelled directly on
+ * `fares-modal.ts`: adding a page is an entry in the app's registry, not a new
+ * renderer.
+ *
+ * The registry itself belongs to the app, not to this module: each one has its
+ * own pages, its own groups and its own copy. It arrives through
+ * `setHelpPages` during boot, which also keeps this module from importing the
+ * page data that imports its render helpers back.
  */
 
 import { showSidebarModal } from './sidebar-modal';
 import { escapeHtml } from '../utils/escape-html';
-import { HELP_PAGES, getHelpPage, type HelpGroup } from './help-pages';
 
-const GROUP_ORDER: HelpGroup[] = ['Getting Started', 'Reference'];
+/** One help page, as the viewer needs to see it. */
+export interface HelpPageEntry {
+  id: string;
+  /** Sidebar entry text. */
+  label: string;
+  /** Which group the entry sorts under; must appear in the group order. */
+  group: string;
+  /** Heading above the rendered pane. */
+  title: string;
+  render(): string;
+  /**
+   * Marks a page that is auto-shown once at its trigger and afterwards only
+   * reachable from the Guide menu. Pages without it are reference-only.
+   */
+  showOnce?: boolean;
+}
+
+let helpPages: HelpPageEntry[] = [];
+let groupOrder: string[] = [];
+
+/** Hand the viewer this app's pages and the order to group them in. Called once, during boot. */
+export function setHelpPages(pages: HelpPageEntry[], groups: string[]): void {
+  helpPages = pages;
+  groupOrder = groups;
+}
+
+function findHelpPage(id: string): HelpPageEntry | undefined {
+  return helpPages.find((page) => page.id === id);
+}
 
 function shownKey(id: string): string {
   return `help.${id}.seen`;
@@ -56,7 +89,7 @@ export async function showHelpModal(
   pageId?: string,
   options?: HelpModalOptions
 ): Promise<void> {
-  if (HELP_PAGES.length === 0 || helpModalOpen) {
+  if (helpPages.length === 0 || helpModalOpen) {
     return;
   }
 
@@ -64,11 +97,11 @@ export async function showHelpModal(
   try {
     await showSidebarModal({
       title: 'Guide',
-      groupOrder: GROUP_ORDER,
-      initialId: pageId && getHelpPage(pageId) ? pageId : undefined,
+      groupOrder,
+      initialId: pageId && findHelpPage(pageId) ? pageId : undefined,
       boxClassName: 'max-w-4xl w-11/12',
       closeLabel: options?.continueLabel,
-      entries: HELP_PAGES.map((page) => ({
+      entries: helpPages.map((page) => ({
         id: page.id,
         label: page.label,
         group: page.group,
@@ -110,7 +143,7 @@ export async function showHelpPageOnce(
   pageId: string,
   options?: HelpModalOptions
 ): Promise<boolean> {
-  const page = getHelpPage(pageId);
+  const page = findHelpPage(pageId);
   if (!page?.showOnce || alreadySeen(pageId)) {
     return false;
   }

@@ -11,6 +11,7 @@ import {
 import { localClock } from './feed-time';
 import { isReproducible } from './feed-url';
 import { isLocalUrl, resolveRealtimeUrl } from './feed-url-resolve';
+import { CONFIG } from '../config';
 import { notify } from './notification-system';
 import { renderIssueCard } from '../utils/issue-card';
 
@@ -59,14 +60,14 @@ function formatCountdown(target: number): string {
 
 /**
  * One URL as configured, plus whatever the selection does to it on the way to
- * the network: `RT_BASE` resolution for a bare path, the CORS proxy, or neither.
+ * the network: RT base resolution for a bare path, the CORS proxy, or neither.
  * Both are worth stating — "it is fetching a different URL than the one I typed"
  * is the question this panel exists to answer.
  */
 function renderUrl(url: string, useCors: boolean, isRealtime: boolean): string {
   if (!url) return '<p class="text-xs opacity-40">not set</p>';
 
-  const resolved = isRealtime ? resolveRealtimeUrl(url) : url;
+  const resolved = isRealtime ? resolveRealtimeUrl(url, CONFIG.RT_BASE) : url;
   // A local URL ignores the proxy setting (see `maybeProxy`); say so, but only
   // when the checkbox is on and therefore looks like it is doing something.
   const proxyBypassed = useCors && isLocalUrl(resolved);

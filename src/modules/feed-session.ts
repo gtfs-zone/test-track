@@ -180,7 +180,10 @@ export class FeedSession extends EventTarget {
     this.alerts = new Map();
     this.tripUpdates = [];
 
-    const poller = new GTFSRealtime(resolvedRealtimeUrls(selection.realtime!), this.intervalMs);
+    const poller = new GTFSRealtime(
+      resolvedRealtimeUrls(selection.realtime!, CONFIG.RT_BASE),
+      this.intervalMs
+    );
     this.poller = poller;
 
     poller.addEventListener('fetchstart', e => {

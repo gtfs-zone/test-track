@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/breadcrumb-trail.ts
-   @sha dca23b3
+   @sha 3a74671
    @status verbatim */
 /**
  * Breadcrumb trail markup, page titles, and the crumb type vocabulary.
@@ -11,16 +11,18 @@
  * up, since the variant sets and the data sources genuinely differ.
  */
 
-import { PageState } from '../types/page-state';
-
 /**
  * One crumb: a dim uppercase type over a name, pointing at a page state.
+ *
+ * `S` is the app's own page state type. Nothing here reads it: a crumb's state
+ * is an opaque token handed back to the caller's `href` and serialized into
+ * `data-nav`, so each app names its own.
  */
-export interface BreadcrumbItem {
+export interface BreadcrumbItem<S> {
   /** Dim uppercase eyebrow, e.g. "Route", "Station", "Service alert". */
   typeLabel: string;
   label: string;
-  pageState: PageState;
+  pageState: S;
 }
 
 /** GTFS `location_type` to the word a crumb or a header calls it. */
@@ -68,9 +70,9 @@ export function pageHeaderEyebrow(typeLabel: string): string {
  * row and spaces it inconsistently (a gap on the linked crumbs, none on the
  * last). Plain flex wrapping here, so nothing has to be overridden.
  */
-export function renderBreadcrumbTrail(
-  items: BreadcrumbItem[],
-  href: (state: PageState) => string
+export function renderBreadcrumbTrail<S>(
+  items: BreadcrumbItem<S>[],
+  href: (state: S) => string
 ): string {
   if (items.length === 0) {
     return '';
@@ -106,7 +108,10 @@ export function renderBreadcrumbTrail(
  * `<typeLabel> <label> | <appName>` for the deepest crumb, the bare app name
  * when there is no trail.
  */
-export function pageTitle(items: BreadcrumbItem[], appName: string): string {
+export function pageTitle<S>(
+  items: BreadcrumbItem<S>[],
+  appName: string
+): string {
   const last = items[items.length - 1];
   if (!last) {
     return appName;
