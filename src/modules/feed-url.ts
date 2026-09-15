@@ -29,7 +29,7 @@
  * half a session.
  */
 
-import type { FeedSelection, RealtimeSource, ScheduledSource } from './feed-selection';
+import type { FeedSelection, RealtimeSource, ScheduledSource } from 'interlocking/modules/feed-selection';
 
 // `static` stays in the list so a legacy-only hash still counts as naming a feed.
 const PARAM_KEYS = ['scheduled', 'static', 'rt_vp', 'rt_tu', 'rt_al', 'cors'] as const;

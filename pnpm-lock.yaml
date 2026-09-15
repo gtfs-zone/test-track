@@ -20,6 +20,9 @@ importers:
       gtfs-realtime-bindings:
         specifier: ^1.1.1
         version: 1.1.1
+      interlocking:
+        specifier: git+https://git.kcfam.us/gtfs.zone/interlocking.git#v0.2.0
+        version: git+https://git.kcfam.us/gtfs.zone/interlocking.git#46083bca5e043dc49a7e0c8dc169805ed8fbf3a3(@leeoniya/ufuzzy@1.0.19)(maplibre-gl@5.23.0)
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
@@ -922,6 +925,13 @@ packages:
 
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
+
+  interlocking@git+https://git.kcfam.us/gtfs.zone/interlocking.git#46083bca5e043dc49a7e0c8dc169805ed8fbf3a3:
+    resolution: {commit: 46083bca5e043dc49a7e0c8dc169805ed8fbf3a3, repo: https://git.kcfam.us/gtfs.zone/interlocking.git, type: git}
+    version: 0.2.0
+    peerDependencies:
+      '@leeoniya/ufuzzy': '*'
+      maplibre-gl: '*'
 
   isarray@1.0.0:
     resolution: {integrity: sha512-VLghIWNM6ELQzo7zwmcg0NmTVyWKYjvIeM83yjp0wRDTmUnrM678fQbcKBo6n2CJEF0szoG//ytg+TKla89ALQ==}
@@ -1947,6 +1957,11 @@ snapshots:
       wrappy: 1.0.2
 
   inherits@2.0.4: {}
+
+  interlocking@git+https://git.kcfam.us/gtfs.zone/interlocking.git#46083bca5e043dc49a7e0c8dc169805ed8fbf3a3(@leeoniya/ufuzzy@1.0.19)(maplibre-gl@5.23.0):
+    dependencies:
+      '@leeoniya/ufuzzy': 1.0.19
+      maplibre-gl: 5.23.0
 
   isarray@1.0.0: {}
 

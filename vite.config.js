@@ -40,7 +40,14 @@ export default defineConfig({
   css: {
     postcss: './postcss.config.js'
   },
+  resolve: {
+    alias: {
+      interlocking: resolve(__dirname, 'node_modules/interlocking/src')
+    }
+  },
   optimizeDeps: {
-    include: ['maplibre-gl', 'jszip', 'papaparse']
+    include: ['maplibre-gl', 'jszip', 'papaparse'],
+    // interlocking ships raw .ts; let vite transform it as source
+    exclude: ['interlocking']
   }
 })

@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/utils/issue-card.ts
-   @sha dca23b3
+   @sha 7c69e52
    @status verbatim */
 /**
  * Feed issue card.
@@ -19,7 +19,7 @@
  * here means re-vendoring there.
  */
 
-import { escapeHtml } from './escape-html';
+import { escapeHtml } from 'interlocking/utils/escape-html';
 
 export interface IssueItem {
   /** Plain text shown for this item. Escaped here, so pass raw text. */

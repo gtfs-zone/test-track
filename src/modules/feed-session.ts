@@ -4,15 +4,15 @@ import { GTFSRealtime } from '../gtfs-rt';
 import type { AlertRecord, FeedStatus, FetchStartDetail, TripUpdate } from '../gtfs-rt';
 import type { VehiclePosition } from '../map-controller';
 import { adoptFeedTimezone } from './feed-time';
-import { feedProgressIndicator } from './feed-progress-indicator';
-import { downloadPercent, formatBytes, LoadCancelledError } from './feed-download';
-import type { FeedSelection, RealtimeEndpointName, ScheduledSource } from './feed-selection';
+import { feedProgressIndicator } from 'interlocking/modules/feed-progress-indicator';
+import { downloadPercent, formatBytes, LoadCancelledError } from 'interlocking/modules/feed-download';
+import type { FeedSelection, RealtimeEndpointName, ScheduledSource } from 'interlocking/modules/feed-selection';
 import {
   REALTIME_ENDPOINT_LABELS,
   isComplete,
   resolvedRealtimeUrls,
   resolvedScheduledUrl,
-} from './feed-selection';
+} from 'interlocking/modules/feed-selection';
 
 /**
  * The remembered poll interval, or the default. Anything not on the offered

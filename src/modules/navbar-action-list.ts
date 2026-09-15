@@ -3,8 +3,8 @@ import {
   renderNavIcon,
   renderSunIcon,
   type NavIconName,
-} from './nav-icons';
-import type { NavbarAction } from './navbar-actions';
+} from 'interlocking/modules/nav-icons';
+import type { NavbarAction } from 'interlocking/modules/navbar-actions';
 
 /**
  * This app's navbar action row and dock artwork.

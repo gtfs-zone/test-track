@@ -8,14 +8,14 @@
  * `suppressHashUpdate` guard honest.
  */
 
-import type { FeedSelection } from './feed-selection';
+import type { FeedSelection } from 'interlocking/modules/feed-selection';
 import type { ModalState, PageState } from '../types/page-state';
 import { pageStatesEqual, sameLocation } from '../types/page-state';
 import { buildBreadcrumbs, validateState } from './breadcrumbs';
 import type { FeedSession } from './feed-session';
-import { describeMissing, isComplete } from './feed-selection';
+import { describeMissing, isComplete } from 'interlocking/modules/feed-selection';
 import { paramsToSelection, selectionToParams } from './feed-url';
-import { notify } from './notification-system';
+import { notify } from 'interlocking/modules/notification-system';
 import { PageStateManager } from './page-state-manager';
 
 /** What the hash named at boot, read once before anything loads. */

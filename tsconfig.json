@@ -20,7 +20,11 @@
     "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "paths": {
+      "interlocking/*": ["node_modules/interlocking/src/*"]
+    }
   },
   "include": [
     "src/**/*"

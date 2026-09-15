@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/utils/field-label.ts
-   @sha 47a4341
+   @sha 7c69e52
    @status verbatim */
 /**
  * The parts of a form field's label that are not about GTFS.
@@ -18,7 +18,7 @@
  * is already shared for the same reason.
  */
 
-import { escapeHtml } from './escape-html';
+import { escapeHtml } from 'interlocking/utils/escape-html';
 
 /**
  * The *Presence* column, which the schedule and realtime references word the

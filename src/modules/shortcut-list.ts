@@ -7,7 +7,7 @@
  * list is a shortcut to a feature that does not exist.
  */
 
-import type { ShortcutCommand } from './keyboard-shortcuts';
+import type { ShortcutCommand } from 'interlocking/modules/keyboard-shortcuts';
 
 interface ShortcutHost {
   /** Open the load modal and load whatever it returns. */

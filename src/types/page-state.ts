@@ -73,7 +73,7 @@ export type PageState = WithModal<PageLocation>;
 export type PageStateType = PageLocation['type'];
 
 /** Re-export, so the crumb shape and the page states stay one import apart. */
-export type { BreadcrumbItem } from '../modules/breadcrumb-trail';
+export type { BreadcrumbItem } from 'interlocking/modules/breadcrumb-trail';
 
 /** Type guard for a valid ModalState. */
 export function isModalState(value: unknown): value is ModalState {

@@ -2,17 +2,17 @@ import type { EndpointStatus } from '../gtfs-rt';
 import type { FeedSession } from './feed-session';
 import type { MapDataIssues } from './layer-manager';
 import type { FeedGaps, ScheduleRelationshipCounts } from './rt-index';
-import type { RealtimeEndpointName } from './feed-selection';
-import { REALTIME_ENDPOINTS, REALTIME_ENDPOINT_LABELS } from './feed-selection';
+import type { RealtimeEndpointName } from 'interlocking/modules/feed-selection';
+import { REALTIME_ENDPOINTS, REALTIME_ENDPOINT_LABELS } from 'interlocking/modules/feed-selection';
 import {
   TRIP_SCHEDULE_RELATIONSHIP_LABELS,
   STOP_TIME_SCHEDULE_RELATIONSHIP_LABELS,
 } from './render-utils';
 import { localClock } from './feed-time';
 import { isReproducible } from './feed-url';
-import { isLocalUrl, resolveRealtimeUrl } from './feed-url-resolve';
+import { isLocalUrl, resolveRealtimeUrl } from 'interlocking/modules/feed-url-resolve';
 import { CONFIG } from '../config';
-import { notify } from './notification-system';
+import { notify } from 'interlocking/modules/notification-system';
 import { renderIssueCard } from '../utils/issue-card';
 
 /**

@@ -3,37 +3,37 @@ import {
   renderAutoZoomControl,
   syncAutoZoomControl,
   wireAutoZoomControl,
-} from './modules/auto-zoom';
+} from 'interlocking/modules/auto-zoom';
 import { MapController } from './map-controller';
 import type { VehiclePosition } from './map-controller';
 import type { GTFSScheduled } from './gtfs-scheduled';
 import type { AlertRecord } from './gtfs-rt';
-import { setHelpPages, showHelpModal, showHelpPageOnce } from './modules/help-modal';
+import { setHelpPages, showHelpModal, showHelpPageOnce } from 'interlocking/modules/help-modal';
 import { HELP_GROUP_ORDER, HELP_PAGES, setHelpRuntimeData } from './modules/help-pages';
-import { KeyboardShortcuts, describeShortcuts } from './modules/keyboard-shortcuts';
+import { KeyboardShortcuts, describeShortcuts } from 'interlocking/modules/keyboard-shortcuts';
 import { viewerShortcuts } from './modules/shortcut-list';
-import { createModalRouter } from './modules/modal-router';
+import { createModalRouter } from 'interlocking/modules/modal-router';
 import { AlertsModal } from './modules/alerts-modal';
-import { initFieldTooltipPortal } from './utils/tooltip-position';
+import { initFieldTooltipPortal } from 'interlocking/utils/tooltip-position';
 import type { LinkedOffer } from './modules/load-modal';
 import { showLoadModal } from './modules/load-modal';
-import { notify } from './modules/notification-system';
-import { LoadCancelledError } from './modules/feed-download';
-import { PanelResizer, restorePanelWidth } from './modules/panel-resizer';
-import { BottomSheetController } from './modules/bottom-sheet';
-import { ThemeController } from './modules/theme-controller';
+import { notify } from 'interlocking/modules/notification-system';
+import { LoadCancelledError } from 'interlocking/modules/feed-download';
+import { PanelResizer, restorePanelWidth } from 'interlocking/modules/panel-resizer';
+import { BottomSheetController } from 'interlocking/modules/bottom-sheet';
+import { ThemeController } from 'interlocking/modules/theme-controller';
 import { DOCK_ICONS, NAVBAR_ACTIONS } from './modules/navbar-action-list';
-import { renderDockIcons, renderNavbarActions } from './modules/navbar-actions';
-import type { FeedSelection } from './modules/feed-selection';
-import { describeSelection } from './modules/feed-selection';
+import { renderDockIcons, renderNavbarActions } from 'interlocking/modules/navbar-actions';
+import type { FeedSelection } from 'interlocking/modules/feed-selection';
+import { describeSelection } from 'interlocking/modules/feed-selection';
 import { FeedSession } from './modules/feed-session';
 import { clearLastFeed, readLastFeed, writeLastFeed } from './modules/last-feed';
 import { StatusPage } from './modules/status-page';
 import { AppState } from './modules/app-state';
 import { PanelRenderer } from './modules/panel-renderer';
-import { pageTitle } from './modules/breadcrumb-trail';
+import { pageTitle } from 'interlocking/modules/breadcrumb-trail';
 import { alertLabel } from './modules/breadcrumbs';
-import { SearchController } from './modules/search-controller';
+import { SearchController } from 'interlocking/modules/search-controller';
 import { buildSearchEntries } from './modules/search-entries';
 import type { ModalState, PageState } from './types/page-state';
 

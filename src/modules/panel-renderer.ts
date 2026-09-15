@@ -10,8 +10,8 @@
  */
 
 import type { PageState } from '../types/page-state';
-import type { BreadcrumbItem } from './breadcrumb-trail';
-import { renderBreadcrumbTrail } from './breadcrumb-trail';
+import type { BreadcrumbItem } from 'interlocking/modules/breadcrumb-trail';
+import { renderBreadcrumbTrail } from 'interlocking/modules/breadcrumb-trail';
 import type { FeedSession } from './feed-session';
 import { RtIndex } from './rt-index';
 import type { RenderContext } from './render-utils';

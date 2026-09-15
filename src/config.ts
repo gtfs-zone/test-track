@@ -92,7 +92,7 @@ export const CONFIG = {
   // server's origin — it allows localhost:8080-8089, which covers vite's whole
   // drift range. cors.kcfam.us is a separate whitelist with its own list
   // (home-docker `local.cors_proxy_dev_origins`), covering localhost:8080-8091.
-  // Lives here rather than in the vendored `feed-url-resolve.ts`
+  // Lives here rather than in `interlocking`'s `feed-url-resolve.ts`
   // because coloring-book has no local feed server and wants prod always.
   RT_BASE: import.meta.env.DEV ? 'http://localhost:8000' : 'https://rt.gtfs.zone',
 } as const;

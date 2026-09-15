@@ -16,13 +16,13 @@ import type { Route } from '../../gtfs-scheduled';
 import type { VehiclePosition } from '../../map-controller';
 import type { PageState } from '../../types/page-state';
 import { alertsForRoute, alertsForRouteStop, feedWideAlerts } from '../alerts';
-import { renderTriangleIcon, renderWarningIcon } from '../modal-utils';
+import { renderTriangleIcon, renderWarningIcon } from 'interlocking/modules/modal-utils';
 import { GTFSScheduledRouteSource } from '../gtfs-scheduled-route-source';
-import { routeGraph } from '../route-graph';
+import { routeGraph } from 'interlocking/modules/route-graph';
 import type { RtIndex, VehicleStopSequence } from '../rt-index';
 import type { Prediction } from '../rt-index';
-import type { RouteSequence, StopStats } from '../route-sequence';
-import { directionsForRoute, routeSequence } from '../route-sequence';
+import type { RouteSequence, StopStats } from 'interlocking/modules/route-sequence';
+import { directionsForRoute, routeSequence } from 'interlocking/modules/route-sequence';
 import {
   endpointNote,
   endpointThreshold,
@@ -32,8 +32,8 @@ import {
   railCell,
   rowPaths,
   STRIP_ROW_CLASS,
-} from '../route-strip';
-import type { RowDot } from '../route-strip';
+} from 'interlocking/modules/route-strip';
+import type { RowDot } from 'interlocking/modules/route-strip';
 import type { RenderContext } from '../render-utils';
 import {
   OCCUPANCY_LABELS,
