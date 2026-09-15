@@ -1,3 +1,13 @@
+## v0.11.0 (2026-09-16)
+
+### Feat
+
+- **load**: keep a link's feed when it fails, and make custom URLs visible
+
+### Refactor
+
+- consume the 35 shared modules from interlocking
+
 ## v0.10.0 (2026-09-14)
 
 ### Feat
