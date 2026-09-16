@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/styles/main.css
-   @sha 4448375
+   @sha b8dfba9
    @status modified
    @changes
    - Editor-only rules dropped: the CodeMirror overrides (.cm-editor, .cm-focused),
@@ -17,6 +17,7 @@
 
 @import 'tailwindcss';
 @source "../**/*.{html,js,ts}";
+@source "../../node_modules/interlocking/src/**/*.ts";
 
 @plugin "daisyui" {
   themes:
