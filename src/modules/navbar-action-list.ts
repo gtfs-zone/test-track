@@ -65,7 +65,7 @@ export const NAVBAR_ACTIONS: NavbarAction[] = [
   {
     kind: 'icon',
     id: 'help-btn',
-    label: 'Help',
+    label: 'Guide',
     icon: renderNavIcon('guide'),
   },
   {

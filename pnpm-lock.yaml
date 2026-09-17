@@ -21,8 +21,8 @@ importers:
         specifier: ^1.1.1
         version: 1.1.1
       interlocking:
-        specifier: git+https://git.kcfam.us/gtfs.zone/interlocking.git#v1.0.0
-        version: git+https://git.kcfam.us/gtfs.zone/interlocking.git#7d7d0e72779e64c1d2a9efe73d9616cd5bae4d6d(@leeoniya/ufuzzy@1.0.19)(maplibre-gl@5.23.0)
+        specifier: git+https://git.kcfam.us/gtfs.zone/interlocking.git#v1.0.1
+        version: git+https://git.kcfam.us/gtfs.zone/interlocking.git#3b6a4d2defbb8c5eabe0ce071787ee4c41545ee9(@leeoniya/ufuzzy@1.0.19)(maplibre-gl@5.23.0)
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
@@ -926,9 +926,9 @@ packages:
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
 
-  interlocking@git+https://git.kcfam.us/gtfs.zone/interlocking.git#7d7d0e72779e64c1d2a9efe73d9616cd5bae4d6d:
-    resolution: {commit: 7d7d0e72779e64c1d2a9efe73d9616cd5bae4d6d, repo: https://git.kcfam.us/gtfs.zone/interlocking.git, type: git}
-    version: 1.0.0
+  interlocking@git+https://git.kcfam.us/gtfs.zone/interlocking.git#3b6a4d2defbb8c5eabe0ce071787ee4c41545ee9:
+    resolution: {commit: 3b6a4d2defbb8c5eabe0ce071787ee4c41545ee9, repo: https://git.kcfam.us/gtfs.zone/interlocking.git, type: git}
+    version: 1.0.1
     peerDependencies:
       '@leeoniya/ufuzzy': '*'
       maplibre-gl: '*'
@@ -1958,7 +1958,7 @@ snapshots:
 
   inherits@2.0.4: {}
 
-  interlocking@git+https://git.kcfam.us/gtfs.zone/interlocking.git#7d7d0e72779e64c1d2a9efe73d9616cd5bae4d6d(@leeoniya/ufuzzy@1.0.19)(maplibre-gl@5.23.0):
+  interlocking@git+https://git.kcfam.us/gtfs.zone/interlocking.git#3b6a4d2defbb8c5eabe0ce071787ee4c41545ee9(@leeoniya/ufuzzy@1.0.19)(maplibre-gl@5.23.0):
     dependencies:
       '@leeoniya/ufuzzy': 1.0.19
       maplibre-gl: 5.23.0
