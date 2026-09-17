@@ -37,10 +37,10 @@ import type {
 import { CONFIG } from '../config';
 import type { GTFSScheduled } from '../gtfs-scheduled';
 import type { VehiclePosition } from '../map-controller';
-import { routeSortKey } from 'interlocking/modules/route-sort';
-import { casingColor } from 'interlocking/utils/route-colors';
-import { clearThemeColorCache, resolveThemeColor } from 'interlocking/utils/theme-color';
-import { ensureMapIcons } from 'interlocking/modules/map-icons';
+import { routeSortKey } from 'interlocking/gtfs/route-sort';
+import { casingColor } from 'interlocking/gtfs/route-colors';
+import { clearThemeColorCache, resolveThemeColor } from 'interlocking/util/theme-color';
+import { ensureMapIcons } from 'interlocking/map/icons';
 import {
   NO_ROUTE_FILTER,
   ROUTES_CASING_LAYER,
@@ -65,7 +65,7 @@ import {
   zoomWidth,
   type StopFadeBands,
   type StopFeatureState,
-} from 'interlocking/modules/layer-specs';
+} from 'interlocking/map/layer-specs';
 import {
   STOP_FOCUS_HALO_LAYER,
   STOP_FOCUS_RING_LAYER,
@@ -77,7 +77,7 @@ import {
   stopFillColor,
   stopsBackgroundPaint,
   type StopStyleOptions,
-} from 'interlocking/modules/stop-layer-style';
+} from 'interlocking/map/stop-layer-style';
 
 /**
  * Counts of feed data the map could not draw. Surfaced on the status page —

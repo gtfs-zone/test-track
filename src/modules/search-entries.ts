@@ -17,7 +17,7 @@ import {
   routeMarker,
   stopMarker,
   type SearchEntry,
-} from 'interlocking/modules/search-controller';
+} from 'interlocking/ui/search-controller';
 
 /** Non-empty values only, so the haystack has no runs of blanks to match into. */
 function haystack(...parts: (string | undefined)[]): string {

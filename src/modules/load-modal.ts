@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/load-modal.ts
-   @sha 7c69e52
+   @sha 59ed6d0
    @status verbatim */
 /**
  * The one way into a feed.
@@ -34,17 +34,14 @@
 
 import UFuzzy from '@leeoniya/ufuzzy';
 import { EXAMPLES } from './examples';
-import type { FeedSelection } from 'interlocking/modules/feed-selection';
-import {
-  describeMissing,
-  isComplete,
-} from 'interlocking/modules/feed-selection';
+import type { FeedSelection } from 'interlocking/gtfs/feed-selection';
+import { describeMissing, isComplete } from 'interlocking/gtfs/feed-selection';
 import {
   normalizeFeedUrl,
   validateFeedUrl,
-} from 'interlocking/modules/feed-url-resolve';
-import type { ModalAction } from 'interlocking/modules/modal-utils';
-import { renderUploadIcon, showModal } from 'interlocking/modules/modal-utils';
+} from 'interlocking/gtfs/feed-url-resolve';
+import type { ModalAction } from 'interlocking/ui/modal-utils';
+import { renderUploadIcon, showModal } from 'interlocking/ui/modal-utils';
 import { renderTooltipTrigger } from '../utils/field-label';
 
 /**

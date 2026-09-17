@@ -1,8 +1,8 @@
 import { transit_realtime } from 'gtfs-realtime-bindings';
 import { CONFIG } from './config';
 import type { VehiclePosition } from './map-controller';
-import type { RealtimeEndpointName } from 'interlocking/modules/feed-selection';
-import { REALTIME_ENDPOINTS, describeHttpError, describeNetworkError } from 'interlocking/modules/feed-selection';
+import type { RealtimeEndpointName } from 'interlocking/gtfs/feed-selection';
+import { REALTIME_ENDPOINTS, describeHttpError, describeNetworkError } from 'interlocking/gtfs/feed-selection';
 
 export type TripUpdate = transit_realtime.ITripUpdate;
 export type ServiceAlert = transit_realtime.IAlert;

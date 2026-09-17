@@ -1,7 +1,7 @@
 /* @vendored-from coloring-book:src/modules/examples.ts
-   @sha 7c69e52
+   @sha 59ed6d0
    @status verbatim */
-import type { FeedSelection } from 'interlocking/modules/feed-selection';
+import type { FeedSelection } from 'interlocking/gtfs/feed-selection';
 
 export interface ExampleFeed {
   name: string;

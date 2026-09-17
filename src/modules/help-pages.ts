@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/help-pages.ts
-   @sha 7c69e52
+   @sha 59ed6d0
    @status modified
    @changes
    - Editor-only pages dropped (Getting Started/Shapes/Fares/On-Demand/
@@ -27,7 +27,7 @@
  * from the code that draws it.
  */
 
-import { eyebrow, lede, glyphList, type HelpPageEntry } from 'interlocking/modules/help-modal';
+import { eyebrow, lede, glyphList, type HelpPageEntry } from 'interlocking/ui/help-modal';
 import {
   renderBlurb,
   renderVersionAndSource,
@@ -35,7 +35,7 @@ import {
   renderResourcesSection,
   renderFeedbackSection,
   type AboutApp,
-} from 'interlocking/modules/about-links';
+} from 'interlocking/ui/about-links';
 
 export type HelpGroup = 'Getting Started' | 'Reference';
 

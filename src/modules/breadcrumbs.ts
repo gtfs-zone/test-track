@@ -1,9 +1,9 @@
 import type { PageState } from '../types/page-state';
-import type { BreadcrumbItem } from 'interlocking/modules/breadcrumb-trail';
-import { stopTypeLabel } from 'interlocking/modules/breadcrumb-trail';
+import type { BreadcrumbItem } from 'interlocking/ui/breadcrumb-trail';
+import { stopTypeLabel } from 'interlocking/ui/breadcrumb-trail';
 import { EXAMPLES } from './examples';
-import type { FeedSelection } from 'interlocking/modules/feed-selection';
-import { describeSelection } from 'interlocking/modules/feed-selection';
+import type { FeedSelection } from 'interlocking/gtfs/feed-selection';
+import { describeSelection } from 'interlocking/gtfs/feed-selection';
 import type { FeedSession } from './feed-session';
 import { vehicleDisplayName } from './render-utils';
 

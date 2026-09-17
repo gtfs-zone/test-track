@@ -1,8 +1,8 @@
 import JSZip from 'jszip';
 import Papa from 'papaparse';
-import { splitInnerZipPath } from 'interlocking/modules/feed-url-resolve';
-import { downloadWithProgress } from 'interlocking/modules/feed-download';
-import { routeColor, routeTextColor } from 'interlocking/utils/route-colors';
+import { splitInnerZipPath } from 'interlocking/gtfs/feed-url-resolve';
+import { downloadWithProgress } from 'interlocking/gtfs/feed-download';
+import { routeColor, routeTextColor } from 'interlocking/gtfs/route-colors';
 
 /** Verbatim CSV rows, kept so object pages can dump every column. */
 export type RawRow = Record<string, string>;

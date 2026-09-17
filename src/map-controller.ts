@@ -2,9 +2,9 @@ import maplibregl from 'maplibre-gl';
 import { CONFIG } from './config';
 import type { GTFSScheduled } from './gtfs-scheduled';
 import type { PageState } from './types/page-state';
-import { BasemapControl, initialMapStyle } from 'interlocking/modules/basemap-control';
-import type { MapAppearance } from 'interlocking/modules/basemap-control';
-import { AutoZoom } from 'interlocking/modules/auto-zoom';
+import { BasemapControl, initialMapStyle } from 'interlocking/map/basemap-control';
+import type { MapAppearance } from 'interlocking/map/basemap-control';
+import { AutoZoom } from 'interlocking/map/auto-zoom';
 import { LayerManager } from './modules/layer-manager';
 import type { MapDataIssues } from './modules/layer-manager';
 

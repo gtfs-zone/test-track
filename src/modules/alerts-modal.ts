@@ -15,8 +15,8 @@
 import type { AlertRecord } from '../gtfs-rt';
 import type { PageState } from '../types/page-state';
 import { ALERT_LEVEL_LABELS, alertLevel, isActiveNow, preferredText } from './alerts';
-import { showModal } from 'interlocking/modules/modal-utils';
-import { escapeHtml } from 'interlocking/utils/escape-html';
+import { showModal } from 'interlocking/ui/modal-utils';
+import { escapeHtml } from 'interlocking/util/escape-html';
 
 const LIST_ID = 'alerts-list';
 

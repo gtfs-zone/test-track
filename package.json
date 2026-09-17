@@ -10,7 +10,7 @@
     "start": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "atlas": "tsx scripts/generate-atlas-data.ts",
+    "atlas": "tsx node_modules/interlocking/scripts/generate-atlas-data.ts",
     "vendor:check": "tsx scripts/vendor-check.ts"
   },
   "keywords": [
@@ -36,7 +36,7 @@
     "@tailwindcss/postcss": "^4.1.13",
     "daisyui": "^5.1.13",
     "gtfs-realtime-bindings": "^1.1.1",
-    "interlocking": "git+https://git.kcfam.us/gtfs.zone/interlocking.git#v1.0.1",
+    "interlocking": "git+https://git.kcfam.us/gtfs.zone/interlocking.git#v2.0.0",
     "jszip": "^3.10.1",
     "maplibre-gl": "^5.7.2",
     "papaparse": "^5.5.3"

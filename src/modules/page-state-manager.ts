@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/page-state-manager.ts
-   @sha 7c69e52
+   @sha 59ed6d0
    @status modified
    @changes
    - Reduced to test-track's five page variants; all `agency` / `service` /

@@ -3,8 +3,8 @@
  * mutated, so this needs no invalidation and no adapter-side caching.
  */
 import type { GTFSScheduled } from '../gtfs-scheduled';
-import type { StopTimeRef } from 'interlocking/types/gtfs-flex';
-import type { RouteSource, RouteSourceTrip, RouteSourceStopTime } from 'interlocking/modules/route-source';
+import type { StopTimeRef } from 'interlocking/gtfs/types';
+import type { RouteSource, RouteSourceTrip, RouteSourceStopTime } from 'interlocking/gtfs/route-source';
 
 export class GTFSScheduledRouteSource implements RouteSource {
   constructor(private feed: GTFSScheduled) {}
