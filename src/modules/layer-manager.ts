@@ -36,7 +36,7 @@ import type {
 } from 'maplibre-gl';
 import { CONFIG } from '../config';
 import type { GTFSScheduled } from 'interlocking/gtfs/scheduled';
-import type { VehiclePosition } from '../map-controller';
+import type { VehiclePosition } from 'interlocking/gtfs/rt-types';
 import { routeSortKey } from 'interlocking/gtfs/route-sort';
 import { casingColor } from 'interlocking/gtfs/route-colors';
 import { clearThemeColorCache, resolveThemeColor } from 'interlocking/util/theme-color';

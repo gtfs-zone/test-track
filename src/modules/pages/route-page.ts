@@ -11,16 +11,16 @@
  * as ellipses under that scale, which is why the dots are HTML spans.
  */
 
-import type { AlertRecord } from '../../gtfs-rt';
+import type { AlertRecord } from 'interlocking/gtfs/rt-types';
 import type { Route } from 'interlocking/gtfs/scheduled';
-import type { VehiclePosition } from '../../map-controller';
+import type { VehiclePosition } from 'interlocking/gtfs/rt-types';
 import type { PageState } from '../../types/page-state';
-import { alertsForRoute, alertsForRouteStop, feedWideAlerts } from '../alerts';
+import { alertsForRoute, alertsForRouteStop, feedWideAlerts } from 'interlocking/gtfs/alerts';
 import { renderTriangleIcon, renderWarningIcon } from 'interlocking/ui/modal-utils';
 import { GTFSScheduledRouteSource } from 'interlocking/gtfs/scheduled-route-source';
 import { routeGraph } from 'interlocking/gtfs/route-graph';
-import type { RtIndex, VehicleStopSequence } from '../rt-index';
-import type { Prediction } from '../rt-index';
+import type { RtIndex, VehicleStopSequence } from 'interlocking/gtfs/rt-index';
+import type { Prediction } from 'interlocking/gtfs/rt-index';
 import type { RouteSequence, StopStats } from 'interlocking/gtfs/route-sequence';
 import { directionsForRoute, routeSequence } from 'interlocking/gtfs/route-sequence';
 import {
@@ -34,7 +34,7 @@ import {
   STRIP_ROW_CLASS,
 } from 'interlocking/gtfs/route-strip';
 import type { RowDot } from 'interlocking/gtfs/route-strip';
-import type { RenderContext } from '../render-utils';
+import type { RenderContext } from '../render-context';
 import {
   OCCUPANCY_LABELS,
   ROUTE_TYPE_LABELS,
@@ -55,7 +55,7 @@ import {
   stopSequenceMark,
   tripRelationshipMark,
   vehicleDisplayName,
-} from '../render-utils';
+} from 'interlocking/gtfs/entity-render';
 import { renderAlertList } from './alert-page';
 
 /** A vehicle that could not be put on the strip, and why not. */

@@ -36,7 +36,7 @@
     "@tailwindcss/postcss": "^4.1.13",
     "daisyui": "^5.1.13",
     "gtfs-realtime-bindings": "^1.1.1",
-    "interlocking": "git+https://git.kcfam.us/gtfs.zone/interlocking.git#v2.1.0",
+    "interlocking": "git+https://git.kcfam.us/gtfs.zone/interlocking.git#v2.2.0",
     "jszip": "^3.10.1",
     "maplibre-gl": "^5.7.2",
     "papaparse": "^5.5.3"

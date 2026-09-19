@@ -5,9 +5,9 @@ import {
   wireAutoZoomControl,
 } from 'interlocking/map/auto-zoom';
 import { MapController } from './map-controller';
-import type { VehiclePosition } from './map-controller';
+import type { VehiclePosition } from 'interlocking/gtfs/rt-types';
 import type { GTFSScheduled } from 'interlocking/gtfs/scheduled';
-import type { AlertRecord } from './gtfs-rt';
+import type { AlertRecord } from 'interlocking/gtfs/rt-types';
 import { setHelpPages, showHelpModal, showHelpPageOnce } from 'interlocking/ui/help-modal';
 import { HELP_GROUP_ORDER, HELP_PAGES, setHelpRuntimeData } from './modules/help-pages';
 import { KeyboardShortcuts, describeShortcuts } from 'interlocking/ui/keyboard-shortcuts';

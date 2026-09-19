@@ -11,7 +11,7 @@
 import { CONFIG } from '../config';
 import type { PageState } from '../types/page-state';
 import type { FeedSession } from './feed-session';
-import { vehicleDisplayName } from './render-utils';
+import { vehicleDisplayName } from 'interlocking/gtfs/entity-render';
 import {
   dotMarker,
   routeMarker,

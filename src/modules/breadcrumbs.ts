@@ -5,7 +5,7 @@ import { EXAMPLES } from 'interlocking/gtfs/examples';
 import type { FeedSelection } from 'interlocking/gtfs/feed-selection';
 import { describeSelection } from 'interlocking/gtfs/feed-selection';
 import type { FeedSession } from './feed-session';
-import { vehicleDisplayName } from './render-utils';
+import { vehicleDisplayName } from 'interlocking/gtfs/entity-render';
 
 /**
  * Synchronous breadcrumb building and focus validation against the loaded feed.

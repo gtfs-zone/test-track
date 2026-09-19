@@ -12,9 +12,9 @@
  * open or closed; the list is only repainted while the modal is up.
  */
 
-import type { AlertRecord } from '../gtfs-rt';
+import type { AlertRecord } from 'interlocking/gtfs/rt-types';
 import type { PageState } from '../types/page-state';
-import { ALERT_LEVEL_LABELS, alertLevel, isActiveNow, preferredText } from './alerts';
+import { ALERT_LEVEL_LABELS, alertLevel, isActiveNow, preferredText } from 'interlocking/gtfs/alerts';
 import { showModal } from 'interlocking/ui/modal-utils';
 import { escapeHtml } from 'interlocking/util/escape-html';
 

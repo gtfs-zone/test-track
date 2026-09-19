@@ -1,27 +1,9 @@
 import { transit_realtime } from 'gtfs-realtime-bindings';
 import { CONFIG } from './config';
-import type { VehiclePosition } from './map-controller';
+import type { AlertRecord, TripUpdate, VehiclePosition } from 'interlocking/gtfs/rt-types';
+import { presentNumber } from 'interlocking/gtfs/rt-types';
 import type { RealtimeEndpointName } from 'interlocking/gtfs/feed-selection';
 import { REALTIME_ENDPOINTS, describeHttpError, describeNetworkError } from 'interlocking/gtfs/feed-selection';
-
-export type TripUpdate = transit_realtime.ITripUpdate;
-export type ServiceAlert = transit_realtime.IAlert;
-
-/**
- * An alert plus the identity it is addressed by.
- *
- * GTFS-RT alerts carry no id of their own — only the enclosing `FeedEntity.id`
- * — so that is what the alert page is keyed on. Some producers regenerate
- * entity ids between polls, which means a focused alert can vanish even though
- * the same disruption is still being reported. There is nothing better to key
- * on; the UI has to tolerate it.
- */
-export interface AlertRecord {
-  id: string;
-  alert: ServiceAlert;
-  /** Plain-object form of the same alert, for the alert page's raw dump. */
-  raw: unknown;
-}
 
 /**
  * Whether the producer actually sent a field, as opposed to protobufjs handing
@@ -37,28 +19,6 @@ export interface AlertRecord {
  */
 function present<T>(msg: object, field: string, value: T | null | undefined): T | undefined {
   return Object.prototype.hasOwnProperty.call(msg, field) ? (value ?? undefined) : undefined;
-}
-
-/**
- * A numeric field, or `undefined` when the producer did not send it.
- *
- * `present` plus the coercion the 64-bit fields need: protobuf decodes those to
- * `Long` objects rather than numbers, and every timestamp in GTFS-RT is one.
- * `Number(long)` goes through the Long's own `toString`, so this works whether
- * or not protobufjs installed Long support.
- *
- * Reading such a field without the own-property check is worse than useless: an
- * absent `int64` reads back as `Long{0,0}`, which is finite, so the value comes
- * out as `0` — midnight 1970 for a time, "on time" for a delay. Both are things
- * the feed never said.
- *
- * `msg` is nullable so the whole containing message may be absent, as in
- * `presentNumber(stu.arrival, 'time')`.
- */
-export function presentNumber(msg: object | null | undefined, field: string): number | undefined {
-  if (!msg || !Object.prototype.hasOwnProperty.call(msg, field)) return undefined;
-  const n = Number((msg as Record<string, unknown>)[field]);
-  return Number.isFinite(n) ? n : undefined;
 }
 
 /** Verbatim FeedHeader fields, for the status page's raw dump. */

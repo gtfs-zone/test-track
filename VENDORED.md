@@ -2,7 +2,7 @@
 
 ## The shared half is mostly a dependency now
 
-The 44 files that have moved out of the apps live in **`interlocking`**, a
+The 49 files that have moved out of the apps live in **`interlocking`**, a
 git dependency shipping raw TypeScript with no build step. They are imported as
 `interlocking/ui/...`, `interlocking/gtfs/...`, `interlocking/map/...` and
 `interlocking/util/...`, resolved by `tsconfig.json` `paths` and a
@@ -55,13 +55,15 @@ coloring-book has no counterpart to put it in.
 **Why the realtime half is `origin` rather than vendored.** coloring-book is an
 editor: it reads no `.pb`, has no poller, and owns no vehicle, trip update or
 service alert. A realtime module hosted there would have no caller, and its
-`knip` gate would delete it on the next cleanup. yard-master *does* render
-alerts and trackers, so it vendors those modules from here directly, and that is
-what its `Source repo` column is for. The one-way rule is about where a file is
-edited, not an obligation on one repo to host every shared file, so the realtime
-set stays canonical here. The same holds for the four page renderers and the
-panel dispatcher: they render GTFS-RT beside the schedule, which is a screen
-coloring-book does not have.
+`knip` gate would delete it on the next cleanup. The one-way rule is about where
+a file is edited, not an obligation on one repo to host every shared file, so
+the realtime set stayed canonical here. Most of it has since moved on to
+`interlocking` — `rt-types`, `feed-session`, `rt-index`, `alerts` and
+`entity-render`, the last of which is this repo's old `render-utils.ts` — and
+what is left under `origin` is the half that is this app's own: the decoder and
+poller, the session that drives them, and the four page renderers and panel
+dispatcher, which render GTFS-RT beside the schedule on a screen coloring-book
+does not have.
 
 **What is deliberately absent.** `src/index.ts` (this app's boot order),
 `src/config.ts` and `src/env.d.ts` (build and deployment constants),
@@ -87,11 +89,8 @@ SHA (rows whose sibling repo isn't checked out are skipped).
 | `src/modules/breadcrumbs.ts` | — | — | — | origin | Not vendored: this repo's own crumb build (the variant switch, the label lookups, `stopAncestors`, `vehicleRouteId`, `alertParent`, `validateState`), consuming `breadcrumb-trail.ts`. Listed because yard-master vendors *this* file, so a diff against yard-master starts here rather than upstream |
 | `src/modules/help-pages.ts` | `coloring-book` | `src/modules/help-pages.ts` | 59ed6d0 | modified | Replaces the old standalone `about-modal.ts` as the app's help entry point. Editor-only pages dropped (Getting Started/Shapes/Fares/On-Demand/Publishing/Keyboard Shortcuts); `HELP_PAGES` is `[welcomePage, aboutPage, mapKeyPage]`, the last rewritten for this app's own symbology and carrying a direction-of-travel row since Phase 8 gave the spotlighted route its chevrons. Welcome copy rewritten for viz.rt.gtfs.zone (live vehicle map, not the GTFS editor). `aboutPage` reuses the `AboutApp` config that used to live in `about-modal.ts`. The Keyboard Shortcuts page is back as of Phase 12, once `d8afa32` parameterized `keyboard-shortcuts.ts` over an app-supplied command list: `buildShortcutsTable` and the `shortcuts` half of `setHelpRuntimeData` are upstream's, fed from `shortcut-list.ts` through `describeShortcuts()`. Since `1eb424b` this file also owns `HELP_GROUP_ORDER` and is handed to the viewer at boot with `setHelpPages` |
 | `scripts/vendor-check.ts` | `yard-master` | `scripts/vendor-check.ts` | 5dc61ef | modified | The two-pass drift and staleness checker behind `pnpm vendor:check`. The one row where the flow runs backwards: yard-master wrote the five-column, `Source repo`-aware form and this repo adopted it in Phase 1. Only the doc comment differs |
-| `src/gtfs-rt.ts` | — | — | — | origin | Not vendored: the GTFS-RT decoder and poller, the `TripUpdate` / `VehiclePosition` / `ServiceAlert` / `AlertRecord` types, and the `present`/`presentNumber` guards every panel module reads a payload field through. yard-master vendors it `modified`, having dropped the decoder and the poller so protobufjs tree-shakes out |
-| `src/modules/rt-index.ts` | — | — | — | origin | Not vendored: indexes the live payloads by trip and stop, including the derived `current_stop_sequence`. yard-master vendors it `verbatim` |
-| `src/modules/alerts.ts` | — | — | — | origin | Not vendored: alert lookups by route, stop and trip over the session's alert map. yard-master vendors it `verbatim` |
-| `src/modules/render-utils.ts` | — | — | — | origin | Not vendored: the shared page furniture: `escHtml`, `entityLink`, `routeBadge`, the raw-column table, the time and delay formatters, and the `schedule_relationship` vocabulary (`TRIP_SCHEDULE_RELATIONSHIP_LABELS`, `STOP_TIME_SCHEDULE_RELATIONSHIP_LABELS`, `feedMark`, `tripRelationshipMark`, `stopTimeRelationshipMark`). The vocabulary is GTFS-RT's, so it belongs to the same `origin` set as the rest. yard-master vendors it `verbatim` |
-| `src/modules/feed-session.ts` | — | — | — | origin | Not vendored: the live session, meaning the scheduled feed, the poller, and the vehicle, alert and trip-update maps. yard-master's copy is `adopted`, written there against the API and the SSE channel but deliberately shaped so the modules that read a `FeedSession` compile unchanged |
+| `src/gtfs-rt.ts` | — | — | — | origin | Not vendored: the GTFS-RT decoder and poller, and the `present` guard the decoder reads a payload field through. The types it used to declare — `TripUpdate`, `ServiceAlert`, `AlertRecord`, `VehiclePosition` — and `presentNumber` are `interlocking`'s `gtfs/rt-types.ts` now, so what is left is this app's own fetching half. Nothing vendors it; listed so the map of `src/` stays complete |
+| `src/modules/feed-session.ts` | — | — | — | origin | Not vendored: the live session, meaning the scheduled feed, the poller, and the vehicle, alert and trip-update maps. The four members the shared modules read are `interlocking`'s `gtfs/feed-session.ts` interface, which this class satisfies structurally; yard-master's own session satisfies the same interface from the API and its SSE channel |
 | `src/modules/app-state.ts` | — | — | — | origin | Not vendored: focus changes and feed selection. yard-master vendors it `modified`, since a feed there is an API row rather than a `FeedSelection` of URLs |
 | `src/map-controller.ts` | — | — | — | origin | Not vendored: MapLibre setup, camera moves, focus and vehicle follow. coloring-book has a file of this name but it is the editor's, three times the size and built on a different model, so neither is the other's source. yard-master vendors this one `modified` |
 | `src/modules/panel-renderer.ts` | — | — | — | origin | Not vendored: the panel dispatcher, its scroll and `<details>` restore, and the shared ticker. yard-master vendors it `modified` |

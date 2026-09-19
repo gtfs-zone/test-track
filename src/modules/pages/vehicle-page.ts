@@ -3,12 +3,12 @@
  * is predicted to do.
  */
 
-import type { VehiclePosition } from '../../map-controller';
+import type { VehiclePosition } from 'interlocking/gtfs/rt-types';
 import type { GTFSScheduled } from 'interlocking/gtfs/scheduled';
 import type { PageState } from '../../types/page-state';
-import { alertsForTrip } from '../alerts';
-import type { RtIndex } from '../rt-index';
-import type { RenderContext } from '../render-utils';
+import { alertsForTrip } from 'interlocking/gtfs/alerts';
+import type { RtIndex } from 'interlocking/gtfs/rt-index';
+import type { RenderContext } from '../render-context';
 import {
   OCCUPANCY_LABELS,
   TRIP_SCHEDULE_RELATIONSHIP_LABELS,
@@ -28,7 +28,7 @@ import {
   timestampWithAge,
   tripRelationshipMark,
   vehicleDisplayName,
-} from '../render-utils';
+} from 'interlocking/gtfs/entity-render';
 import { localClock, zoneLabel } from 'interlocking/gtfs/feed-time';
 import { renderAlertList } from './alert-page';
 

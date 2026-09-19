@@ -1,6 +1,7 @@
 import maplibregl from 'maplibre-gl';
 import { CONFIG } from './config';
 import type { GTFSScheduled } from 'interlocking/gtfs/scheduled';
+import type { VehiclePosition } from 'interlocking/gtfs/rt-types';
 import type { PageState } from './types/page-state';
 import { BasemapControl, initialMapStyle } from 'interlocking/map/basemap-control';
 import type { MapAppearance } from 'interlocking/map/basemap-control';
@@ -8,50 +9,6 @@ import { AutoZoom } from 'interlocking/map/auto-zoom';
 import { LayerManager } from './modules/layer-manager';
 import type { MapDataIssues } from './modules/layer-manager';
 
-export interface VehiclePosition {
-  /**
-   * test-track's own internal instance handle: the map feature id, the key in
-   * `FeedSession.vehicles`, and the `vehicle_id` URL param. Derived to be unique
-   * per vehicle even when the feed's `vehicle.id` is not (Plan 06 Root cause D).
-   * When the feed's ids are already unique, `key === vehicleId`.
-   */
-  key: string;
-  /**
-   * The feed's `vehicle.id`, **verbatim** — duplicated, empty, whatever the feed
-   * said. This is reportage, never plumbing: it is what the vehicle page shows
-   * and dumps, and never synthesized.
-   */
-  vehicleId: string;
-  entityId: string;
-  label?: string;
-  lat: number;
-  lon: number;
-  bearing?: number;
-  /** Metres per second, as the spec defines it. */
-  speed?: number;
-  tripId?: string;
-  routeId?: string;
-  directionId?: string;
-  startDate?: string;
-  startTime?: string;
-  /** TripDescriptor.schedule_relationship, or undefined when the producer omitted it. */
-  scheduleRelationship?: number;
-  /**
-   * The GTFS `stop_sequence` value of the stop the vehicle is working on — not
-   * an index into the trip's stop list. Absent in many feeds, which is why the
-   * route strip has an "unplaced vehicles" section.
-   */
-  currentStopSequence?: number;
-  /** `stop_id` of the same stop, when the feed reports it. */
-  stopId?: string;
-  /** VehicleStopStatus: 0 INCOMING_AT, 1 STOPPED_AT, 2 IN_TRANSIT_TO. */
-  currentStatus?: number;
-  occupancyStatus?: number;
-  /** Seconds since epoch, per the spec. Stale values are worth surfacing. */
-  timestamp?: number;
-  /** The decoded entity, kept verbatim for the vehicle page's raw dump. */
-  raw: unknown;
-}
 
 interface MapView {
   center: [number, number];
