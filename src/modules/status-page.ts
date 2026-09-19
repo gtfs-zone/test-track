@@ -8,12 +8,12 @@ import {
   TRIP_SCHEDULE_RELATIONSHIP_LABELS,
   STOP_TIME_SCHEDULE_RELATIONSHIP_LABELS,
 } from './render-utils';
-import { localClock } from './feed-time';
+import { localClock } from 'interlocking/gtfs/feed-time';
 import { isReproducible } from './feed-url';
 import { isLocalUrl, resolveRealtimeUrl } from 'interlocking/gtfs/feed-url-resolve';
 import { CONFIG } from '../config';
 import { notify } from 'interlocking/ui/notification-system';
-import { renderIssueCard } from '../utils/issue-card';
+import { renderIssueCard } from 'interlocking/ui/issue-card';
 
 /**
  * The right panel's "nothing focused" content: what is loaded, how much of it,

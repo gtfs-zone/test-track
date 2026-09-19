@@ -10,7 +10,7 @@
 
 import type { TripUpdate } from '../gtfs-rt';
 import { presentNumber } from '../gtfs-rt';
-import type { GTFSScheduled } from '../gtfs-scheduled';
+import type { GTFSScheduled } from 'interlocking/gtfs/scheduled';
 import type { VehiclePosition } from '../map-controller';
 import type { FeedSession } from './feed-session';
 

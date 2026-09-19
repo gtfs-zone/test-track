@@ -1,6 +1,6 @@
 import maplibregl from 'maplibre-gl';
 import { CONFIG } from './config';
-import type { GTFSScheduled } from './gtfs-scheduled';
+import type { GTFSScheduled } from 'interlocking/gtfs/scheduled';
 import type { PageState } from './types/page-state';
 import { BasemapControl, initialMapStyle } from 'interlocking/map/basemap-control';
 import type { MapAppearance } from 'interlocking/map/basemap-control';

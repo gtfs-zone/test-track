@@ -4,7 +4,7 @@
  */
 
 import type { VehiclePosition } from '../../map-controller';
-import type { GTFSScheduled } from '../../gtfs-scheduled';
+import type { GTFSScheduled } from 'interlocking/gtfs/scheduled';
 import type { PageState } from '../../types/page-state';
 import { alertsForTrip } from '../alerts';
 import type { RtIndex } from '../rt-index';
@@ -29,7 +29,7 @@ import {
   tripRelationshipMark,
   vehicleDisplayName,
 } from '../render-utils';
-import { localClock, zoneLabel } from '../feed-time';
+import { localClock, zoneLabel } from 'interlocking/gtfs/feed-time';
 import { renderAlertList } from './alert-page';
 
 /**

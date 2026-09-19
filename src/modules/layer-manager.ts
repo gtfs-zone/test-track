@@ -35,7 +35,7 @@ import type {
   Map as MapLibreMap,
 } from 'maplibre-gl';
 import { CONFIG } from '../config';
-import type { GTFSScheduled } from '../gtfs-scheduled';
+import type { GTFSScheduled } from 'interlocking/gtfs/scheduled';
 import type { VehiclePosition } from '../map-controller';
 import { routeSortKey } from 'interlocking/gtfs/route-sort';
 import { casingColor } from 'interlocking/gtfs/route-colors';

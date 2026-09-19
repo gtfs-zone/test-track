@@ -11,11 +11,11 @@
  */
 
 import type { AlertRecord } from '../../gtfs-rt';
-import type { Stop } from '../../gtfs-scheduled';
+import type { Stop } from 'interlocking/gtfs/scheduled';
 import type { PageState } from '../../types/page-state';
 import { alertsForStop } from '../alerts';
 import { stopTypeLabel } from 'interlocking/ui/breadcrumb-trail';
-import { zoneLabel } from '../feed-time';
+import { zoneLabel } from 'interlocking/gtfs/feed-time';
 import type { RtIndex } from '../rt-index';
 import type { RenderContext } from '../render-utils';
 import {

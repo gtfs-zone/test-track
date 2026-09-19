@@ -1,9 +1,9 @@
 import { CONFIG } from '../config';
-import { GTFSScheduled } from '../gtfs-scheduled';
+import { GTFSScheduled } from 'interlocking/gtfs/scheduled';
 import { GTFSRealtime } from '../gtfs-rt';
 import type { AlertRecord, FeedStatus, FetchStartDetail, TripUpdate } from '../gtfs-rt';
 import type { VehiclePosition } from '../map-controller';
-import { adoptFeedTimezone } from './feed-time';
+import { adoptFeedTimezone } from 'interlocking/gtfs/feed-time';
 import { feedProgressIndicator } from 'interlocking/ui/progress-indicator';
 import { downloadPercent, formatBytes, LoadCancelledError } from 'interlocking/gtfs/feed-download';
 import type { FeedSelection, RealtimeEndpointName, ScheduledSource } from 'interlocking/gtfs/feed-selection';

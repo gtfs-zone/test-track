@@ -17,9 +17,11 @@ git config core.hooksPath .githooks   # once per clone; runs vendor:check pre-co
 
 ## Shared modules (`interlocking`)
 
-A third of `src/` is no longer in this repo. The 35 files that were identical in
-all three apps live in the `interlocking` package, a git dependency shipping raw
-TypeScript with no build step. Import them as `interlocking/ui/...`,
+A third of `src/` is no longer in this repo. The 44 files that have moved out
+of the apps live in the `interlocking` package, a git dependency shipping raw
+TypeScript with no build step. The scheduled feed parser is one of them, as
+`interlocking/gtfs/scheduled`, along with the feed clock, the load modal and
+the curated examples. Import them as `interlocking/ui/...`,
 `interlocking/gtfs/...`, `interlocking/map/...` and `interlocking/util/...`;
 `tsconfig.json` `paths` and a `resolve.alias` in `vite.config.js` both point at
 `node_modules/interlocking/src`.

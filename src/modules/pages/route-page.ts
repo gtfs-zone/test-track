@@ -12,12 +12,12 @@
  */
 
 import type { AlertRecord } from '../../gtfs-rt';
-import type { Route } from '../../gtfs-scheduled';
+import type { Route } from 'interlocking/gtfs/scheduled';
 import type { VehiclePosition } from '../../map-controller';
 import type { PageState } from '../../types/page-state';
 import { alertsForRoute, alertsForRouteStop, feedWideAlerts } from '../alerts';
 import { renderTriangleIcon, renderWarningIcon } from 'interlocking/ui/modal-utils';
-import { GTFSScheduledRouteSource } from '../gtfs-scheduled-route-source';
+import { GTFSScheduledRouteSource } from 'interlocking/gtfs/scheduled-route-source';
 import { routeGraph } from 'interlocking/gtfs/route-graph';
 import type { RtIndex, VehicleStopSequence } from '../rt-index';
 import type { Prediction } from '../rt-index';

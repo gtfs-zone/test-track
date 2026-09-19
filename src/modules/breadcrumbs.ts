@@ -1,7 +1,7 @@
 import type { PageState } from '../types/page-state';
 import type { BreadcrumbItem } from 'interlocking/ui/breadcrumb-trail';
 import { stopTypeLabel } from 'interlocking/ui/breadcrumb-trail';
-import { EXAMPLES } from './examples';
+import { EXAMPLES } from 'interlocking/gtfs/examples';
 import type { FeedSelection } from 'interlocking/gtfs/feed-selection';
 import { describeSelection } from 'interlocking/gtfs/feed-selection';
 import type { FeedSession } from './feed-session';

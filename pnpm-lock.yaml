@@ -21,8 +21,8 @@ importers:
         specifier: ^1.1.1
         version: 1.1.1
       interlocking:
-        specifier: git+https://git.kcfam.us/gtfs.zone/interlocking.git#v2.0.0
-        version: git+https://git.kcfam.us/gtfs.zone/interlocking.git#e05aef4d24b684bec55239f4cf10ab64e35d746d(@leeoniya/ufuzzy@1.0.19)(maplibre-gl@5.23.0)
+        specifier: git+https://git.kcfam.us/gtfs.zone/interlocking.git#v2.1.0
+        version: git+https://git.kcfam.us/gtfs.zone/interlocking.git#b6441a0098e6b40d9840367aa29aa136bc4f959a(@leeoniya/ufuzzy@1.0.19)(jszip@3.10.1)(maplibre-gl@5.23.0)(papaparse@5.5.3)
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
@@ -926,12 +926,14 @@ packages:
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
 
-  interlocking@git+https://git.kcfam.us/gtfs.zone/interlocking.git#e05aef4d24b684bec55239f4cf10ab64e35d746d:
-    resolution: {commit: e05aef4d24b684bec55239f4cf10ab64e35d746d, repo: https://git.kcfam.us/gtfs.zone/interlocking.git, type: git}
-    version: 2.0.0
+  interlocking@git+https://git.kcfam.us/gtfs.zone/interlocking.git#b6441a0098e6b40d9840367aa29aa136bc4f959a:
+    resolution: {commit: b6441a0098e6b40d9840367aa29aa136bc4f959a, repo: https://git.kcfam.us/gtfs.zone/interlocking.git, type: git}
+    version: 2.1.0
     peerDependencies:
       '@leeoniya/ufuzzy': '*'
+      jszip: '*'
       maplibre-gl: '*'
+      papaparse: '*'
 
   isarray@1.0.0:
     resolution: {integrity: sha512-VLghIWNM6ELQzo7zwmcg0NmTVyWKYjvIeM83yjp0wRDTmUnrM678fQbcKBo6n2CJEF0szoG//ytg+TKla89ALQ==}
@@ -1958,10 +1960,12 @@ snapshots:
 
   inherits@2.0.4: {}
 
-  interlocking@git+https://git.kcfam.us/gtfs.zone/interlocking.git#e05aef4d24b684bec55239f4cf10ab64e35d746d(@leeoniya/ufuzzy@1.0.19)(maplibre-gl@5.23.0):
+  interlocking@git+https://git.kcfam.us/gtfs.zone/interlocking.git#b6441a0098e6b40d9840367aa29aa136bc4f959a(@leeoniya/ufuzzy@1.0.19)(jszip@3.10.1)(maplibre-gl@5.23.0)(papaparse@5.5.3):
     dependencies:
       '@leeoniya/ufuzzy': 1.0.19
+      jszip: 3.10.1
       maplibre-gl: 5.23.0
+      papaparse: 5.5.3
 
   isarray@1.0.0: {}
 
