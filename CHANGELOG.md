@@ -1,3 +1,14 @@
+## v0.12.0 (2026-09-21)
+
+### Feat
+
+- stack every route direction instead of tabbing between them
+
+### Refactor
+
+- read the realtime half from interlocking
+- move seven modules into interlocking v2.1.0
+
 ## v0.11.1 (2026-09-16)
 
 ### Fix
