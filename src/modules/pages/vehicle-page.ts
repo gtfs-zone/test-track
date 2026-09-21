@@ -114,7 +114,7 @@ function renderTripSection(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosi
         'Route',
         entityLink(
           ctx,
-          { type: 'route', route_id: trip.route_id, direction_id: trip.direction_id || undefined },
+          { type: 'route', route_id: trip.route_id },
           feed?.routes.get(trip.route_id)?.short_name || trip.route_id,
         ),
       )

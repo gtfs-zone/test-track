@@ -5,8 +5,6 @@
    - Page types reduced to test-track's four object pages plus home: dropped
      `agency`, `service`, and `pathway`. Upstream's `timetable` page became a
      modal in `1c16f14` and was never here.
-   - `route` gained an optional `direction_id` (absorbed from `timetable`), so the
-     route strip's direction tab is linkable.
    - Added `vehicle` and `alert`, which have no coloring-book equivalent.
    - `StateValidator` is synchronous, ours resolves against in-memory maps, not a
      database.
@@ -43,7 +41,7 @@
  */
 export type PageLocation =
   | { type: 'home' }
-  | { type: 'route'; route_id: string; direction_id?: string }
+  | { type: 'route'; route_id: string }
   | { type: 'stop'; stop_id: string }
   | { type: 'vehicle'; vehicle_id: string }
   | { type: 'alert'; alert_id: string };
@@ -104,13 +102,8 @@ export function isPageState(value: unknown): value is PageState {
       return Object.keys(state).length === 1;
 
     case 'route': {
-      const s = state as { route_id?: string; direction_id?: string };
-      const keys = Object.keys(state).length;
-      return (
-        typeof s.route_id === 'string' &&
-        (s.direction_id === undefined || typeof s.direction_id === 'string') &&
-        (keys === 2 || keys === 3)
-      );
+      const s = state as { route_id?: string };
+      return Object.keys(state).length === 2 && typeof s.route_id === 'string';
     }
 
     case 'stop': {

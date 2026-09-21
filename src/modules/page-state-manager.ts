@@ -205,7 +205,6 @@ export class PageStateManager {
         break;
       case 'route':
         params.set('route', pageState.route_id);
-        if (pageState.direction_id) params.set('dir', pageState.direction_id);
         break;
       case 'stop':
         params.set('stop', pageState.stop_id);
@@ -247,14 +246,7 @@ export class PageStateManager {
     if (params.has('vehicle'))
       return withModal({ type: 'vehicle', vehicle_id: params.get('vehicle')! });
     if (params.has('alert')) return withModal({ type: 'alert', alert_id: params.get('alert')! });
-    if (params.has('route')) {
-      const dir = params.get('dir') ?? undefined;
-      return withModal({
-        type: 'route',
-        route_id: params.get('route')!,
-        ...(dir !== undefined && { direction_id: dir }),
-      });
-    }
+    if (params.has('route')) return withModal({ type: 'route', route_id: params.get('route')! });
     return withModal({ type: 'home' });
   }
 
