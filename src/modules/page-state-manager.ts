@@ -1,5 +1,5 @@
 /* @vendored-from coloring-book:src/modules/page-state-manager.ts
-   @sha 59ed6d0
+   @sha 1ce064d
    @status modified
    @changes
    - Reduced to test-track's five page variants; all `agency` / `service` /
@@ -33,7 +33,12 @@
      fallback. `clearModal` is async so the class satisfies `modal-router.ts`'s
      `ModalHost` unchanged, even though `setPageState` here is synchronous.
      The modal params are namespaced, so they cannot collide with the feed
-     params `setFeedParams` merges into the same hash. */
+     params `setFeedParams` merges into the same hash.
+   - Skipped `268411a`'s `flushInlineEdits()` await at the top of `setPageState`.
+     test-track renders a feed it never writes, so there is no inline editor to
+     flush and no `utils/inline-edit` to import.
+   - Skipped `f6506b7`'s `followRename`. Renaming an ID is an editor action; a
+     read-only viewer has no patch stream to follow one from. */
 
 import type {
   BreadcrumbItem,
