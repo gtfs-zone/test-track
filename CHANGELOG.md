@@ -232,4 +232,4 @@
 ### Fix
 
 - fix opacity
-- update copier src path to absolute
+- update template src path to absolute
