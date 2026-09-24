@@ -8,14 +8,9 @@
    - Added `vehicle` and `alert`, which have no coloring-book equivalent.
    - `StateValidator` is synchronous, ours resolves against in-memory maps, not a
      database.
-   - `BreadcrumbItem` moved upstream into `breadcrumb-trail.ts` when it gained a
-     `typeLabel`; re-exported here so import sites are unchanged.
-   - `pageStatesEqual`, used by `AppState.setFocus` to drop a navigation to the
-     page already open. Upstream guards that inside `setPageState` instead. It
-     compares the location and the modal separately rather than stringifying the
-     whole state, so a modal added to a state does not depend on key order.
-   - `sameLocation`, the location half of that comparison on its own: it is what
-     tells a modal-only navigation from a page change.
+   - `BreadcrumbItem`, `NavigationEvent`, `PageStateManagerConfig`,
+     `StateValidator`, `pageStatesEqual` and `sameLocation` are generic over the
+     union and live in `interlocking`'s `ui/page-state-manager.ts`.
    - Skipped `136329b`: the `zone` and `location_group` variants and their
      `isPageState` cases are GTFS Flex pages test-track has no data for.
    - `1c16f14`'s modal dimension is taken as of Phase 12, with this repo's own
@@ -70,9 +65,6 @@ export type PageState = WithModal<PageLocation>;
 
 export type PageStateType = PageLocation['type'];
 
-/** Re-export, so the crumb shape and the page states stay one import apart. */
-export type { BreadcrumbItem } from 'interlocking/ui/breadcrumb-trail';
-
 /** Type guard for a valid ModalState. */
 export function isModalState(value: unknown): value is ModalState {
   if (!value || typeof value !== 'object') return false;
@@ -125,39 +117,3 @@ export function isPageState(value: unknown): value is PageState {
       return false;
   }
 }
-
-/** Two states name the same page when the modal above them is ignored. */
-export function sameLocation(a: PageState, b: PageState): boolean {
-  const { modal: _aModal, ...aLocation } = a;
-  const { modal: _bModal, ...bLocation } = b;
-  return JSON.stringify(aLocation) === JSON.stringify(bLocation);
-}
-
-/** Two states are equal when they name the same object with the same options. */
-export function pageStatesEqual(a: PageState, b: PageState): boolean {
-  return (
-    sameLocation(a, b) &&
-    JSON.stringify(a.modal ?? null) === JSON.stringify(b.modal ?? null)
-  );
-}
-
-/** Navigation event emitted on every focus change. */
-export type NavigationEvent = {
-  from: PageState;
-  to: PageState;
-  timestamp: number;
-};
-
-export type PageStateManagerConfig = {
-  enableHistory: boolean;
-  maxHistoryLength: number;
-  enableUrlSync: boolean;
-};
-
-/**
- * Checks whether a page state refers to an object that exists in the currently
- * loaded feed. Returns false and the caller falls back to home.
- *
- * Synchronous, unlike coloring-book's: our model is a set of in-memory maps.
- */
-export type StateValidator = (state: PageState) => boolean;

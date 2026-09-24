@@ -1,3 +1,5 @@
+// Mounts the shell markup; must stay the first import.
+import './shell';
 import { CONFIG } from './config';
 import {
   renderAutoZoomControl,

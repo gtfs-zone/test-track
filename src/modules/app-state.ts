@@ -1,22 +1,24 @@
 /**
- * The single entry point for focus changes.
+ * Focus changes and feed selection.
  *
- * Map click, panel link, hash change and boot restore all converge here, and
- * everything downstream — the panel, the map, the bottom sheet, the address bar
- * — reacts to this module rather than to each other. In particular, only
- * `PageStateManager` ever writes the hash, which is what keeps its
- * `suppressHashUpdate` guard honest.
+ * The focus half is `interlocking`'s `FocusController`: map click, panel link,
+ * hash change and boot restore all converge on it. What this adds is the feed
+ * half of the hash, and the boot sequence that reads a link before its feed
+ * has loaded.
  */
 
 import type { FeedSelection } from 'interlocking/gtfs/feed-selection';
-import type { ModalState, PageState } from '../types/page-state';
-import { pageStatesEqual, sameLocation } from '../types/page-state';
+import type { BreadcrumbItem } from 'interlocking/ui/breadcrumb-trail';
+import type { FocusHooks } from 'interlocking/ui/focus-controller';
+import { FocusController } from 'interlocking/ui/focus-controller';
+import { homeWithModal } from 'interlocking/ui/page-state-manager';
+import type { PageState } from '../types/page-state';
 import { buildBreadcrumbs, validateState } from './breadcrumbs';
 import type { FeedSession } from './feed-session';
 import { describeMissing, isComplete } from 'interlocking/gtfs/feed-selection';
 import { paramsToSelection, selectionToParams } from './feed-url';
 import { notify } from 'interlocking/ui/notification-system';
-import { PageStateManager } from './page-state-manager';
+import { createPageStateManager } from './page-state-manager';
 
 /** What the hash named at boot, read once before anything loads. */
 export interface BootRequest {
@@ -29,33 +31,17 @@ export interface BootRequest {
   pending: PageState;
 }
 
-export interface AppStateHooks {
-  /**
-   * Called when the page underneath the modal changes, including the boot
-   * restore. Opening or closing a modal leaves the page alone, so this does
-   * not fire for one.
-   */
-  onFocusChange: (state: PageState) => void;
-  /**
-   * Called on every navigation, modal-only ones included. The modal router
-   * reads the whole state from here, which is what keeps the hash and the open
-   * modal reconciled however the modal was closed.
-   */
-  onStateChange: (state: PageState) => void;
-}
+export type AppStateHooks = FocusHooks<PageState>;
 
-export class AppState {
-  readonly pages = new PageStateManager({ enableUrlSync: true });
+export class AppState extends FocusController<PageState, BreadcrumbItem<PageState>> {
   private session: FeedSession;
-  private hooks: AppStateHooks;
 
   constructor(session: FeedSession, hooks: AppStateHooks) {
+    super(createPageStateManager(), hooks);
     this.session = session;
-    this.hooks = hooks;
 
     this.pages.setBreadcrumbBuilder(state => buildBreadcrumbs(session, state));
     this.pages.setStateValidator(state => validateState(session, state));
-    this.pages.addNavigationHandler(event => this.emit(event.to, event.from));
 
     // The selection is half of the hash, so any change to it — a modal load, an
     // inline URL edit on the status page — has to be reflected there too.
@@ -72,44 +58,6 @@ export class AppState {
         this.clearFocus();
       }
     });
-  }
-
-  get focus(): PageState {
-    return this.pages.getPageState();
-  }
-
-  get breadcrumbs() {
-    return this.pages.getBreadcrumbs();
-  }
-
-  /**
-   * Fan a state out to the hooks. The focus hook is skipped when only the modal
-   * moved, so opening the guide over a stop page does not re-render the panel
-   * or move the camera. `from` is omitted at boot, where there is no previous
-   * state and both hooks have to run.
-   */
-  private emit(to: PageState, from?: PageState): void {
-    if (!from || !sameLocation(from, to)) this.hooks.onFocusChange(to);
-    this.hooks.onStateChange(to);
-  }
-
-  /**
-   * Navigate. The state replaces the current one whole, so a focus change with
-   * no `modal` field closes whatever modal was open — which is what an alert
-   * row inside the alerts modal wants.
-   */
-  setFocus(state: PageState): void {
-    if (pageStatesEqual(state, this.focus)) return;
-    this.pages.setPageState(state);
-  }
-
-  clearFocus(): void {
-    this.setFocus({ type: 'home' });
-  }
-
-  /** Open a modal over the current page, leaving that page where it is. */
-  openModal(modal: ModalState): void {
-    this.setFocus({ ...this.focus, modal });
   }
 
   /**
@@ -150,7 +98,7 @@ export class AppState {
 
   /** Paint the empty app when boot loaded nothing. */
   bootEmpty(): void {
-    this.emit(this.focus);
+    this.repaint();
   }
 
   /**
@@ -162,26 +110,9 @@ export class AppState {
     if (pending.type !== 'home' && !validateState(this.session, pending)) {
       notify.warning(`Nothing in this feed matches the linked ${pending.type}.`);
       // The modal outlives the page it was linked over: it names no object.
-      this.pages.adoptState({ type: 'home', ...(pending.modal && { modal: pending.modal }) });
+      this.adopt(homeWithModal(pending));
     } else {
-      this.pages.adoptState(pending);
+      this.adopt(pending);
     }
-    this.emit(this.focus);
-  }
-
-  /**
-   * The hash a link to `state` should carry. Object pages render real `<a>`
-   * elements so middle-click and copy-link-address behave, even though the
-   * click itself is intercepted and handled in place.
-   */
-  hrefFor(state: PageState): string {
-    const hash = this.pages.buildHash(state);
-    return hash ? `#${hash}` : '#';
-  }
-
-  /** The full shareable URL for the current session. */
-  shareableUrl(): string {
-    const hash = this.pages.buildHash(this.focus);
-    return `${window.location.origin}${window.location.pathname}${hash ? `#${hash}` : ''}`;
   }
 }

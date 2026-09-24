@@ -1,17 +1,16 @@
 /**
- * The right panel's object pages: one dispatcher over `PageState`, plus the
- * furniture every page shares.
+ * The right panel's object pages: one dispatcher over `PageState`.
  *
- * The panel re-renders on every realtime poll, which is every 15 seconds. A
- * naive `innerHTML =` would bounce the reader to the top of a 60-stop route
- * strip and slam shut every raw-column table they had opened, so scroll
- * position is captured and restored around each render and open `<details>` are
- * tracked by key in a set that outlives the DOM.
+ * The host, meaning the breadcrumb header, the `data-nav` links, and the scroll
+ * and `<details>` restore around each re-render, is `interlocking`'s
+ * `PanelHost`. The panel re-renders on every realtime poll, which is every 15
+ * seconds; what this adds is that trigger, the realtime index the pages read,
+ * the live relative times, and the route-strip hover.
  */
 
 import type { PageState } from '../types/page-state';
 import type { BreadcrumbItem } from 'interlocking/ui/breadcrumb-trail';
-import { renderBreadcrumbTrail } from 'interlocking/ui/breadcrumb-trail';
+import { PanelHost } from 'interlocking/ui/panel-host';
 import type { FeedSession } from './feed-session';
 import { RtIndex } from 'interlocking/gtfs/rt-index';
 import type { RenderContext } from './render-context';
@@ -34,63 +33,58 @@ export class PanelRenderer {
   private host: HTMLElement;
   private session: FeedSession;
   private hooks: PanelRendererHooks;
+  private panel: PanelHost<PageState>;
 
-  private state: PageState = { type: 'home' };
-  private breadcrumbs: BreadcrumbItem<PageState>[] = [];
-  private active = false;
   private hoveredStopId: string | null = null;
 
   /** Invalidated on every payload event; rebuilt lazily on the next render. */
   private index: RtIndex | null = null;
-  private openDetails = new Set<string>();
-  private tickerId: ReturnType<typeof setInterval> | null = null;
-  private renderQueued = false;
 
   constructor(host: HTMLElement, session: FeedSession, hooks: PanelRendererHooks) {
     this.host = host;
     this.session = session;
     this.hooks = hooks;
+    this.panel = new PanelHost<PageState>(host, {
+      navigate: hooks.navigate,
+      href: hooks.href,
+      renderPage: state => this.renderPage(state),
+      tick: el => {
+        el.querySelectorAll<HTMLElement>('[data-since]').forEach(since => {
+          since.textContent = formatRelative(Number(since.dataset.since));
+        });
+      },
+    });
   }
 
   initialize(): void {
     for (const event of ['vehicles', 'tripUpdates', 'alerts'] as const) {
       this.session.addEventListener(event, () => {
         this.index = null;
-        this.queueRender();
+        this.panel.queueRender();
       });
     }
 
-    // Delegated so the handlers survive every re-render.
-    this.host.addEventListener('click', e => this.onClick(e));
-    this.host.addEventListener('toggle', e => this.onToggle(e), true);
+    this.panel.initialize();
     // pointerover/out bubble, unlike pointerenter/leave, so they can be
-    // delegated to the panel host the same way.
+    // delegated to the panel host and survive every re-render.
     this.host.addEventListener('pointerover', e => this.onPointerOver(e));
     this.host.addEventListener('pointerout', e => this.onPointerOut(e));
-
-    this.tickerId = setInterval(() => this.tick(), 1000);
   }
 
   destroy(): void {
-    if (this.tickerId !== null) clearInterval(this.tickerId);
-    this.tickerId = null;
+    this.panel.destroy();
   }
 
   /** Take over the panel and render `state`. */
   show(state: PageState, breadcrumbs: BreadcrumbItem<PageState>[]): void {
     this.clearHoveredStop();
-    this.state = state;
-    this.breadcrumbs = breadcrumbs;
-    this.active = true;
-    // A different object is a different page: start it at the top rather than
-    // inheriting the previous page's scroll offset.
-    this.render(true);
+    this.panel.show(state, breadcrumbs);
   }
 
   /** Hand the panel back to the status page. */
   hide(): void {
     this.clearHoveredStop();
-    this.active = false;
+    this.panel.hide();
   }
 
   /**
@@ -101,16 +95,6 @@ export class PanelRenderer {
     if (this.hoveredStopId === null) return;
     this.hoveredStopId = null;
     this.hooks.hoverStop(null);
-  }
-
-  private onClick(e: Event): void {
-    const target = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-nav]');
-    if (!target) return;
-    // Let modified clicks do what the browser would do with a normal link.
-    const mouse = e as MouseEvent;
-    if (mouse.metaKey || mouse.ctrlKey || mouse.shiftKey || mouse.button !== 0) return;
-    e.preventDefault();
-    this.hooks.navigate(JSON.parse(target.dataset.nav!) as PageState);
   }
 
   /** The stop_id of the strip row an event happened inside, if any. */
@@ -137,50 +121,6 @@ export class PanelRenderer {
     this.hooks.hoverStop(null);
   }
 
-  private onToggle(e: Event): void {
-    const el = e.target as HTMLDetailsElement;
-    const key = el.dataset?.detail;
-    if (!key) return;
-    if (el.open) this.openDetails.add(key);
-    else this.openDetails.delete(key);
-  }
-
-  private queueRender(): void {
-    if (!this.active || this.renderQueued) return;
-    this.renderQueued = true;
-    queueMicrotask(() => {
-      this.renderQueued = false;
-      this.render(false);
-    });
-  }
-
-  private tick(): void {
-    if (!this.active) return;
-    this.host.querySelectorAll<HTMLElement>('[data-since]').forEach(el => {
-      el.textContent = formatRelative(Number(el.dataset.since));
-    });
-  }
-
-  private render(resetScroll: boolean): void {
-    if (!this.active) return;
-
-    const scroll = this.host.scrollTop;
-    const ctx: RenderContext = { session: this.session, href: this.hooks.href };
-
-    this.host.innerHTML = `
-      <div class="space-y-4">
-        ${renderBreadcrumbTrail(this.breadcrumbs, this.hooks.href)}
-        ${this.renderPage(ctx)}
-      </div>`;
-
-    // Re-open whatever the reader had opened, then put them back where they
-    // were — in that order, since opening a table changes the scroll height.
-    this.host.querySelectorAll<HTMLDetailsElement>('[data-detail]').forEach(el => {
-      if (this.openDetails.has(el.dataset.detail!)) el.open = true;
-    });
-    this.host.scrollTop = resetScroll ? 0 : scroll;
-  }
-
   /**
    * The realtime read-model for the current payloads, built on demand.
    *
@@ -191,19 +131,20 @@ export class PanelRenderer {
     return (this.index ??= new RtIndex(this.session));
   }
 
-  private renderPage(ctx: RenderContext): string {
+  private renderPage(state: PageState): string {
+    const ctx: RenderContext = { session: this.session, href: this.hooks.href };
     const index = this.rtIndex;
-    switch (this.state.type) {
+    switch (state.type) {
       case 'home':
         return '';
       case 'route':
-        return renderRoutePage(ctx, index, this.state);
+        return renderRoutePage(ctx, index, state);
       case 'stop':
-        return renderStopPage(ctx, index, this.state);
+        return renderStopPage(ctx, index, state);
       case 'vehicle':
-        return renderVehiclePage(ctx, index, this.state);
+        return renderVehiclePage(ctx, index, state);
       case 'alert':
-        return renderAlertPage(ctx, this.state);
+        return renderAlertPage(ctx, state);
     }
   }
 }
