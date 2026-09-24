@@ -1,3 +1,17 @@
+## v0.13.0 (2026-09-24)
+
+### Feat
+
+- read the feed catalog and examples from data.gtfs.zone
+
+### Fix
+
+- **map**: make the focused-vehicle halo a top-level zoom interpolate
+
+### Refactor
+
+- build the shell on interlocking's shared modules
+
 ## v0.12.0 (2026-09-21)
 
 ### Feat
