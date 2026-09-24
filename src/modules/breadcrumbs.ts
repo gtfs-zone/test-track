@@ -1,7 +1,7 @@
 import type { PageState } from '../types/page-state';
 import type { BreadcrumbItem } from 'interlocking/ui/breadcrumb-trail';
 import { stopTypeLabel } from 'interlocking/ui/breadcrumb-trail';
-import { EXAMPLES } from 'interlocking/gtfs/examples';
+import { knownExamples } from 'interlocking/gtfs/examples';
 import type { FeedSelection } from 'interlocking/gtfs/feed-selection';
 import { describeSelection } from 'interlocking/gtfs/feed-selection';
 import type { FeedSession } from './feed-session';
@@ -27,7 +27,7 @@ function truncate(text: string, max = 40): string {
 function exampleName(selection: FeedSelection | null): string | null {
   const scheduled = selection?.scheduled;
   if (scheduled?.kind !== 'url') return null;
-  const match = EXAMPLES.find(
+  const match = knownExamples().find(
     example =>
       example.selection.scheduled?.kind === 'url' &&
       example.selection.scheduled.url === scheduled.url,
