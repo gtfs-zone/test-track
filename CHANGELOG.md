@@ -1,3 +1,9 @@
+## v0.14.0 (2026-09-25)
+
+### Feat
+
+- **pages**: show predictions as shared Sched, Pred and Delay cells
+
 ## v0.13.0 (2026-09-24)
 
 ### Feat
