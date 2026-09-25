@@ -15,18 +15,16 @@ import type { Stop } from 'interlocking/gtfs/scheduled';
 import type { PageState } from '../../types/page-state';
 import { alertsForStop } from 'interlocking/gtfs/alerts';
 import { stopTypeLabel } from 'interlocking/ui/breadcrumb-trail';
-import { zoneLabel } from 'interlocking/gtfs/feed-time';
 import type { RtIndex } from 'interlocking/gtfs/rt-index';
 import type { RenderContext } from '../render-context';
 import {
   VEHICLE_STATUS_LABELS,
   entityLink,
   escHtml,
-  formatDelay,
-  formatEpochTime,
-  formatScheduledTime,
   missing,
   pageHeader,
+  predictionCells,
+  predictionHeaders,
   prop,
   propList,
   renderRawFields,
@@ -126,9 +124,6 @@ function renderDepartures(
   const rows = upcoming.map(p => {
     const trip = feed.trips.get(p.trip_id);
     const route = trip ? feed.routes.get(trip.route_id) : undefined;
-    const scheduled = trip
-      ? feed.stopTimesByTrip.get(trip.trip_id)?.find(t => t.stop_id === p.stop_id)?.departure_time
-      : undefined;
 
     return `<tr>
       <td class="whitespace-nowrap">${
@@ -138,22 +133,14 @@ function renderDepartures(
       }</td>
       <td class="max-w-0 truncate">${escHtml(trip?.headsign || p.trip_id)}</td>
       ${isStation ? `<td class="whitespace-nowrap">${fromChild(ctx, p.stop_id)}</td>` : ''}
-      <td class="text-right whitespace-nowrap tabular-nums opacity-60">${escHtml(
-        formatScheduledTime(scheduled, false),
-      )}</td>
-      <td class="text-right whitespace-nowrap tabular-nums">${escHtml(
-        formatEpochTime(p.time, false),
-      )}</td>
-      <td class="text-right whitespace-nowrap">${formatDelay(p.delay)}</td>
+      ${predictionCells(p)}
     </tr>`;
   });
 
   const body = `<table class="table table-xs">
       <thead><tr>
         <th>Route</th><th>Headsign</th>${isStation ? '<th>Platform</th>' : ''}
-        <th class="text-right">Sched ${escHtml(zoneLabel())}</th>
-        <th class="text-right">Pred ${escHtml(zoneLabel())}</th>
-        <th class="text-right">Delay</th>
+        ${predictionHeaders()}
       </tr></thead>
       <tbody>${rows.join('')}</tbody>
     </table>`;

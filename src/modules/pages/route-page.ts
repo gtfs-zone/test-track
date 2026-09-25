@@ -37,11 +37,13 @@ import {
 } from 'interlocking/gtfs/route-strip';
 import type { RowDot } from 'interlocking/gtfs/route-strip';
 import type { RenderContext } from '../render-context';
+import { TOOLTIP_TRIGGER_CLASS, tooltipContentAttr } from 'interlocking/ui/field-label';
 import {
   OCCUPANCY_LABELS,
   ROUTE_TYPE_LABELS,
   TRIP_SCHEDULE_RELATIONSHIP_LABELS,
   VEHICLE_STATUS_LABELS,
+  derivedClass,
   entityLink,
   escHtml,
   formatDelay,
@@ -49,6 +51,8 @@ import {
   formatEpochTime,
   missing,
   pageHeader,
+  predictionTooltip,
+  primaryEvent,
   prop,
   propList,
   renderRawFields,
@@ -181,23 +185,33 @@ function stripRow(
   </div>`;
 }
 
-/** "2m" until a predicted time, or the clock time when it is further out. */
+/**
+ * "2m" until the predicted time, or the clock time when it is further out, and
+ * the delay. Calculated values are italic; the hover is the prediction row's.
+ */
 function eta(prediction: Prediction | undefined): string {
   if (!prediction) return '';
+  const ev = primaryEvent(prediction);
   const parts: string[] = [];
-  if (prediction.time !== undefined) {
-    const secs = prediction.time - Date.now() / 1000;
+  if (ev.time !== undefined) {
+    const secs = ev.time - Date.now() / 1000;
+    const cls = `tabular-nums${derivedClass(ev.timeFrom)}`;
     parts.push(
       secs < 0
-        ? `<span class="opacity-60">${escHtml(formatDuration(secs))} ago</span>`
+        ? `<span class="${cls} opacity-60">${escHtml(formatDuration(secs))} ago</span>`
         : secs < 3600
-          ? `<span class="tabular-nums">${escHtml(formatDuration(secs))}</span>`
-          : `<span class="tabular-nums">${escHtml(formatEpochTime(prediction.time))}</span>`,
+          ? `<span class="${cls}">${escHtml(formatDuration(secs))}</span>`
+          : `<span class="${cls}">${escHtml(formatEpochTime(ev.time))}</span>`,
     );
   }
-  const delay = formatDelay(prediction.delay);
-  if (delay) parts.push(delay);
-  return parts.length ? `<span class="text-xs flex gap-2 shrink-0">${parts.join('')}</span>` : '';
+  if (ev.delay !== undefined) {
+    parts.push(`<span class="${derivedClass(ev.delayFrom).trim()}">${formatDelay(ev.delay)}</span>`);
+  }
+  return parts.length
+    ? `<span class="text-xs flex gap-2 shrink-0 ${TOOLTIP_TRIGGER_CLASS}" tabindex="0" ${tooltipContentAttr(
+        predictionTooltip(prediction),
+      )}>${parts.join('')}</span>`
+    : '';
 }
 
 function vehicleChip(

@@ -15,21 +15,20 @@ import {
   VEHICLE_STATUS_LABELS,
   entityLink,
   escHtml,
-  formatDelay,
-  formatEpochTime,
   pageHeader,
+  predictionCells,
+  predictionHeaders,
   prop,
   propList,
   renderRawJson,
   routeBadge,
   section,
   stopSequenceMark,
-  stopTimeRelationshipMark,
   timestampWithAge,
   tripRelationshipMark,
   vehicleDisplayName,
 } from 'interlocking/gtfs/entity-render';
-import { localClock, zoneLabel } from 'interlocking/gtfs/feed-time';
+import { localClock } from 'interlocking/gtfs/feed-time';
 import { renderAlertList } from './alert-page';
 
 /**
@@ -166,25 +165,20 @@ function renderPredictions(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosi
   }
   const feed = ctx.session.scheduledFeed;
   const current = rt.stopSequenceFor(vehicle);
-  const showRel = predictions.some(p => p.scheduleRelationship);
 
   return section(
     'Predictions',
     `<table class="table table-xs table-fixed">
       <colgroup>
-        <col style="width: ${showRel ? '8.33%' : '9.09%'}" />
-        <col style="width: ${showRel ? '33.33%' : '36.36%'}" />
-        <col style="width: ${showRel ? '16.67%' : '18.18%'}" />
-        <col style="width: ${showRel ? '16.67%' : '18.18%'}" />
-        <col style="width: ${showRel ? '16.67%' : '18.18%'}" />
-        ${showRel ? '<col style="width: 8.33%" />' : ''}
+        <col style="width: 9%" />
+        <col style="width: 37%" />
+        <col style="width: 18%" />
+        <col style="width: 18%" />
+        <col style="width: 18%" />
       </colgroup>
       <thead><tr>
         <th class="text-right">Seq</th><th>Stop</th>
-        <th class="text-right">Arr ${escHtml(zoneLabel())}</th>
-        <th class="text-right">Dep ${escHtml(zoneLabel())}</th>
-        <th class="text-right">Delay</th>
-        ${showRel ? '<th class="text-right">Rel</th>' : ''}
+        ${predictionHeaders()}
       </tr></thead>
       <tbody>${predictions
         .map(p => {
@@ -192,20 +186,13 @@ function renderPredictions(ctx: RenderContext, rt: RtIndex, vehicle: VehiclePosi
           const isCurrent = current !== undefined && p.stop_sequence === current.sequence;
           const skipped = p.scheduleRelationship === 1;
           return `<tr class="${isCurrent ? 'bg-base-200' : ''}">
-            <td class="text-right tabular-nums opacity-60">${escHtml(String(p.stop_sequence ?? '—'))}</td>
-            <td class="max-w-0 truncate${skipped ? ' opacity-50 line-through' : ''}">${
+            <td class="text-right tabular-nums opacity-60 align-top">${escHtml(String(p.stop_sequence ?? '—'))}</td>
+            <td class="max-w-0 truncate align-top${skipped ? ' opacity-50 line-through' : ''}">${
               stop
                 ? entityLink(ctx, { type: 'stop', stop_id: stop.id }, stop.name || stop.id)
                 : escHtml(p.stop_id)
             }</td>
-            <td class="text-right whitespace-nowrap tabular-nums">${escHtml(
-              formatEpochTime(p.arrival, false),
-            )}</td>
-            <td class="text-right whitespace-nowrap tabular-nums">${escHtml(
-              formatEpochTime(p.departure, false),
-            )}</td>
-            <td class="text-right whitespace-nowrap">${formatDelay(p.delay)}</td>
-            ${showRel ? `<td class="text-right whitespace-nowrap">${stopTimeRelationshipMark(p.scheduleRelationship)}</td>` : ''}
+            ${predictionCells(p)}
           </tr>`;
         })
         .join('')}</tbody>
